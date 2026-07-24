@@ -16,6 +16,9 @@ const ENV_SCHEMA = [
   { key: "CHAMBER_PORT", type: "port", description: "OpenChamber port" },
   { key: "BACKUP_RETENTION", type: "number", description: "Number of backups to retain" },
   { key: "WORKSPACE_PATH", type: "text", description: "Workspace path (bind mount)" },
+  { key: "APT_PACKAGES", type: "text", description: "Extra apt packages installed at container startup" },
+  { key: "BREW_PACKAGES", type: "text", description: "Extra Homebrew packages installed at container startup" },
+  { key: "BUN_PACKAGES", type: "text", description: "Extra global bun packages installed at container startup" },
 ];
 
 env.get("/api/env", (c) => {

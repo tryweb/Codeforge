@@ -43,7 +43,7 @@ services:
     working_dir: /opt/admin
     env_file:
       - .env
-    command: ["sh", "-c", "sudo chown devuser:devuser /opt/ai-engkit && env | grep -v -E '^(HOME|PATH|BUN_|NODE_|npm_|HOSTNAME|PWD|SHLVL|TERM|TZ|LS_COLORS|LESS[ _]|PAGER|EDITOR|LC_|LANG|SHELL|USER|SUDO_|TMPDIR|OLDPWD|_)' > /opt/ai-engkit/.env; bun run /opt/admin/server.ts"]
+    command: ["sh", "-c", "sudo chown devuser:devuser /opt/ai-engkit && env | grep -v -E '^(HOME|PATH|BUN_|NODE_|npm_|HOSTNAME|PWD|SHLVL|TERM|TZ|LS_COLORS|LESS[ _]|PAGER|EDITOR|LC_|LANG|SHELL|USER|SUDO_|TMPDIR|OLDPWD|_|LOGNAME|PLAYWRIGHT_|DEBIAN_|CLAUDE_)' > /opt/ai-engkit/.env; bun run /opt/admin/server.ts"]
     ports:
       - "${ADMIN_DEV_PORT:-8081}:8080"
     volumes:

@@ -118,7 +118,9 @@ Copy `.env.example` to `.env` and customize:
 | `APT_PACKAGES` | *(empty)* | Extra apt packages installed at container startup |
 | `BREW_PACKAGES` | *(empty)* | Extra Homebrew packages installed at container startup |
 | `BUN_PACKAGES` | *(empty)* | Extra global bun packages installed at container startup |
-
+| `ADMIN_PORT` | `8080` | Admin dashboard port (production) |
+| `ADMIN_PASSWORD` | `admin` | Admin dashboard password |
+ 
 ### Plugin Version Management (Development)
 
 When building from source (via `docker-compose.dev.yml`), you can specify plugin versions:
