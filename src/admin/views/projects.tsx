@@ -47,28 +47,65 @@ const ProjectsContent: FC<{ projects: string[] }> = ({ projects }) => (
       async function loadFeatures() {
         const rows = document.querySelectorAll("#projects-table tr[data-project]");
         const names = Array.from(rows).map(r => r.getAttribute("data-project"));
-        const results = await Promise.allSettled(
-          names.map(name =>
-            fetch("/api/projects/" + encodeURIComponent(name) + "/features").then(r => r.json())
-          )
-        );
+        const [featResults, gitResults] = await Promise.all([
+          Promise.allSettled(
+            names.map(name =>
+              fetch("/api/projects/" + encodeURIComponent(name) + "/features").then(r => r.json())
+            )
+          ),
+          Promise.allSettled(
+            names.map(name =>
+              fetch("/api/projects/" + encodeURIComponent(name) + "/git-remote").then(r => r.json())
+            )
+          ),
+        ]);
         rows.forEach((row, i) => {
-          const r = results[i];
-          const feats = r.status === "fulfilled" && r.value ? r.value : null;
-          if (!feats || feats.error) {
+          const feats = featResults[i];
+          const fdata = feats.status === "fulfilled" && feats.value ? feats.value : null;
+          if (!fdata || fdata.error) {
             row.querySelectorAll(".feat-cell").forEach(cell => cell.innerHTML = '<span class="text-muted">err</span>');
-            return;
+          } else {
+            row.querySelectorAll(".feat-cell").forEach(cell => {
+              const f = cell.getAttribute("data-feat");
+              const enabled = fdata[f];
+              if (enabled) {
+                cell.innerHTML = '<span class="badge badge-success" style="font-size:0.85rem;">&#10003;</span>';
+              } else {
+                cell.innerHTML = '<button class="btn-outline" style="padding:2px 8px;font-size:0.75rem;" onclick="event.stopPropagation();enableFeature(this)">Enable</button>';
+              }
+            });
           }
-          row.querySelectorAll(".feat-cell").forEach(cell => {
-            const f = cell.getAttribute("data-feat");
-            const enabled = feats[f];
-            if (enabled) {
-              cell.innerHTML = '<span class="badge badge-success" style="font-size:0.85rem;">&#10003;</span>';
-            } else {
-              cell.innerHTML = '<button class="btn-outline" style="padding:2px 8px;font-size:0.75rem;" onclick="event.stopPropagation();enableFeature(this)">Enable</button>';
-            }
-          });
+
+          const git = gitResults[i];
+          const remote = git.status === "fulfilled" && git.value ? git.value.remote : null;
+          const nameCell = row.querySelector("td:first-child");
+          const existing = nameCell.querySelector(".git-remote-info");
+          if (existing) existing.remove();
+          const info = document.createElement("span");
+          info.className = "git-remote-info";
+          info.style.cssText = "display:block;font-size:0.75rem;margin-top:2px;";
+          if (remote) {
+            const short = remote.length > 50 ? remote.substring(0, 47) + "..." : remote;
+            info.innerHTML = '<span class="text-muted" style="cursor:pointer;" onclick="setGitRemote(this)" title="' + remote.replace(/"/g, '&quot;') + '">&#128279; ' + short + '</span>';
+          } else {
+            info.innerHTML = '<span class="text-muted" style="cursor:pointer;" onclick="setGitRemote(this)">[set remote]</span>';
+          }
+          nameCell.appendChild(info);
         });
+      }
+
+      async function setGitRemote(el) {
+        const row = el.closest("tr[data-project]");
+        const name = row.getAttribute("data-project");
+        const current = el.title || "";
+        const url = prompt("Git remote URL" + (current ? " (leave empty to remove):" : ":"), current || "");
+        if (url === null) return;
+        const res = await fetch("/api/projects/" + encodeURIComponent(name) + "/git-remote", {
+          method: "PUT", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ remote: url }),
+        });
+        if (res.ok) { location.reload(); }
+        else { const d = await res.json(); alert(d.error || "Failed"); }
       }
 
       async function enableFeature(btn) {

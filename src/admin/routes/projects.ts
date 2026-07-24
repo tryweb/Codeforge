@@ -54,16 +54,23 @@ projects.post("/api/projects", async (c) => {
 
   // Initialize git repository if requested
   if (body.git_init) {
-    await execInAiDev(
-      `cd ~/workspace/${JSON.stringify(name)} && git init 2>&1 && git add -A && git commit -m "Initial commit" 2>/dev/null || true`,
+    const gitResult = await execInAiDev(
+      `cd ~/workspace/${JSON.stringify(name)} && git init 2>&1 && git add -A && git commit -m "Initial commit" 2>/dev/null`,
       15_000,
     );
+    if (gitResult.exitCode !== 0 && gitResult.exitCode !== -1) {
+      const msg = gitResult.stderr || gitResult.stdout || "git init failed";
+      return c.json({ error: `Directory created but git init failed: ${msg}` }, 500);
+    }
     const remote = body.git_remote?.trim();
     if (remote) {
-      await execInAiDev(
+      const remoteResult = await execInAiDev(
         `cd ~/workspace/${JSON.stringify(name)} && git remote add origin ${JSON.stringify(remote)}`,
         10_000,
       );
+      if (remoteResult.exitCode !== 0 && remoteResult.exitCode !== -1) {
+        return c.json({ error: `Directory created but git remote add failed: ${remoteResult.stderr || remoteResult.stdout}` }, 500);
+      }
     }
   }
 
@@ -109,6 +116,40 @@ projects.post("/api/projects/:name/features/:feature", async (c) => {
     return c.json({ error: result.stderr || "Feature enable failed" }, 500);
   }
   return c.json({ ok: true, output: result.stdout });
+});
+
+projects.get("/api/projects/:name/git-remote", async (c) => {
+  const name = c.req.param("name");
+  const r = await execInAiDev(
+    `cd ~/workspace/${JSON.stringify(name)} && git remote get-url origin 2>/dev/null || true`,
+    10_000,
+  );
+  return c.json({ remote: r.stdout.trim() || null });
+});
+
+projects.put("/api/projects/:name/git-remote", async (c) => {
+  const name = c.req.param("name");
+  const body = await c.req.json();
+  const url = body.remote?.trim();
+  const base = `cd ~/workspace/${JSON.stringify(name)}`;
+
+  if (!url) {
+    await execInAiDev(`${base} && git remote remove origin 2>/dev/null || true`, 10_000);
+    return c.json({ ok: true });
+  }
+
+  const hasRemote = await execInAiDev(
+    `${base} && git remote get-url origin 2>/dev/null || echo "no-remote"`, 10_000,
+  );
+  const gitCmd = hasRemote.stdout.trim() === "no-remote"
+    ? `${base} && git remote add origin ${JSON.stringify(url)}`
+    : `${base} && git remote set-url origin ${JSON.stringify(url)}`;
+
+  const result = await execInAiDev(gitCmd, 10_000);
+  if (result.exitCode !== 0 && result.exitCode !== -1) {
+    return c.json({ error: result.stderr || "Failed to set git remote" }, 500);
+  }
+  return c.json({ ok: true });
 });
 
 projects.get("/projects", async (c) => {
