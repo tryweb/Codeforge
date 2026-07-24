@@ -14,7 +14,7 @@ const ProjectsContent: FC<{ projects: string[] }> = ({ projects }) => (
         <h3>Project Sync</h3>
         <div id="sync-status" class="text-sm" style="margin-bottom:8px;">Checking...</div>
         <div id="sync-results" style="display:none;"></div>
-        <div id="sync-actions" style="display:none;" class="flex gap-2" style="justify-content:flex-end;margin-top:12px;">
+        <div id="sync-actions" style="display:none;justify-content:flex-end;margin-top:12px;gap:8px;" class="flex">
           <button class="btn-outline" onclick="closeSync()">Cancel</button>
           <button id="btn-sync-fix" onclick="applySync()">Fix All</button>
         </div>
