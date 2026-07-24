@@ -169,6 +169,9 @@ projects.put("/api/projects/:name/git-remote", async (c) => {
     return c.json({ ok: true });
   }
 
+  // Auto-init if not yet a git repo
+  await execInAiDev(`${base} && git init 2>/dev/null || true`, 10_000);
+
   const hasRemote = await execInAiDev(
     `${base} && git remote get-url origin 2>/dev/null || echo "no-remote"`, 10_000,
   );
@@ -182,19 +185,24 @@ projects.put("/api/projects/:name/git-remote", async (c) => {
     return c.json({ error: setResult.stderr || "Failed to set git remote" }, 500);
   }
 
-  // If repo has no local branch tracking remote, fetch and checkout
-  const localBranch = await execInAiDev(
-    `${base} && git rev-parse --abbrev-ref HEAD 2>/dev/null || true`, 10_000,
+  const hasCommits = await execInAiDev(
+    `${base} && git cat-file -t HEAD 2>/dev/null || true`, 5_000,
   );
-  const isDetached = !localBranch.stdout.trim() || localBranch.stdout.trim() === "HEAD";
-  if (isDetached) {
-    const pull = await execInAiDev(
-      `GIT_TERMINAL_PROMPT=0 ${base} && git fetch origin 2>&1 && (git checkout main 2>/dev/null || git checkout master 2>/dev/null || true)`,
-      120_000,
+  if (hasCommits.stdout.trim() !== "commit") {
+    const fetch = await execInAiDev(
+      `GIT_TERMINAL_PROMPT=0 ${base} && git fetch origin --depth 1 2>&1`, 120_000,
     );
-    if (pull.exitCode !== 0 && pull.exitCode !== -1) {
-      const msg = pull.stderr || pull.stdout || "fetch failed";
-      return c.json({ error: `Remote set, but fetch/checkout failed: ${msg}`, partial: true }, 500);
+    if (fetch.exitCode !== 0 && fetch.exitCode !== -1) {
+      return c.json({ error: `Remote set, but fetch failed: ${fetch.stderr || fetch.stdout || "unknown"}`, partial: true }, 500);
+    }
+    // Try checkout, force to handle untracked files from features (knowledge, openspec, etc.)
+    const checkout = await execInAiDev(
+      `${base} && (git checkout -f --track origin/main 2>/dev/null || git checkout -f --track origin/master 2>/dev/null || true)`,
+      30_000,
+    );
+    if (checkout.exitCode !== 0 && checkout.exitCode !== -1) {
+      const msg = checkout.stderr || checkout.stdout || "checkout failed";
+      return c.json({ error: `Remote set and fetched, but checkout failed: ${msg}`, partial: true }, 500);
     }
   }
 

@@ -93,7 +93,11 @@ const ProjectsContent: FC<{ projects: string[] }> = ({ projects }) => (
           body: JSON.stringify({ remote: url }),
         });
         if (res.ok) { location.reload(); }
-        else { const d = await res.json(); alert(d.error || "Failed"); }
+        else {
+          let msg = "Failed to set remote";
+          try { const d = await res.json(); msg = d.error || msg; } catch (e) { msg = res.status + " " + res.statusText; }
+          alert(msg);
+        }
       }
 
       async function enableFeature(btn) {
