@@ -32,7 +32,7 @@ const DashboardContent: FC<{ data: DashboardData }> = ({ data }) => {
         </div>
         <div class="card">
           <h3>Projects</h3>
-          <p style="font-size:2rem;font-weight:600;">{data.project_count}</p>
+          <p class="stat-number">{data.project_count}</p>
           <p class="text-sm text-muted">workspace projects</p>
         </div>
       </div>
