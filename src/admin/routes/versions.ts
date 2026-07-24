@@ -46,16 +46,16 @@ versions.get("/api/versions/image", async (c) => {
 versions.get("/api/versions", async (c) => {
   const versionCommands: Record<string, string> = {
     "OpenCode": "opencode --version 2>/dev/null || echo 'unavailable'",
-    "OpenChamber": "cat /opt/openchamber/version.txt 2>/dev/null || echo 'unavailable'",
+    "OpenChamber": "/home/devuser/.bun/bin/openchamber --version 2>/dev/null || echo 'unavailable'",
     "Bun": "bun --version 2>/dev/null || echo 'unavailable'",
     "Docker": "docker --version 2>/dev/null | cut -d' ' -f3 | tr -d ',' || echo 'unavailable'",
     "Docker Compose": "docker compose version --short 2>/dev/null || echo 'unavailable'",
     "gh": "gh --version 2>/dev/null | head -1 | cut -d' ' -f3 || echo 'unavailable'",
-    "glab": "glab --version 2>/dev/null | cut -d' ' -f3 || echo 'unavailable'",
+    "glab": "glab --version 2>/dev/null | cut -d' ' -f2 || echo 'unavailable'",
     "Git": "git --version 2>/dev/null | cut -d' ' -f3 || echo 'unavailable'",
-    "Node": "node --version 2>/dev/null || echo 'unavailable'",
+    "Node": "echo 'unavailable'",
     "lean-ctx": "lean-ctx --version 2>/dev/null || echo 'unavailable'",
-    "Playwright": "npx playwright --version 2>/dev/null || echo 'unavailable'",
+    "Playwright": "echo 'unavailable'",
   };
 
   const versions: Record<string, string> = {};
