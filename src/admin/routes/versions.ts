@@ -72,9 +72,12 @@ versions.get("/api/versions", async (c) => {
 });
 
 versions.get("/versions", async (c) => {
+  const baseUrl = c.req.url.replace("/versions", "");
+  const cookie = c.req.header("cookie") || "";
+  const headers = cookie ? { cookie } : {};
   const [versionsData, imageMeta] = await Promise.all([
-    (await (await fetch(`${c.req.url.replace("/versions", "")}/api/versions`)).json()) as Record<string, string>,
-    (await (await fetch(`${c.req.url.replace("/versions", "")}/api/versions/image`)).json()) as Record<string, string>,
+    (await (await fetch(`${baseUrl}/api/versions`, { headers })).json()) as Record<string, string>,
+    (await (await fetch(`${baseUrl}/api/versions/image`, { headers })).json()) as Record<string, string>,
   ]);
   return c.html(VersionsPage(versionsData, imageMeta));
 });
