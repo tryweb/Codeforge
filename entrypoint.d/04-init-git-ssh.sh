@@ -65,5 +65,30 @@ create_symlink "$GIT_CONFIG_DIR/.git-credentials" "$DEVUSER_HOME/.git-credential
 sudo -u devuser HOME=/home/devuser git config --global credential.helper store
 echo "Configured: credential.helper store"
 
+# --- Start SSH agent (persistent across sessions) ---
+AGENT_ENV="$SSH_DIR/agent.env"
+if [ ! -f "$AGENT_ENV" ] || ! ( . "$AGENT_ENV" 2>/dev/null && [ -S "$SSH_AUTH_SOCK" ] 2>/dev/null ); then
+  # Run as devuser so agent socket is accessible to devuser sessions
+  sudo -u devuser ssh-agent -s > "$AGENT_ENV" 2>/dev/null
+  chmod 600 "$AGENT_ENV"
+  echo "Started: ssh-agent (pid $(grep SSH_AGENT_PID "$AGENT_ENV" | cut -d= -f2 | tr -d ';'))"
+fi
+
+# Source agent env in .bashrc if not already there
+for rcfile in ".bashrc" ".bashenv"; do
+  rcpath="$DEVUSER_HOME/$rcfile"
+  if [ -f "$rcpath" ] && ! grep -q "agent.env" "$rcpath" 2>/dev/null; then
+    cat >> "$rcpath" <<- RCEOF
+
+# SSH agent
+if [ -f "\$HOME/.ssh/agent.env" ]; then
+  source "\$HOME/.ssh/agent.env"
+fi
+RCEOF
+    chown devuser:devuser "$rcpath"
+    echo "Added: ssh-agent source to $rcfile"
+  fi
+done
+
 echo "=== Git/SSH volumes initialized ==="
 echo

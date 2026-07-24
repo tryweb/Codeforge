@@ -49,6 +49,8 @@ sshKeys.post("/api/ssh/keys", async (c) => {
   if (result.exitCode !== 0) {
     return c.json({ error: result.stderr || "Failed to generate key" }, 500);
   }
+  // Auto-register key with SSH agent so it's immediately available
+  await execInAiDev(`. ~/.ssh/agent.env 2>/dev/null && ssh-add ~/.ssh/${JSON.stringify(name)} 2>/dev/null || true`, 5_000);
   return c.json({ ok: true });
 });
 
