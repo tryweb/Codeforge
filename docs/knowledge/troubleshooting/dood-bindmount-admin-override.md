@@ -93,6 +93,69 @@ services:
 - 移除 bind mount 後，容器使用 image 內建的 `/opt/admin/`，不受 host 端檔案系統影響
 - `--no-cache` 確保 build 時重新 COPY 最新檔案進 image
 
+### 方案 C：移除檔案層級 bind mount + 改用 docker exec/ps（推薦）
+
+最完整的解法：徹底擺脫對 file-level bind mount 的依賴，改用 `docker exec` + `docker ps` 操作容器，密碼透過 env var 傳遞。
+
+修改 `docker-compose.dev.yml`：
+
+```yaml
+services:
+  ai-admin:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        - AI_ENGKIT_VERSION=dev
+    container_name: ai-engkit-admin-dev
+    # 不移除 entrypoint（使用 image 預設，讓 entrypoint.d 腳本能初始化 Docker GID）
+    command: ["bun", "run", "/opt/admin/server.ts"]
+    ports:
+      - "${ADMIN_DEV_PORT:-8081}:8080"
+    volumes:
+      # 只保留目錄層級的 mount（backups）和 Docker socket
+      - ./backups:/opt/ai-engkit/backups:rw
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - ADMIN_PORT=8080
+      # ADMIN_PASSWORD 直接 env var，不需要 .env mount
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-testadmin123}
+```
+
+對應的程式碼調整（`src/admin/lib/docker.ts`）：
+
+```typescript
+// 不再使用 docker compose exec（需 compose.yml）
+export async function getAiDevContainerRef(): Promise<string> {
+  for (const name of ["ai-engkit-dev", "ai-engkit"]) {
+    const result = await runCommand(
+      ["docker", "ps", "--filter", `name=${name}`, "--format", "{{.ID}}"],
+      10_000,
+    );
+    if (result.exitCode === 0 && result.stdout.trim()) {
+      return result.stdout.trim().split("\n")[0];
+    }
+  }
+  return "ai-engkit";
+}
+
+export async function execInAiDev(command: string, timeoutMs = 30_000) {
+  const ref = await getAiDevContainerRef();
+  return runCommand(["docker", "exec", ref, "sh", "-c", command], timeoutMs);
+}
+```
+
+認證模組 `auth.ts` 加入 `process.env` fallback：
+
+```typescript
+function getPassword(): string | null {
+  const pw = readEnvFile().ADMIN_PASSWORD;
+  if (pw && pw.length > 0) return pw;
+  const envPw = process.env.ADMIN_PASSWORD;  // fallback for dev compose
+  return envPw && envPw.length > 0 ? envPw : null;
+}
+```
+
 ## 副作用 / 取捨
 
 - **方案 A** 的容器不是由 docker compose 管理，`docker compose logs` / `docker compose down` 無法控制它
@@ -101,6 +164,8 @@ services:
   - 若要模擬 devuser：加 `sudo -u devuser` 但需先 fix docker GID
 - **方案 B** 會讓 dev 模式的 hot-reload（`--watch`）失效，因為檔案修改後不會同步進容器
   - 解決方式：每次修改後重新 build
+- **方案 C** 讓 dev 模式的 hot-reload（`--watch`）失效（同方案 B），但使用 image 預設 entrypoint 確保 Docker GID 正確初始化
+- **方案 C** 的 `getAiDevContainerRef()` 依賴 container name pattern，若 container name 變更需要同步更新
 - 此問題只在 DooD 模式發生。若 CI 的 Docker daemon 與 build context 在同一 host，bind mount 正常運作
 
 ## Evidence
@@ -126,7 +191,8 @@ $ docker inspect ai-engkit-admin-dev --format '{{json .Mounts}}' | jq '.[] | sel
 - `docker-compose.dev.yml` — ai-admin volumes 定義
 - `Dockerfile` line 258 — `COPY src/admin/ /opt/admin/`
 - `entrypoint.d/03-fix-docker-gid.sh` — Docker socket GID 匹配腳本
-- `src/admin/lib/docker.ts` — `execInAiDev` 使用 `/opt/ai-engkit/compose.yml`
+- `src/admin/lib/docker.ts` — `getAiDevContainerRef` / `execInAiDev` 改用 `docker exec` + `docker ps`
+- `src/admin/lib/auth.ts` — `getPassword` 加入 `process.env` fallback
 - `src/admin/lib/env.ts` — `readEnvFile` 讀取 `/opt/ai-engkit/.env`
 - `docs/knowledge/troubleshooting/dood-subproject-host-port-unreachable.md` — 相關 DooD 問題
 
