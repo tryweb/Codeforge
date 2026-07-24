@@ -9,12 +9,17 @@ const ProjectsContent: FC<{ projects: string[] }> = ({ projects }) => (
       <button onclick="showCreateForm()" class="btn-outline">+ New Project</button>
     </div>
     <div class="card">
-      <table>
-        <tr><th>Name</th><th></th></tr>
+      <table id="projects-table">
+        <tr><th>Name</th><th>Knowledge</th><th>Maintenance</th><th>OpenSpec</th></tr>
         {projects.map(name => (
-          <tr><td><code>{name}</code></td><td><button class="btn-outline" style="padding:4px 8px;font-size:0.75rem;" onclick={`initProject('${name}')`}>Init OpenCode</button></td></tr>
+          <tr data-project={name}>
+            <td><code>{name}</code></td>
+            <td class="feat-cell" data-feat="knowledge"><span class="text-muted">...</span></td>
+            <td class="feat-cell" data-feat="maintenance"><span class="text-muted">...</span></td>
+            <td class="feat-cell" data-feat="openspec"><span class="text-muted">...</span></td>
+          </tr>
         ))}
-        {projects.length === 0 && <tr><td colspan="2" class="text-muted">No projects yet</td></tr>}
+        {projects.length === 0 && <tr><td colspan="4" class="text-muted">No projects yet</td></tr>}
       </table>
     </div>
     <div id="create-modal" class="modal-overlay" style="display:none;">
@@ -32,6 +37,54 @@ const ProjectsContent: FC<{ projects: string[] }> = ({ projects }) => (
       </div>
     </div>
     <script>{html`
+      async function loadFeatures() {
+        const rows = document.querySelectorAll("#projects-table tr[data-project]");
+        const names = Array.from(rows).map(r => r.getAttribute("data-project"));
+        const results = await Promise.allSettled(
+          names.map(name =>
+            fetch("/api/projects/" + encodeURIComponent(name) + "/features").then(r => r.json())
+          )
+        );
+        rows.forEach((row, i) => {
+          const r = results[i];
+          const feats = r.status === "fulfilled" && r.value ? r.value : null;
+          if (!feats || feats.error) {
+            row.querySelectorAll(".feat-cell").forEach(cell => cell.innerHTML = '<span class="text-muted">err</span>');
+            return;
+          }
+          row.querySelectorAll(".feat-cell").forEach(cell => {
+            const f = cell.getAttribute("data-feat");
+            const enabled = feats[f];
+            if (enabled) {
+              cell.innerHTML = '<span class="badge badge-success" style="font-size:0.85rem;">&#10003;</span>';
+            } else {
+              cell.innerHTML = '<button class="btn-outline" style="padding:2px 8px;font-size:0.75rem;" onclick="event.stopPropagation();enableFeature(this)">Enable</button>';
+            }
+          });
+        });
+      }
+
+      async function enableFeature(btn) {
+        const row = btn.closest("tr[data-project]");
+        const name = row.getAttribute("data-project");
+        const feat = btn.closest(".feat-cell").getAttribute("data-feat");
+        btn.disabled = true;
+        btn.textContent = "Enabling...";
+        try {
+          const res = await fetch("/api/projects/" + encodeURIComponent(name) + "/features/" + feat, { method: "POST" });
+          if (res.ok) {
+            btn.outerHTML = '<span class="badge badge-success" style="font-size:0.85rem;">&#10003;</span>';
+          } else {
+            const d = await res.json();
+            btn.textContent = "Error";
+            setTimeout(() => { btn.disabled = false; btn.textContent = "Enable"; }, 3000);
+          }
+        } catch (e) {
+          btn.textContent = "Error";
+          setTimeout(() => { btn.disabled = false; btn.textContent = "Enable"; }, 3000);
+        }
+      }
+
       function showCreateForm() { document.getElementById("create-modal").style.display = "flex"; }
       function closeCreate() { document.getElementById("create-modal").style.display = "none"; }
       async function createProject() {
@@ -45,11 +98,8 @@ const ProjectsContent: FC<{ projects: string[] }> = ({ projects }) => (
         else { const d = await res.json(); document.getElementById("create-error").style.display = "block";
           document.getElementById("create-error").textContent = d.error || "Failed to create"; }
       }
-      async function initProject(name) {
-        if (!confirm("Initialize " + name + " with OpenCode?")) return;
-        const res = await fetch("/api/projects/" + encodeURIComponent(name) + "/init", { method: "POST" });
-        if (res.ok) { alert("Project initialized!"); } else { alert("Failed to initialize"); }
-      }
+
+      loadFeatures();
     `}</script>
   </div>
 );
