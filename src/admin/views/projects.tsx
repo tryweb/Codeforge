@@ -24,9 +24,6 @@ const ProjectsContent: FC<{ projects: string[] }> = ({ projects }) => (
           <label for="project-name">Project Name</label>
           <input type="text" id="project-name" placeholder="my-project" />
         </div>
-        <div class="form-group">
-          <label><input type="checkbox" id="init-opencode" checked /> Initialize with OpenCode</label>
-        </div>
         <div id="create-error" class="text-sm text-danger" style="display:none;margin-bottom:8px;" />
         <div class="flex gap-2" style="justify-content:flex-end;">
           <button class="btn-outline" onclick="closeCreate()">Cancel</button>
@@ -39,11 +36,10 @@ const ProjectsContent: FC<{ projects: string[] }> = ({ projects }) => (
       function closeCreate() { document.getElementById("create-modal").style.display = "none"; }
       async function createProject() {
         const name = document.getElementById("project-name").value.trim();
-        const initOpenCode = document.getElementById("init-opencode").checked;
         if (!name) return;
         const res = await fetch("/api/projects", {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name, init_opencode: initOpenCode }),
+          body: JSON.stringify({ name }),
         });
         if (res.ok) { location.reload(); }
         else { const d = await res.json(); document.getElementById("create-error").style.display = "block";
