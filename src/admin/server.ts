@@ -105,6 +105,16 @@ app.route("/", sshKeyRoutes);
 // Dashboard main page — gathers data directly instead of HTTP loopback
 app.get("/", async (c) => {
   const { isAiDevRunning, getAiDevUptime, execInAiDev: exec } = await import("./lib/docker");
+
+  const getVer = async (cmd: string): Promise<string> => {
+    try {
+      const r = await exec(cmd, 15_000);
+      return r.exitCode === 0 && r.stdout ? r.stdout.split("\n")[0].trim() : "";
+    } catch {
+      return "";
+    }
+  };
+
   const [containerRunning, uptime, ghResult, glabResult, gitResult, projectsResult] =
     await Promise.all([
       isAiDevRunning(),
@@ -122,11 +132,23 @@ app.get("/", async (c) => {
   const gitUser = gitResult.stdout.trim();
   const projectCount = parseInt(projectsResult.stdout.trim() || "0", 10);
 
+  const [aiEngkitVer, opencodeVer, openchamberVer, dockerVer] = await Promise.all([
+    getVer("cat /opt/ai-engkit/VERSION 2>/dev/null || echo 'dev'"),
+    getVer("opencode --version 2>/dev/null || echo ''"),
+    getVer("/home/devuser/.bun/bin/openchamber --version 2>/dev/null || echo ''"),
+    getVer("docker --version 2>/dev/null | cut -d' ' -f3 | tr -d ',' || echo ''"),
+  ]);
+
   return c.html(
     DashboardPage({
       container_status: containerRunning ? "running" : "stopped",
       uptime_seconds: uptime,
-      versions: {},
+      versions: {
+        "AI-EngKit": aiEngkitVer,
+        "OpenCode": opencodeVer,
+        "OpenChamber": openchamberVer,
+        "Docker": dockerVer,
+      },
       gh_auth: ghAuth,
       glab_auth: glabAuth,
       git_user: gitUser,
