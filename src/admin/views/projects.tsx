@@ -29,6 +29,13 @@ const ProjectsContent: FC<{ projects: string[] }> = ({ projects }) => (
           <label for="project-name">Project Name</label>
           <input type="text" id="project-name" placeholder="my-project" />
         </div>
+        <div class="form-group">
+          <label><input type="checkbox" id="init-git" checked onchange="toggleGitRemote()" /> Initialize with git</label>
+        </div>
+        <div class="form-group" id="git-remote-group" style="display:block;">
+          <label for="git-remote">Git Remote URL <span class="text-sm text-muted">(optional)</span></label>
+          <input type="text" id="git-remote" placeholder="https://github.com/your-org/project.git" />
+        </div>
         <div id="create-error" class="text-sm text-danger" style="display:none;margin-bottom:8px;" />
         <div class="flex gap-2" style="justify-content:flex-end;">
           <button class="btn-outline" onclick="closeCreate()">Cancel</button>
@@ -85,14 +92,20 @@ const ProjectsContent: FC<{ projects: string[] }> = ({ projects }) => (
         }
       }
 
+      function toggleGitRemote() {
+        const show = document.getElementById("init-git").checked;
+        document.getElementById("git-remote-group").style.display = show ? "block" : "none";
+      }
       function showCreateForm() { document.getElementById("create-modal").style.display = "flex"; }
       function closeCreate() { document.getElementById("create-modal").style.display = "none"; }
       async function createProject() {
         const name = document.getElementById("project-name").value.trim();
         if (!name) return;
+        const gitInit = document.getElementById("init-git").checked;
+        const gitRemote = document.getElementById("git-remote").value.trim();
         const res = await fetch("/api/projects", {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name }),
+          body: JSON.stringify({ name, git_init: gitInit, git_remote: gitRemote || undefined }),
         });
         if (res.ok) { location.reload(); }
         else { const d = await res.json(); document.getElementById("create-error").style.display = "block";

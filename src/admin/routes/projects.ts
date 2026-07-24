@@ -52,6 +52,21 @@ projects.post("/api/projects", async (c) => {
     return c.json({ error: createResult.stderr || "Failed to create directory" }, 500);
   }
 
+  // Initialize git repository if requested
+  if (body.git_init) {
+    await execInAiDev(
+      `cd ~/workspace/${JSON.stringify(name)} && git init 2>&1 && git add -A && git commit -m "Initial commit" 2>/dev/null || true`,
+      15_000,
+    );
+    const remote = body.git_remote?.trim();
+    if (remote) {
+      await execInAiDev(
+        `cd ~/workspace/${JSON.stringify(name)} && git remote add origin ${JSON.stringify(remote)}`,
+        10_000,
+      );
+    }
+  }
+
   // Register in OpenChamber so it appears automatically without manual "Add project"
   await execInAiDev(
     `SETTINGS=/home/devuser/.config/openchamber/settings.json && ` +
