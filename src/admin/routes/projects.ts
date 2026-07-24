@@ -47,30 +47,36 @@ projects.post("/api/projects", async (c) => {
   const name = body.name?.trim();
   if (!name) return c.json({ error: "Project name required" }, 400);
 
-  const createResult = await execInAiDev(`mkdir -p ~/workspace/${JSON.stringify(name)}`, 15_000);
-  if (createResult.exitCode !== 0) {
-    return c.json({ error: createResult.stderr || "Failed to create directory" }, 500);
-  }
+  const remote = body.git_remote?.trim();
 
-  // Initialize git repository if requested
-  if (body.git_init) {
-    const gitResult = await execInAiDev(
-      `cd ~/workspace/${JSON.stringify(name)} && git init 2>&1 && git add -A && git commit -m "Initial commit" 2>/dev/null`,
-      15_000,
+  // If a remote URL is provided, clone instead of mkdir + init
+  if (body.git_init && remote) {
+    const cloneResult = await execInAiDev(
+      `GIT_TERMINAL_PROMPT=0 git clone --depth 1 ${JSON.stringify(remote)} ~/workspace/${JSON.stringify(name)} 2>&1`,
+      120_000,
     );
-    if (gitResult.exitCode !== 0 && gitResult.exitCode !== -1) {
-      const msg = gitResult.stderr || gitResult.stdout || "git init failed";
-      return c.json({ error: `Directory created but git init failed: ${msg}` }, 500);
+    if (cloneResult.exitCode !== 0 && cloneResult.exitCode !== -1) {
+      const msg = cloneResult.stderr || cloneResult.stdout || "clone failed";
+      return c.json({ error: `Clone failed. Make sure the URL is correct and git auth is configured (see GitHub/GitLab Auth page). Details: ${msg}` }, 500);
     }
-    const remote = body.git_remote?.trim();
-    if (remote) {
-      const remoteResult = await execInAiDev(
-        `cd ~/workspace/${JSON.stringify(name)} && git remote add origin ${JSON.stringify(remote)}`,
+  } else {
+    // Local-only project: mkdir + optional git init
+    const createResult = await execInAiDev(`mkdir -p ~/workspace/${JSON.stringify(name)}`, 15_000);
+    if (createResult.exitCode !== 0) {
+      return c.json({ error: createResult.stderr || "Failed to create directory" }, 500);
+    }
+    if (body.git_init) {
+      const initResult = await execInAiDev(
+        `cd ~/workspace/${JSON.stringify(name)} && git init 2>&1`, 10_000,
+      );
+      if (initResult.exitCode !== 0 && initResult.exitCode !== -1) {
+        return c.json({ error: `git init failed: ${initResult.stderr || initResult.stdout}` }, 500);
+      }
+      // Try an initial commit; fine if it fails (empty directory)
+      await execInAiDev(
+        `cd ~/workspace/${JSON.stringify(name)} && git add -A && git commit -m "Initial commit" 2>/dev/null || true`,
         10_000,
       );
-      if (remoteResult.exitCode !== 0 && remoteResult.exitCode !== -1) {
-        return c.json({ error: `Directory created but git remote add failed: ${remoteResult.stderr || remoteResult.stdout}` }, 500);
-      }
     }
   }
 
