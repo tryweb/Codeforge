@@ -52,7 +52,7 @@ export async function dockerCommand(
   subcommand: string,
   timeoutMs: number = 120_000,
 ): Promise<ExecResult> {
-  const args = ["docker", ...subcommand.split(/\s+/)];
+  const args = ["sh", "-c", `docker ${subcommand}`];
   return runCommand(args, timeoutMs);
 }
 
