@@ -26,6 +26,31 @@ projects.get("/api/projects", async (c) => {
   return c.json(list);
 });
 
+projects.get("/api/projects/overview", async (c) => {
+  const names = await listProjects();
+  const results = await Promise.allSettled(names.map(async (name) => {
+    const PROJ = (p: string) => `/home/devuser/workspace/${JSON.stringify(p)}`;
+    const [feats, gitRemote] = await Promise.all([
+      Promise.all([
+        checkFeature(name, "docs/knowledge/README.md"),
+        checkFeature(name, "docs/knowledge/maintenance/README.md"),
+        checkFeature(name, "openspec"),
+      ]).then(([knowledge, maintenance, openspec]) => ({ knowledge, maintenance, openspec })),
+      execInAiDev(`cd ${PROJ(name)} && git remote get-url origin 2>/dev/null || true`, 10_000),
+    ]);
+    return {
+      name,
+      features: feats,
+      remote: gitRemote.stdout.trim() || null,
+    };
+  }));
+  const data: Record<string, any> = {};
+  for (const r of results) {
+    if (r.status === "fulfilled") data[r.value.name] = { features: r.value.features, remote: r.value.remote };
+  }
+  return c.json(data);
+});
+
 projects.get("/api/projects/:name/features", async (c) => {
   const name = c.req.param("name");
   if (!name || name.includes("..")) return c.json({ error: "Invalid project name" }, 400);

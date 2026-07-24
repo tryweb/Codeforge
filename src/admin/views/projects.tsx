@@ -46,47 +46,35 @@ const ProjectsContent: FC<{ projects: string[] }> = ({ projects }) => (
     <script>{html`
       async function loadFeatures() {
         const rows = document.querySelectorAll("#projects-table tr[data-project]");
-        const names = Array.from(rows).map(r => r.getAttribute("data-project"));
-        const [featResults, gitResults] = await Promise.all([
-          Promise.allSettled(
-            names.map(name =>
-              fetch("/api/projects/" + encodeURIComponent(name) + "/features").then(r => r.json())
-            )
-          ),
-          Promise.allSettled(
-            names.map(name =>
-              fetch("/api/projects/" + encodeURIComponent(name) + "/git-remote").then(r => r.json())
-            )
-          ),
-        ]);
-        rows.forEach((row, i) => {
-          const feats = featResults[i];
-          const fdata = feats.status === "fulfilled" && feats.value ? feats.value : null;
-          if (!fdata || fdata.error) {
-            row.querySelectorAll(".feat-cell").forEach(cell => cell.innerHTML = '<span class="text-muted">err</span>');
-          } else {
-            row.querySelectorAll(".feat-cell").forEach(cell => {
-              const f = cell.getAttribute("data-feat");
-              const enabled = fdata[f];
-              if (enabled) {
-                cell.innerHTML = '<span class="badge badge-success" style="font-size:0.85rem;">&#10003;</span>';
-              } else {
-                cell.innerHTML = '<button class="btn-outline" style="padding:2px 8px;font-size:0.75rem;" onclick="event.stopPropagation();enableFeature(this)">Enable</button>';
-              }
-            });
-          }
+        const res = await fetch("/api/projects/overview").then(r => r.json()).catch(() => null);
+        if (!res) {
+          rows.forEach(row => row.querySelectorAll(".feat-cell").forEach(cell => cell.innerHTML = '<span class="text-muted">err</span>'));
+          return;
+        }
+        rows.forEach(row => {
+          const name = row.getAttribute("data-project");
+          const data = res[name];
+          if (!data) return;
 
-          const git = gitResults[i];
-          const remote = git.status === "fulfilled" && git.value ? git.value.remote : null;
+          row.querySelectorAll(".feat-cell").forEach(cell => {
+            const f = cell.getAttribute("data-feat");
+            const enabled = data.features && data.features[f];
+            if (enabled) {
+              cell.innerHTML = '<span class="badge badge-success" style="font-size:0.85rem;">&#10003;</span>';
+            } else {
+              cell.innerHTML = '<button class="btn-outline" style="padding:2px 8px;font-size:0.75rem;" onclick="event.stopPropagation();enableFeature(this)">Enable</button>';
+            }
+          });
+
           const nameCell = row.querySelector("td:first-child");
           const existing = nameCell.querySelector(".git-remote-info");
           if (existing) existing.remove();
           const info = document.createElement("span");
           info.className = "git-remote-info";
           info.style.cssText = "display:block;font-size:0.75rem;margin-top:2px;";
-          if (remote) {
-            const short = remote.length > 50 ? remote.substring(0, 47) + "..." : remote;
-            info.innerHTML = '<span class="text-muted" style="cursor:pointer;" onclick="setGitRemote(this)" title="' + remote.replace(/"/g, '&quot;') + '">&#128279; ' + short + '</span>';
+          if (data.remote) {
+            const short = data.remote.length > 50 ? data.remote.substring(0, 47) + "..." : data.remote;
+            info.innerHTML = '<span class="text-muted" style="cursor:pointer;" onclick="setGitRemote(this)" title="' + data.remote.replace(/"/g, '&quot;') + '">&#128279; ' + short + '</span>';
           } else {
             info.innerHTML = '<span class="text-muted" style="cursor:pointer;" onclick="setGitRemote(this)">[set remote]</span>';
           }
