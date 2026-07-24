@@ -6,6 +6,7 @@ This document explains the ai-engkit system architecture, the relationships betw
 
 - [System Overview](#system-overview)
 - [Service Architecture](#service-architecture)
+- [ai-admin Dashboard](#ai-admin-dashboard)
 - [Container Architecture](#container-architecture)
 - [Data Flow](#data-flow)
 - [Network Architecture](#network-architecture)
@@ -95,6 +96,101 @@ graph TD
     style H fill:#f3e5f5
     style I fill:#e3f2fd
 ```
+
+## ai-admin Dashboard
+
+### Sidecar Service
+
+ai-admin is a web-based admin dashboard shipped as a Docker sidecar service alongside the main `ai-dev` container. It runs on the same Bun runtime already present in the Docker image — **zero additional image layers**.
+
+```mermaid
+graph TB
+    subgraph "Docker Compose"
+        subgraph "Main"
+            AIDEV["ai-dev<br/>OpenCode + OpenChamber"]
+        end
+        subgraph "Sidecar"
+            AIADMIN["ai-admin<br/>Port 8080"]
+        end
+    end
+
+    subgraph "Host"
+        HOST["Host Machine"]
+        BROWSER["Browser"]
+        DOCKER_SOCK["Docker Socket"]
+    end
+
+    BROWSER -->|"HTTP :8080"| AIADMIN
+    AIADMIN -->|"docker exec"| AIDEV
+    AIADMIN -->|"read/write"| ENV_FILE["/opt/.env"]
+    AIADMIN -->|"read/write"| COMPOSE_FILE["docker-compose.yml"]
+    AIADMIN -->|"backup/restore"| BACKUPS["/opt/backups/"]
+
+    style AIADMIN fill:#e8f5e9
+    style AIDEV fill:#fff3e0
+    style BROWSER fill:#e1f5fe
+```
+
+### Features
+
+| Feature | Endpoint | Description |
+|---------|----------|-------------|
+| Auth | `POST /api/login` | HMAC-signed session cookie, brute-force protection |
+| Setup | `GET /setup`, `POST /api/setup` | First-run password setup with redirect |
+| Version Dashboard | `GET /api/versions` | CLI and runtime version table |
+| Env Config Editor | `GET /api/env`, `PUT /api/env/:key` | Inline .env editing with masked secrets |
+| Upgrade Engine | `POST /api/upgrade`, `GET /api/upgrade/log` | 6-step upgrade pipeline with SSE log stream |
+| Project Init | `GET /api/projects`, `POST /api/projects` | Project scaffold with subdomain validation |
+| GitHub Auth | `POST /api/auth/gh/start`, `GET /api/auth/gh/status` | Device code flow for `gh` CLI auth |
+| GitLab Auth | `POST /api/auth/glab/start`, `GET /api/auth/glab/status` | Device code flow for `glab` CLI auth |
+| Git Config | `GET /api/git/config`, `PUT /api/git/config` | Git identity and credential management |
+| SSH Keys | `GET /api/ssh/keys`, `POST /api/ssh/keys` | SSH key generation and public key display |
+| Docker Compose | `POST /api/compose/up`, `POST /api/compose/down` | Docker compose lifecycle (DooD mode) |
+| Status | `GET /api/status` | Aggregated system health summary |
+| Health | `GET /healthz` | Liveness probe |
+| OpenAPI | `GET /api/openapi.json` | API specification |
+
+### Upgrade Pipeline
+
+```mermaid
+flowchart LR
+    A["Trigger Upgrade"] --> B["Digest Compare"]
+    B -->|"changed"| C["Backup .env + compose.yml"]
+    C --> D["Merge .env (preserve user values)"]
+    D --> E["docker compose up -d --force-recreate"]
+    E --> F["Health Poll<br/>(retry 30×1s)"]
+    F -->|"healthy"| G["Cleanup old backups"]
+    F -->|"unhealthy"| H["Rollback restore"]
+    H --> I["Notify failure"]
+    B -->|"unchanged"| J["Skip (no-op)"]
+
+    style A fill:#fff3e0
+    style G fill:#e8f5e9
+    style J fill:#e3f2fd
+    style H fill:#ffcdd2
+```
+
+### Key Decisions
+
+| Decision | Rationale |
+|----------|-----------|
+| Bun runtime (no extra layers) | Bun is already installed for the OpenCode server |
+| `working_dir: /opt/admin` required | `tsconfig.json` at `/opt/admin/` configures Hono JSX runtime; Bun finds it via CWD |
+| HMAC session cookies over JWT | No dependency on JWK/JWKS; ADMIN_PASSWORD as shared secret |
+| HMAC session cookies over JWT | No dependency on JWK/JWKS; ADMIN_PASSWORD as shared secret |
+| SSE over WebSocket logs | Simpler server-sent protocol, no bidirectional channel needed |
+| DooD (Docker-out-of-Docker) | Reuses the host Docker socket already passed to the container |
+| `/opt/ai-engkit/` host paths | Isolates operational files (`.env`, `compose.yml`, `backups/`) from user workspace |
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ADMIN_PORT` | `8080` | Host port for the admin dashboard |
+| `ADMIN_DEV_PORT` | `8081` | Dev mode port (with `--watch`) |
+| `ADMIN_PASSWORD` | *(required)* | Admin login password (prompted by `install.sh`) |
+
+---
 
 ## Container Architecture
 

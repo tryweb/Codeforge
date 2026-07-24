@@ -25,6 +25,23 @@ It is designed for teams and individuals who want a reproducible AI coding works
 - **Persistent volumes** — Config, caches, workspace, and knowledge data survive container restarts
 - **Isolated credentials** — Separate git / SSH / `gh` / `glab` volumes inside the container
 - **Zero-config bootstrap** — Default config and baked skills are initialized automatically on first run
+- **Admin Dashboard** — Web-based admin UI at port 8080 for config editing, upgrades, project init, and auth management
+
+## Admin Dashboard
+
+ai-engkit includes a web-based admin dashboard (`ai-admin`) running as a Docker sidecar alongside the main container. It provides a browser UI for operational tasks:
+
+- **Version Dashboard** — CLI and runtime version overview
+- **Env Config Editor** — Edit `.env` variables with masked secret fields
+- **Upgrade Engine** — One-click image upgrade with backup, health poll, and rollback
+- **Project Init** — Scaffold new workspace projects
+- **GitHub / GitLab Auth** — Device-code OAuth flow for `gh` and `glab` CLI auth
+- **Git Config** — Git identity and credential management
+- **SSH Keys** — Generate and view SSH public keys
+
+Open [http://localhost:8080](http://localhost:8080) after installation to access the dashboard.
+
+*The admin dashboard runs on the existing Bun runtime — zero additional image layers.*
 
 ## Quick Start
 
@@ -178,6 +195,8 @@ For HTTPS, SSH, `gh`, `glab`, multiple accounts, and security notes, see:
 |----------------|----------------------|---------|
 | `3000` | `${CHAMBER_PORT:-8000}` | OpenChamber Web UI |
 | `4095` | *(internal)* | OpenCode service port used inside the container stack |
+| `8080` | `${ADMIN_PORT:-8080}` | Admin Dashboard Web UI |
+| `8081` | *(dev)* | Admin Dashboard (dev mode with `--watch`) |
 
 ## When to Use ai-engkit
 
@@ -192,6 +211,13 @@ For HTTPS, SSH, `gh`, `glab`, multiple accounts, and security notes, see:
 
 ```bash
 ./test/run-tests.sh
+```
+
+### Admin Dashboard Tests
+
+```bash
+# Requires ai-admin container running
+./test/test-admin.sh
 ```
 
 ### Full Build + Test Cycle
@@ -225,6 +251,14 @@ GitHub Actions will automatically:
 ```
 ├── .env.example                # Environment template
 ├── .github/workflows/ci.yml    # CI/CD pipeline
+├── src/
+│   └── admin/                  # Admin dashboard server (Hono + Bun)
+│       ├── server.ts           # Entry point
+│       ├── lib/                # Core modules (auth, env, upgrade, docker)
+│       ├── routes/             # API route handlers
+│       ├── views/              # JSX page components
+│       ├── static/             # CSS and client JS
+│       └── package.json        # Dependencies (hono)
 ├── .opencode/
 │   ├── baked-skills/           # Pre-installed skills shipped in Docker image
 │   │   ├── karpathy-guidelines/
@@ -268,6 +302,7 @@ GitHub Actions will automatically:
 └── test/
     ├── run-tests.sh             # Integration test suite
     ├── test-full.sh             # Full build-test pipeline
+    ├── test-admin.sh            # Admin dashboard integration tests
     └── test-memory-e2e.sh       # Memory plugin E2E test
 ```
 
