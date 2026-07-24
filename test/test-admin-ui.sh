@@ -12,7 +12,9 @@ if [ -n "${ADMIN_BASE_URL:-}" ]; then
   BASE="$ADMIN_BASE_URL"
 elif [ -f /.dockerenv ] || grep -q docker /proc/1/cgroup 2>/dev/null; then
   GATEWAY=$(docker network inspect ai-engkit_default --format '{{range .IPAM.Config}}{{.Gateway}}{{end}}' 2>/dev/null || echo "172.20.0.1")
-  BASE="http://${GATEWAY}:${ADMIN_PORT}"
+  # Resolve published host port from container (DooD: gateway needs host port, not container port)
+  PUBLISHED_PORT=$(docker port "ai-engkit-admin-dev" 8080/tcp 2>/dev/null | head -1 | sed 's/.*://' || echo "$ADMIN_PORT")
+  BASE="http://${GATEWAY}:${PUBLISHED_PORT}"
 else
   BASE="http://localhost:${ADMIN_PORT}"
 fi

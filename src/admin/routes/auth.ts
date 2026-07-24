@@ -64,8 +64,8 @@ auth.post("/api/login", async (c) => {
   return c.json({ ok: true });
 });
 
-// Logout API
-auth.post("/api/logout", (c) => {
+// Logout API (supports GET from sidebar link and POST from AJAX)
+auth.on(["GET", "POST"], "/api/logout", (c) => {
   c.header("Set-Cookie", clearSessionCookie());
   const accept = c.req.header("accept") || "";
   if (accept.includes("text/html")) return c.redirect("/login");

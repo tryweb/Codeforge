@@ -57,6 +57,7 @@ export function validateSession(token: string): boolean {
 export function validatePassword(input: string): boolean {
   const password = getPassword();
   if (!password || !input) return false;
+  if (input.length !== password.length) return false;
   return timingSafeEqual(Buffer.from(input), Buffer.from(password));
 }
 
