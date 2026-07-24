@@ -77,8 +77,22 @@ const SshKeysContent: FC<{ keys: SshKey[] }> = ({ keys }) => (
       }
       function closePubKey() { document.getElementById("pubkey-modal").style.display = "none"; }
       async function copyPubKey() {
-        const text = document.getElementById("pubkey-content").textContent;
-        await navigator.clipboard.writeText(text);
+        const el = document.getElementById("pubkey-content");
+        const text = el.textContent;
+        try {
+          await navigator.clipboard.writeText(text);
+        } catch {
+          const ta = document.createElement("textarea");
+          ta.value = text;
+          ta.style.position = "fixed";
+          ta.style.left = "-9999px";
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand("copy");
+          ta.remove();
+        }
+        el.textContent = text + "  \u2713 Copied!";
+        setTimeout(() => { el.textContent = text; }, 1500);
       }
     `}</script>
   </div>
