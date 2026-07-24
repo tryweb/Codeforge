@@ -53,9 +53,9 @@ versions.get("/api/versions", async (c) => {
     "gh": "gh --version 2>/dev/null | head -1 | cut -d' ' -f3 || echo 'unavailable'",
     "glab": "glab --version 2>/dev/null | cut -d' ' -f2 || echo 'unavailable'",
     "Git": "git --version 2>/dev/null | cut -d' ' -f3 || echo 'unavailable'",
-    "Node": "echo 'unavailable'",
+    "Node": "node --version 2>/dev/null || echo 'unavailable'",
     "lean-ctx": "lean-ctx --version 2>/dev/null || echo 'unavailable'",
-    "Playwright": "echo 'unavailable'",
+    "Playwright": "bunx playwright --version 2>/dev/null | sed 's/^Version //' || echo 'unavailable'",
   };
 
   const versions: Record<string, string> = {};
