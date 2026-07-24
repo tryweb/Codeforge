@@ -176,6 +176,8 @@ const ProjectsContent: FC<{ projects: string[] }> = ({ projects }) => (
         }
         if (!html) {
           document.getElementById("sync-status").textContent = "All projects are in sync.";
+          document.getElementById("sync-actions").style.display = "flex";
+          document.getElementById("btn-sync-fix").style.display = "none";
           return;
         }
         results.innerHTML = html;
