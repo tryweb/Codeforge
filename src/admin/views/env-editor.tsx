@@ -6,7 +6,11 @@ const EnvEditorContent: FC<{ envVars: Record<string, string>; envSchema: Array<{
   <div>
     <div class="flex items-center justify-between mb-4">
       <h2>Environment Variables</h2>
-      <button onclick="addVariable()" class="btn-outline">+ Add Variable</button>
+      <div class="flex gap-2">
+        <span id="restart-status" class="text-sm text-muted" style="align-self:center;"></span>
+        <button id="btn-restart" onclick="restartAiDev()" class="btn-outline" style="color:var(--danger);border-color:var(--danger);">↻ Restart ai-dev</button>
+        <button onclick="addVariable()" class="btn-outline">+ Add Variable</button>
+      </div>
     </div>
     <div class="card">
       <table id="env-table">
@@ -62,6 +66,27 @@ const EnvEditorContent: FC<{ envVars: Record<string, string>; envSchema: Array<{
         });
         if (res.ok) { location.reload(); }
         else { const d = await res.json(); alert(d.error || "Failed to save"); }
+      }
+      async function restartAiDev() {
+        if (!confirm("Restart ai-dev container? This will briefly interrupt OpenCode and OpenChamber.")) return;
+        const btn = document.getElementById("btn-restart");
+        const status = document.getElementById("restart-status");
+        btn.disabled = true;
+        status.textContent = "Restarting...";
+        try {
+          const res = await fetch("/api/env/restart", { method: "POST" });
+          if (res.ok) {
+            status.textContent = "Restarted ✔";
+            setTimeout(() => { status.textContent = ""; btn.disabled = false; }, 3000);
+          } else {
+            const d = await res.json();
+            status.textContent = "Error: " + (d.error || "unknown");
+            btn.disabled = false;
+          }
+        } catch (e) {
+          status.textContent = "Error: " + e.message;
+          btn.disabled = false;
+        }
       }
       function addVariable() {
         const key = prompt("Enter variable name:");

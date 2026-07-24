@@ -1,6 +1,7 @@
 import { Hono } from "hono";
+import { existsSync } from "node:fs";
 import { readEnvFile, upsertEnvVar, envFileExists } from "../lib/env";
-import { execInAiDev } from "../lib/docker";
+import { execInAiDev, getAiDevContainerRef, dockerCommand } from "../lib/docker";
 import { EnvEditorPage } from "../views/env-editor";
 
 const env = new Hono();
@@ -52,6 +53,27 @@ env.post("/api/env/from-template", async (c) => {
     return c.json({ error: "Could not fetch template" }, 500);
   }
   return c.json({ content: result.stdout });
+});
+
+env.post("/api/env/restart", async (c) => {
+  const ref = await getAiDevContainerRef();
+
+  // Prefer compose recreate (picks up new .env vars); fall back to docker restart
+  const composePath = "/opt/ai-engkit/compose.yml";
+  if (existsSync(composePath)) {
+    const result = await dockerCommand(
+      `compose -f ${composePath} up -d --force-recreate ai-dev 2>&1`,
+      120_000,
+    );
+    if (result.exitCode === 0) return c.json({ ok: true });
+    return c.json({ error: result.stderr || "Compose recreate failed" }, 500);
+  }
+
+  const result = await dockerCommand(`restart ${ref}`, 30_000);
+  if (result.exitCode !== 0) {
+    return c.json({ error: result.stderr || "Failed to restart ai-dev container" }, 500);
+  }
+  return c.json({ ok: true });
 });
 
 env.get("/env", async (c) => {
