@@ -172,14 +172,32 @@ projects.put("/api/projects/:name/git-remote", async (c) => {
   const hasRemote = await execInAiDev(
     `${base} && git remote get-url origin 2>/dev/null || echo "no-remote"`, 10_000,
   );
-  const gitCmd = hasRemote.stdout.trim() === "no-remote"
+  const isNewRemote = hasRemote.stdout.trim() === "no-remote";
+  const setCmd = isNewRemote
     ? `${base} && git remote add origin ${JSON.stringify(url)}`
     : `${base} && git remote set-url origin ${JSON.stringify(url)}`;
 
-  const result = await execInAiDev(gitCmd, 10_000);
-  if (result.exitCode !== 0 && result.exitCode !== -1) {
-    return c.json({ error: result.stderr || "Failed to set git remote" }, 500);
+  const setResult = await execInAiDev(setCmd, 10_000);
+  if (setResult.exitCode !== 0 && setResult.exitCode !== -1) {
+    return c.json({ error: setResult.stderr || "Failed to set git remote" }, 500);
   }
+
+  // If repo has no local branch tracking remote, fetch and checkout
+  const localBranch = await execInAiDev(
+    `${base} && git rev-parse --abbrev-ref HEAD 2>/dev/null || true`, 10_000,
+  );
+  const isDetached = !localBranch.stdout.trim() || localBranch.stdout.trim() === "HEAD";
+  if (isDetached) {
+    const pull = await execInAiDev(
+      `GIT_TERMINAL_PROMPT=0 ${base} && git fetch origin 2>&1 && (git checkout main 2>/dev/null || git checkout master 2>/dev/null || true)`,
+      120_000,
+    );
+    if (pull.exitCode !== 0 && pull.exitCode !== -1) {
+      const msg = pull.stderr || pull.stdout || "fetch failed";
+      return c.json({ error: `Remote set, but fetch/checkout failed: ${msg}`, partial: true }, 500);
+    }
+  }
+
   return c.json({ ok: true });
 });
 
