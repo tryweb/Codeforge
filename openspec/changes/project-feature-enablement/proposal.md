@@ -13,6 +13,7 @@ The Projects page currently has a broken "Init OpenCode" button (the `--new` fla
 - Add git init + remote URL on project creation (git clone when URL provided, git init otherwise)
 - Add git remote management after creation: set/update/remove via PUT endpoint, auto-fetches content on empty repos
 - Add batch overview endpoint to avoid N*2 API calls per page load (solves rate limiting)
+- Add project sync with OpenChamber: detect missing/stale entries and batch fix
 
 ## Capabilities
 
@@ -21,6 +22,7 @@ The Projects page currently has a broken "Init OpenCode" button (the `--new` fla
 - `project-feature-enable`: API to trigger feature bootstrap for a given project and feature type
 - `project-git-remote`: API to get/set/update/remove git remote URL with auto-fetch on empty repositories
 - `project-overview`: Batch endpoint returning all projects' features + git remote in one request
+- `project-sync`: Compare workspace directories vs OpenChamber project registry, batch add missing and remove stale entries
 
 ### Modified Capabilities
 - (none — no existing specs are modified)

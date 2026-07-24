@@ -27,7 +27,26 @@
 - [x] 4.2 Pass feature status data into the `ProjectsContent` component
 - [x] 4.3 Handle loading state (show placeholders while statuses load)
 
-## 5. Integration & Verification
+## 5. Git Remote Management
+
+- [x] 5.1 Add `GET /api/projects/:name/git-remote` endpoint to query current remote URL
+- [x] 5.2 Add `PUT /api/projects/:name/git-remote` endpoint to set/update/remove remote URL with auto-init and auto-fetch for empty repos
+- [x] 5.3 Add git init + clone flow on project creation (clone when URL given, init otherwise)
+- [x] 5.4 Show remote URL or "[set remote]" per project in the UI, clickable to edit
+
+## 6. Batch Overview & Rate Limiting
+
+- [x] 6.1 Add `GET /api/projects/overview` returning all projects' features + git remote in one request using internal function calls
+- [x] 6.2 Switch frontend `loadFeatures()` from N*2 API calls to single overview fetch
+
+## 7. Project Sync with OpenChamber
+
+- [x] 7.1 Add `GET /api/projects/sync` endpoint comparing workspace dirs vs OpenChamber settings.json
+- [x] 7.2 Add `POST /api/projects/sync` endpoint to batch add missing / remove stale entries
+- [x] 7.3 Add Sync button in projects UI with modal showing diff and Fix All action
+- [x] 7.4 Handle "all in sync" state with Cancel-only modal close
+
+## 8. Integration & Verification
 
 - [x] 5.1 Create a test project via admin UI and confirm three feature columns show "Enable" (disabled state)
 - [x] 5.2 Click each Enable button and verify bootstrap runs successfully

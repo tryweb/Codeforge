@@ -21,6 +21,7 @@ Additionally, the admin manages git operations: creating repos with or without r
 - Support git init + optional remote URL on project creation (clone when URL given, init otherwise)
 - Allow setting/changing/removing git remote URL after creation with auto-fetch for empty repos
 - Batch project overview endpoint to avoid rate limiting from N*2 individual API calls
+- Sync workspace directories with OpenChamber project registry — detect missing/stale entries and fix in batch
 
 **Non-Goals:**
 - Not modifying the bootstrap scripts themselves — they are baked-skill assets owned by the opencode skill system
@@ -36,7 +37,8 @@ Additionally, the admin manages git operations: creating repos with or without r
 5. **Git init on creation**: If a remote URL is provided, use `git clone --depth 1 <url>` instead of mkdir + git init. This pulls files and sets up branch tracking. Without remote URL, use mkdir + optional git init.
 6. **Git remote after creation**: `PUT /api/projects/:name/git-remote` handles both setting and updating the remote URL. If the repo is empty (no commits), it auto-runs `git fetch origin --depth 1` and `git checkout --track origin/main|master`. Non-git directories are auto-initialized with `git init` first.
 7. **Batch overview**: `GET /api/projects/overview` returns all projects' features + git remote in one request, using internal function calls (no HTTP loopback). This prevents the projects page from hitting the 30 req/min rate limiter.
-8. **Error handling**: Each bootstrap is independent — failure in one does not block others. Error messages shown via alert dialog with fallback to HTTP status text if JSON parsing fails.
+8. **Project sync**: `GET /api/projects/sync` compares `ls ~/workspace/` against OpenChamber's `settings.json` projects array. `POST /api/projects/sync` accepts add/remove lists and applies changes via `jq`. The sync UI shows a modal with diff details and a "Fix All" button. The default workspace `/home/devuser` is excluded from comparison.
+9. **Error handling**: Each bootstrap is independent — failure in one does not block others. Error messages shown via alert dialog with fallback to HTTP status text if JSON parsing fails.
 
 ## Risks / Trade-offs
 
@@ -47,3 +49,4 @@ Additionally, the admin manages git operations: creating repos with or without r
 - **Git clone for private repos**: Requires git auth configured. → Mitigation: Check `GIT_TERMINAL_PROMPT=0` prevents interactive prompts; error message points user to GitHub/GitLab Auth page.
 - **`git checkout --force` overwrites untracked files**: On repos that already have files from Knowledge/OpenSpec features, force checkout could conflict. → Mitigation: `git checkout -f` handles this by overwriting tracked files while preserving untracked ones not in the remote.
 - **Rate limiter (30 req/min)**: The projects page's N*2 API calls triggered the rate limit. → Mitigation: Batch overview endpoint reduces page load to 1 API call.
+- **OpenChamber settings.json corruption**: Direct `jq` manipulation of settings.json could corrupt the file if the jq expression is wrong. → Mitigation: Uses temp file + atomic mv pattern.
