@@ -23,12 +23,9 @@ const SshKeysContent: FC<{ keys: SshKey[] }> = ({ keys }) => (
             <td>{k.type}</td>
             <td><code>{k.fingerprint}</code></td>
             <td><button class="btn-outline" style="padding:4px 8px;font-size:0.75rem;" onclick={`showPubKey('${k.name}')`}>Public Key</button></td>
-            <td style="position:relative;text-align:center;">
-              <button class="btn-outline" style="padding:4px 8px;font-size:0.75rem;" data-deploy-name={k.name} onclick={`toggleDeploy('${k.name}')`}>Deploy</button>
-              <div id={`deploy-popup-${k.name}`} class="deploy-popup" style="display:none;position:absolute;bottom:100%;left:50%;transform:translateX(-50%);margin-bottom:4px;background:var(--bg-card,#fff);border:1px solid var(--border,#d0d0d0);border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,0.15);z-index:100;white-space:nowrap;">
-                <button onclick={`copyDeploy('${k.name}','linux')`} style="display:block;width:100%;padding:8px 16px;border:none;background:none;cursor:pointer;font-size:0.8rem;text-align:left;border-radius:6px 6px 0 0;">&#x1F427; Linux</button>
-                <button onclick={`copyDeploy('${k.name}','windows')`} style="display:block;width:100%;padding:8px 16px;border:none;background:none;cursor:pointer;font-size:0.8rem;text-align:left;border-radius:0 0 6px 6px;">&#x1FA9F; Windows</button>
-              </div>
+            <td style="white-space:nowrap;">
+              <button class="btn-outline" style="padding:3px 6px;font-size:0.7rem;margin-right:4px;" onclick={`copyDeploy('${k.name}','linux')`}>Linux</button>
+              <button class="btn-outline" style="padding:3px 6px;font-size:0.7rem;" onclick={`copyDeploy('${k.name}','windows')`}>Win</button>
             </td>
           </tr>
         ))}
@@ -84,8 +81,8 @@ const SshKeysContent: FC<{ keys: SshKey[] }> = ({ keys }) => (
       }
       function closePubKey() { document.getElementById("pubkey-modal").style.display = "none"; }
       async function copyDeploy(name, os) {
-        const popup = document.getElementById("deploy-popup-" + name);
-        popup.style.display = "none";
+        const btn = event.target;
+        const orig = btn.textContent;
         const res = await fetch("/api/ssh/keys/" + encodeURIComponent(name) + "/pub");
         if (!res.ok) { alert("Failed to load public key"); return; }
         const pubkey = (await res.text()).trim();
@@ -100,22 +97,9 @@ const SshKeysContent: FC<{ keys: SshKey[] }> = ({ keys }) => (
           ta.style.position = "fixed"; ta.style.left = "-9999px";
           document.body.appendChild(ta); ta.select(); document.execCommand("copy"); ta.remove();
         }
-        const btn = document.querySelector("[data-deploy-name=\\\"" + name + "\\\"]");
-        const orig = btn.textContent;
         btn.textContent = "\u2713 Copied!";
         setTimeout(function() { btn.textContent = orig; }, 2000);
       }
-      function toggleDeploy(name) {
-        var popup = document.getElementById("deploy-popup-" + name);
-        var isVisible = popup.style.display === "block";
-        document.querySelectorAll(".deploy-popup").forEach(function(el) { el.style.display = "none"; });
-        popup.style.display = isVisible ? "none" : "block";
-      }
-      document.addEventListener("click", function(e) {
-        if (!e.target.closest("[data-deploy-name]") && !e.target.closest(".deploy-popup")) {
-          document.querySelectorAll(".deploy-popup").forEach(function(el) { el.style.display = "none"; });
-        }
-      });
       async function copyPubKey() {
         const el = document.getElementById("pubkey-content");
         const text = el.textContent;
