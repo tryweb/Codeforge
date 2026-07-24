@@ -52,12 +52,16 @@ A three-layer mechanism:
 - `v0.13.0` — First baked skills shipped: `enable-project-knowledge`, `knowledge-capture`
 - `v0.14.0` — Added `karpathy-guidelines` (86-line SKILL.md, MIT-licensed, from `multica-ai/andrej-karpathy-skills`)
 - `vNext` — Added `enable-finalize-maintenance` with `bootstrap.sh` that auto-provisions `enable-project-knowledge` as a dependency
+- `v0.20.0` — Added `playwright` baked-skill that overrides the built-in playwright skill
+  with ai-engkit-specific Chromium path, `bunx` runner, `.playwright-mcp/` output
+  directory, and subagent standalone-mode instructions
 - Verified in container: symlink resolves correctly, SKILL.md frontmatter is readable
 - All 48 tests pass, 0 fail
 
 ## Related Files
 
 - `.opencode/baked-skills/karpathy-guidelines/SKILL.md` — Example baked skill file
+- `.opencode/baked-skills/playwright/SKILL.md` — Overrides built-in playwright skill for ai-engkit
 - `Dockerfile` (lines ~184-186) — `COPY .opencode/baked-skills /opt/opencode/baked-skills`
 - `entrypoint.d/02-init-config.sh` — Runtime symlink logic for baked skills
 - `docker-compose.dev.yml` — Used for build verification

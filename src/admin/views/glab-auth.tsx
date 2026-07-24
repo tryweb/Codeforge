@@ -1,4 +1,5 @@
 import type { FC } from "hono/jsx";
+import { html } from "hono/html";
 import { Layout } from "./layout";
 
 const GlabAuthContent: FC<{ status: string }> = ({ status }) => {
@@ -25,7 +26,7 @@ const GlabAuthContent: FC<{ status: string }> = ({ status }) => {
         <div class="countdown" id="countdown" />
         <div id="poll-status" class="text-sm text-muted mt-4" />
       </div>
-      <script>{`
+      <script>{html`
         let pollInterval = null;
         async function startAuth() {
           const hostname = document.getElementById("hostname").value.trim() || "gitlab.com";

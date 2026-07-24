@@ -1,4 +1,5 @@
 import type { FC } from "hono/jsx";
+import { html } from "hono/html";
 import { Layout } from "./layout";
 
 const UpgradeContent: FC = () => (
@@ -16,7 +17,7 @@ const UpgradeContent: FC = () => (
       <div class="progress-bar mb-4"><div class="fill" id="progress-fill" style="width:0%;" /></div>
       <div class="log-viewer" id="log-viewer" />
     </div>
-    <script>{`
+    <script>{html`
       let eventSource = null;
       async function startUpgrade() {
         document.getElementById("start-upgrade").disabled = true;

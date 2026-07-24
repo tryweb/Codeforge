@@ -130,7 +130,73 @@ exec bunx -y "@playwright/mcp@${PLAYWRIGHT_MCP_VERSION}" \
   it, version is pinned
 - `docs/CHANGELOG.md` — `v0.17.0` entry documents the change
 
+## Subagent Usage (Standalone Mode)
+
+Subagents (Sisyphus-Junior, etc.) **cannot use the parent session's Playwright MCP
+server**. When a subagent loads `load_skills=["playwright"]`, the `skill_mcp` tool
+tries to launch its own MCP server via `npx @playwright/mcp@latest` — but this
+container has no `npx` (only `bunx`), so the connection fails. The built-in
+playwright skill's hardcoded `npx` command is not configurable.
+
+The correct pattern for subagents is **Direct Playwright API**:
+
+1. Write a standalone `.mjs` script that imports `playwright`
+2. Use the bundled Chromium at `/ms-playwright/chromium-<rev>/chrome-linux64/chrome`
+3. Launch via `bun run <script>` with `PLAYWRIGHT_BROWSERS_PATH=/ms-playwright`
+4. Save all artifacts to `.playwright-mcp/` in the workspace root
+5. Delete the temp script after use
+
+This is codified in the project's baked playwright skill at
+`.opencode/baked-skills/playwright/SKILL.md`, which overrides the built-in
+skill at container startup via the entrypoint symlink mechanism (see
+`patterns/baked-skills-mechanism.md`). The baked skill provides a full
+boilerplate script with login, Chromium path resolution, and output directory.
+
+```javascript
+// Boilerplate (from baked skill)
+import { chromium } from 'playwright';
+import { writeFileSync, mkdirSync } from 'fs';
+
+const ADMIN_URL = 'http://172.20.0.1:8081';
+const PASSWORD = 'testadmin123';
+const OUTPUT_DIR = '/home/devuser/workspace/ai-engkit/.playwright-mcp';
+
+mkdirSync(OUTPUT_DIR, { recursive: true });
+
+async function login(page) {
+  await page.goto(`${ADMIN_URL}/login`, { waitUntil: 'networkidle' });
+  await page.fill('#password', PASSWORD);
+  await page.click('button[type="submit"]');
+  await page.waitForTimeout(2000);
+}
+
+(async () => {
+  const browser = await chromium.launch({
+    headless: true,
+    executablePath: CHROME_BIN,
+    args: ['--no-sandbox', '--headless'],
+  });
+  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+
+  try {
+    await login(page);
+    // ... test code ...
+    await page.screenshot({ path: `${OUTPUT_DIR}/result.png`, fullPage: true });
+  } finally {
+    await browser.close();
+  }
+})();
+```
+
+### Why This Works
+
+- Direct `import { chromium }` works because `playwright` is installed in the image
+- Bundled Chromium is found at the known path; dynamic resolution handles version drift
+- `.playwright-mcp/` is the same directory the MCP server uses, keeping all artifacts
+  in one place regardless of whether the parent session or a subagent produced them
+- Temp scripts are disposable — no persistent file pollution
+
 ## Tags
 
 `#playwright` `#mcp` `#docker` `#browser-automation` `#wrapper-pattern`
-`#opencode`
+`#subagent` `#standalone` `#opencode`

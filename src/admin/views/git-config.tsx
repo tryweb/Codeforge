@@ -1,4 +1,5 @@
 import type { FC } from "hono/jsx";
+import { html } from "hono/html";
 import { Layout } from "./layout";
 
 const GitConfigContent: FC<{ config: Record<string, string>; credentials: string[] }> = ({ config, credentials }) => (
@@ -29,7 +30,7 @@ const GitConfigContent: FC<{ config: Record<string, string>; credentials: string
         : <p class="text-muted">No stored credentials found.</p>
       }
     </div>
-    <script>{`
+    <script>{html`
       async function saveConfig() {
         const name = document.getElementById("user-name").value.trim();
         const email = document.getElementById("user-email").value.trim();

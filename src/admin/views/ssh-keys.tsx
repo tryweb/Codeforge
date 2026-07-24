@@ -1,4 +1,5 @@
 import type { FC } from "hono/jsx";
+import { html } from "hono/html";
 import { Layout } from "./layout";
 
 interface SshKey {
@@ -52,7 +53,7 @@ const SshKeysContent: FC<{ keys: SshKey[] }> = ({ keys }) => (
         </div>
       </div>
     </div>
-    <script>{`
+    <script>{html`
       function showGenerateForm() { document.getElementById("generate-modal").style.display = "flex"; }
       function closeGenerate() { document.getElementById("generate-modal").style.display = "none"; }
       async function generateKey() {
