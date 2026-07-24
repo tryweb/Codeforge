@@ -254,6 +254,10 @@ RUN mkdir -p /opt/opencode/baked-plugins && \
 COPY .opencode/baked-skills /opt/opencode/baked-skills
 RUN chown -R ${USERNAME}:${USERNAME} /opt/opencode/baked-skills
 
+# ── ai-admin dashboard ─────────────────────────────────
+COPY src/admin/ /opt/admin/
+RUN bun install --cwd /opt/admin --no-cache 2>/dev/null || true
+
 # 目錄預建（確保 volume mount 前所有人都正確）
 RUN mkdir -p \
     /home/${USERNAME}/workspace \

@@ -279,6 +279,20 @@ setup_env() {
         echo "  ✅ UI 密碼已設定"
     fi
 
+    if [ -z "${ADMIN_PASSWORD:-}" ]; then
+        echo "  請設定 Admin Dashboard 密碼 (必填):"
+        read -s -p "  ADMIN_PASSWORD: " ADMIN_PASS
+        echo
+        if [ -z "$ADMIN_PASS" ]; then
+            echo "  ❌ 密碼不能為空"
+            exit 1
+        fi
+        set_env_value "ADMIN_PASSWORD" "$ADMIN_PASS"
+        echo "  ✅ Admin 密碼已設定"
+    else
+        echo "  ✅ Admin 密碼已設定"
+    fi
+
     echo "  請選擇 Workspace 類型:"
     echo "    1) Named Volume (預設，完全 Docker 管理)"
     echo "    2) Bind Mount ./workspace (可直接用本地 IDE 編輯)"
@@ -371,6 +385,8 @@ show_info() {
     echo
     echo "  其他服務:"
     echo "    - Ollama API: http://${HOST_IP:-localhost}:11434"
+    echo "    - Admin Dashboard: http://${HOST_IP:-localhost}:${ADMIN_PORT:-8080}"
+    echo "      (使用 install 時設定的 ADMIN_PASSWORD 登入)"
     echo
     echo "  升級指令: ./upgrade.sh"
     echo "    (從 upstream 拉新 compose / image，自動備份並合併 .env)"

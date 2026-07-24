@@ -28,6 +28,28 @@ services:
       - "host.docker.internal:host-gateway"
     restart: unless-stopped
 
+  ai-admin:
+    image: ghcr.io/tryweb/ai-engkit:latest
+    container_name: ai-engkit-admin
+    entrypoint: ["/usr/bin/tini", "--"]
+    command: ["bun", "run", "/opt/admin/server.ts"]
+    ports:
+      - "${ADMIN_PORT:-8080}:8080"
+    volumes:
+      - ./.env:/opt/ai-engkit/.env:rw
+      - ./docker-compose.yml:/opt/ai-engkit/compose.yml:rw
+      - ./backups:/opt/ai-engkit/backups:rw
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - ADMIN_PORT=${ADMIN_PORT:-8080}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
 volumes:
   workspace:
   opencode-data:

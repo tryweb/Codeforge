@@ -28,9 +28,28 @@ services:
       - OPENCODE_PROVIDER=${OPENCODE_PROVIDER:-}
       - OPENCHAMBER_UI_PASSWORD=${OPENCHAMBER_UI_PASSWORD:-chamber}
       - OPENCHAMBER_HOST=0.0.0.0
-
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
+  ai-admin:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ai-engkit-admin-dev
+    entrypoint: ["/usr/bin/tini", "--"]
+    working_dir: /opt/admin
+    command: ["bun", "run", "--watch", "/opt/admin/server.ts"]
+    ports:
+      - "${ADMIN_DEV_PORT:-8081}:8080"
+    volumes:
+      - ./src/admin:/opt/admin
+      - ./.env:/opt/ai-engkit/.env:rw
+      - ./docker-compose.yml:/opt/ai-engkit/compose.yml:rw
+      - ./backups:/opt/ai-engkit/backups:rw
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - ADMIN_PORT=8080
     restart: unless-stopped
 
 volumes:
