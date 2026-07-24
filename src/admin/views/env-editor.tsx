@@ -1,3 +1,4 @@
+import { html } from "hono/html";
 import type { FC } from "hono/jsx";
 import { Layout } from "./layout";
 
@@ -40,7 +41,7 @@ const EnvEditorContent: FC<{ envVars: Record<string, string>; envSchema: Array<{
         </div>
       </div>
     </div>
-    <script>{`
+    <script>{html`
       function toggleMask(key) {
         const el = document.querySelector('.masked-value[data-key="' + key + '"]');
         el.classList.toggle("show");
