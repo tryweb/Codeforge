@@ -25,12 +25,17 @@ projects.post("/api/projects", async (c) => {
     return c.json({ error: createResult.stderr || "Failed to create directory" }, 500);
   }
 
-  if (body.init_opencode) {
-    await execInAiDev(
-      `cd ~/workspace/${JSON.stringify(name)} && opencode --new 2>/dev/null || true`,
-      30_000,
-    );
-  }
+  // Register in OpenChamber so it appears automatically without manual "Add project"
+  await execInAiDev(
+    `SETTINGS=/home/devuser/.config/openchamber/settings.json && ` +
+    `FULLPATH=/home/devuser/workspace/${JSON.stringify(name)} && ` +
+    `ID=path_$(printf '%s' "$FULLPATH" | base64 -w0) && ` +
+    `NOW=$(date +%s%3N) && ` +
+    `jq --arg path "$FULLPATH" --arg id "$ID" --arg now "$NOW" ` +
+    `'.projects += [{"id": $id, "path": $path, "addedAt": $now | tonumber, "lastOpenedAt": $now | tonumber}]' ` +
+    `$SETTINGS > /tmp/settings.json && mv /tmp/settings.json $SETTINGS`,
+    10_000,
+  );
 
   return c.json({ ok: true });
 });
