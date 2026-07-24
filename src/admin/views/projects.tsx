@@ -1,3 +1,4 @@
+import { html } from "hono/html";
 import type { FC } from "hono/jsx";
 import { Layout } from "./layout";
 
@@ -33,7 +34,7 @@ const ProjectsContent: FC<{ projects: string[] }> = ({ projects }) => (
         </div>
       </div>
     </div>
-    <script>{`
+    <script>{html`
       function showCreateForm() { document.getElementById("create-modal").style.display = "flex"; }
       function closeCreate() { document.getElementById("create-modal").style.display = "none"; }
       async function createProject() {
