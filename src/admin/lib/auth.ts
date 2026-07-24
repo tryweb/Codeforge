@@ -11,7 +11,9 @@ export interface SessionPayload {
 
 function getPassword(): string | null {
   const pw = readEnvFile().ADMIN_PASSWORD;
-  return pw && pw.length > 0 ? pw : null;
+  if (pw && pw.length > 0) return pw;
+  const envPw = process.env.ADMIN_PASSWORD;
+  return envPw && envPw.length > 0 ? envPw : null;
 }
 
 export function isConfigured(): boolean {

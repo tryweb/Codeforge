@@ -1,33 +1,67 @@
 import type { FC } from "hono/jsx";
 import { Layout } from "./layout";
 
-const VersionsContent: FC<{ versions: Record<string, string>; imageMeta: Record<string, string> }> = ({ versions, imageMeta }) => (
+const categoryLabels: Record<string, string> = {
+  core: "Core",
+  cli: "CLI",
+  mcp: "MCP",
+  plugin: "Plugin",
+};
+
+const imageMetaLabels: Record<string, string> = {
+  image: "Image",
+  digest: "Digest",
+  created: "Created",
+  version: "Version",
+};
+
+const categoryOrder = ["core", "cli", "mcp", "plugin"];
+
+const CategoryCard: FC<{ title: string; tools: Record<string, string> }> = ({ title, tools }) => (
+  <div class="card">
+    <h3>{title}</h3>
+    <table>
+      {Object.entries(tools).map(([name, version]) => (
+        <tr>
+          <td>{name}</td>
+          <td><code>{version || <span class="text-muted">unavailable</span>}</code></td>
+        </tr>
+      ))}
+    </table>
+  </div>
+);
+
+const VersionsContent: FC<{
+  versionsByCategory: Record<string, Record<string, string>>;
+  imageMeta: Record<string, string>;
+}> = ({ versionsByCategory, imageMeta }) => (
   <div>
     <h2 style="margin-bottom:24px;">Component Versions</h2>
     <div class="card">
       <h3>Image Metadata</h3>
       <table>
         {Object.entries(imageMeta).map(([k, v]) => (
-          <tr><td>{k}</td><td><code>{v}</code></td></tr>
+          <tr><td>{imageMetaLabels[k] || k}</td><td><code>{v}</code></td></tr>
         ))}
       </table>
     </div>
-    <div class="card">
-      <h3>Components</h3>
-      <table>
-        <tr><th>Component</th><th>Version</th></tr>
-        {Object.entries(versions).map(([name, version]) => (
-          <tr><td>{name}</td><td><code>{version || <span class="text-muted">unavailable</span>}</code></td></tr>
-        ))}
-      </table>
+    <div class="grid-2">
+      {categoryOrder.map((key) => {
+        const tools = versionsByCategory[key];
+        if (!tools) return null;
+        return <CategoryCard title={categoryLabels[key] || key} tools={tools} />;
+      })}
     </div>
   </div>
 );
 
-export function VersionsPage(versions: Record<string, string>, imageMeta: Record<string, string>) {
+export function VersionsPage(
+  versionsByCategory: Record<string, Record<string, string>>,
+  imageMeta: Record<string, string>,
+) {
   return (
     <Layout title="Versions" currentPath="/versions">
-      <VersionsContent versions={versions} imageMeta={imageMeta} />
+      <VersionsContent versionsByCategory={versionsByCategory} imageMeta={imageMeta} />
     </Layout>
   );
 }

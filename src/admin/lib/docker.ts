@@ -1,12 +1,9 @@
 /**
  * Docker compose exec orchestration helper.
  * Runs commands inside the ai-dev container via the Docker socket.
- * All exec calls use `-T` (no TTY) for machine-parseable stdout.
  */
 
 const DOCKER_SOCKET = "/var/run/docker.sock";
-const COMPOSE_FILE = "/opt/ai-engkit/compose.yml";
-const SERVICE = "ai-dev";
 const DEFAULT_TIMEOUT_MS = 30_000;
 
 export interface ExecResult {
@@ -15,14 +12,25 @@ export interface ExecResult {
   exitCode: number;
 }
 
-/**
- * Run a command inside the ai-dev container via `docker compose exec`.
- */
+export async function getAiDevContainerRef(): Promise<string> {
+  for (const name of ["ai-engkit-dev", "ai-engkit"]) {
+    const result = await runCommand(
+      ["docker", "ps", "--filter", `name=${name}`, "--format", "{{.ID}}"],
+      10_000,
+    );
+    if (result.exitCode === 0 && result.stdout.trim()) {
+      return result.stdout.trim().split("\n")[0];
+    }
+  }
+  return "ai-engkit";
+}
+
 export async function execInAiDev(
   command: string,
   timeoutMs: number = DEFAULT_TIMEOUT_MS,
 ): Promise<ExecResult> {
-  const args = ["docker", "compose", "-f", COMPOSE_FILE, "exec", "-T", SERVICE, "sh", "-c", command];
+  const ref = await getAiDevContainerRef();
+  const args = ["docker", "exec", ref, "sh", "-c", command];
   return runCommand(args, timeoutMs);
 }
 
@@ -33,7 +41,7 @@ export async function composeCommand(
   subcommand: string,
   timeoutMs: number = 120_000,
 ): Promise<ExecResult> {
-  const args = ["docker", "compose", "-f", COMPOSE_FILE, ...subcommand.split(/\s+/)];
+  const args = ["docker", "compose", ...subcommand.split(/\s+/)];
   return runCommand(args, timeoutMs);
 }
 
@@ -52,21 +60,23 @@ export async function dockerCommand(
  * Check if the ai-dev container is running.
  */
 export async function isAiDevRunning(): Promise<boolean> {
-  const result = await runCommand(
-    ["docker", "compose", "-f", COMPOSE_FILE, "ps", "--filter", "status=running", "--format", "json"],
-    10_000,
-  );
-  if (result.exitCode !== 0) return false;
-  const lines = result.stdout.trim().split("\n").filter(Boolean);
-  return lines.some((line) => line.includes("ai-dev") || line.includes("ai-engkit"));
+  for (const name of ["ai-engkit-dev", "ai-engkit"]) {
+    const result = await runCommand(
+      ["docker", "ps", "--filter", "status=running", "--filter", `name=${name}`, "--format", "{{.Names}}"],
+      10_000,
+    );
+    if (result.exitCode === 0 && result.stdout.trim().length > 0) return true;
+  }
+  return false;
 }
 
 /**
  * Get container uptime in seconds.
  */
 export async function getAiDevUptime(): Promise<number | null> {
+  const ref = await getAiDevContainerRef();
   const result = await runCommand(
-    ["docker", "inspect", "--format={{.State.StartedAt}}", "ai-engkit"],
+    ["docker", "inspect", "--format={{.State.StartedAt}}", ref],
     10_000,
   );
   if (result.exitCode !== 0 || !result.stdout.trim()) return null;

@@ -5,6 +5,7 @@ services:
       dockerfile: Dockerfile
       args:
         - OH_MY_OPENAGENT_VERSION=${OH_MY_OPENAGENT_VERSION:-latest}
+        - AI_ENGKIT_VERSION=dev
     container_name: ai-engkit-dev
     ports:
       - "${CHAMBER_DEV_PORT:-8001}:3000"
@@ -36,20 +37,19 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        - AI_ENGKIT_VERSION=dev
     container_name: ai-engkit-admin-dev
-    entrypoint: ["/usr/bin/tini", "--"]
     working_dir: /opt/admin
-    command: ["bun", "run", "--watch", "/opt/admin/server.ts"]
+    command: ["bun", "run", "/opt/admin/server.ts"]
     ports:
       - "${ADMIN_DEV_PORT:-8081}:8080"
     volumes:
-      - ./src/admin:/opt/admin
-      - ./.env:/opt/ai-engkit/.env:rw
-      - ./docker-compose.yml:/opt/ai-engkit/compose.yml:rw
       - ./backups:/opt/ai-engkit/backups:rw
       - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
       - ADMIN_PORT=8080
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-testadmin123}
     restart: unless-stopped
 
 volumes:

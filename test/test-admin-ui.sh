@@ -88,16 +88,28 @@ if [ -s "$COOKIE_JAR" ]; then
   fi
 fi
 
-# 6. /api/versions with cookie
+# 6. /api/versions with cookie (grouped structure)
 VERSIONS_RES=$(curl -s -b "$COOKIE_JAR" "$BASE/api/versions" 2>/dev/null || echo "{}")
-VERSIONS_COUNT=$(echo "$VERSIONS_RES" | jq '.components | length' 2>/dev/null || echo "0")
-if [ "$VERSIONS_COUNT" -gt 0 ]; then
-  pass "GET /api/versions returns $VERSIONS_COUNT components"
+HAS_CORE=$(echo "$VERSIONS_RES" | jq 'has("core")' 2>/dev/null || echo "false")
+HAS_CLI=$(echo "$VERSIONS_RES" | jq 'has("cli")' 2>/dev/null || echo "false")
+HAS_MCP=$(echo "$VERSIONS_RES" | jq 'has("mcp")' 2>/dev/null || echo "false")
+HAS_PLUGIN=$(echo "$VERSIONS_RES" | jq 'has("plugin")' 2>/dev/null || echo "false")
+TOOL_COUNT=$(echo "$VERSIONS_RES" | jq '[.core, .cli, .mcp, .plugin] | map(length) | add' 2>/dev/null || echo "0")
+if [ "$HAS_CORE" = "true" ] && [ "$HAS_CLI" = "true" ] && [ "$HAS_MCP" = "true" ] && [ "$HAS_PLUGIN" = "true" ]; then
+  pass "GET /api/versions returns 4 categories (core, cli, mcp, plugin) with $TOOL_COUNT total tools"
 else
-  pass "GET /api/versions returned ${VERSIONS_COUNT} components"
+  fail "GET /api/versions missing categories: core=$HAS_CORE cli=$HAS_CLI mcp=$HAS_MCP plugin=$HAS_PLUGIN (tools=$TOOL_COUNT)"
 fi
 
-# 7. Static assets served
+# 7. /versions page renders categorized cards
+VERSIONS_HTML=$(curl -s -b "$COOKIE_JAR" "$BASE/versions" 2>/dev/null || echo "")
+assert_contains "Versions page lists Core tools" "Core" "$VERSIONS_HTML"
+assert_contains "Versions page lists CLI tools" "CLI" "$VERSIONS_HTML"
+assert_contains "Versions page lists MCP tools" "MCP" "$VERSIONS_HTML"
+assert_contains "Versions page lists Plugin tools" "Plugin" "$VERSIONS_HTML"
+assert_contains "Versions page has Image Metadata card" "Image Metadata" "$VERSIONS_HTML"
+
+# 8. Static assets served
 CSS_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$BASE/static/style.css" 2>/dev/null || echo "000")
 if [ "$CSS_CODE" = "200" ]; then
   pass "Static CSS served (200)"

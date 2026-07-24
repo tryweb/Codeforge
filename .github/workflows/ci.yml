@@ -32,6 +32,13 @@ jobs:
           fetch-depth: 0
           ref: ${{ inputs.head_sha || github.event.pull_request.head.sha || github.ref }}
 
+      - name: Extract version
+        id: version
+        run: |
+          VERSION=$(git describe --tags --always 2>/dev/null || echo "dev")
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "::notice::Building image with version: ${VERSION}"
+
       - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v4
 
@@ -41,6 +48,7 @@ jobs:
           context: .
           outputs: type=docker,dest=/tmp/image.tar
           tags: ai-engkit:ci
+          build-args: AI_ENGKIT_VERSION=${{ steps.version.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -166,6 +174,16 @@ jobs:
 
       - name: Load image
         run: docker load -i /tmp/image.tar
+
+      - name: Inject version into image
+        run: |
+          VERSION="${{ github.ref_name }}"
+          printf '%s' "${VERSION}" > /tmp/ai-engkit-version
+          docker create --name tmp ai-engkit:ci
+          docker cp /tmp/ai-engkit-version tmp:/opt/ai-engkit/VERSION
+          docker commit tmp ai-engkit:ci > /dev/null
+          docker rm -f tmp > /dev/null
+          echo "::notice::Injected version: ${VERSION}"
 
       - name: Login to GHCR
         uses: docker/login-action@v4
@@ -314,6 +332,16 @@ jobs:
 
       - name: Load image
         run: docker load -i /tmp/image.tar
+
+      - name: Inject version into image
+        run: |
+          VERSION="${{ steps.version.outputs.next-version }}"
+          printf '%s' "${VERSION}" > /tmp/ai-engkit-version
+          docker create --name tmp ai-engkit:ci
+          docker cp /tmp/ai-engkit-version tmp:/opt/ai-engkit/VERSION
+          docker commit tmp ai-engkit:ci > /dev/null
+          docker rm -f tmp > /dev/null
+          echo "::notice::Injected version: ${VERSION}"
 
       - name: Login to GHCR
         uses: docker/login-action@v4

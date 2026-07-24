@@ -14,6 +14,7 @@ ARG GH_VERSION=2.96.0
 ARG MARKSMAN_VERSION=2026-02-08
 ARG LEANCTX_VERSION=3.9.12
 ARG OH_MY_OPENAGENT_VERSION=latest
+ARG AI_ENGKIT_VERSION=dev
 ARG USERNAME=devuser
 ARG USER_UID=1000
 # DOCKER_GID 僅作為 build-arg 接收，實際群組賦值由 entrypoint.d/docker-gid.sh 在 runtime 處理
@@ -243,7 +244,8 @@ RUN mkdir -p /home/${USERNAME}/.config/opencode && \
     chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}/.config/opencode
 
 # 預裝 superpowers 到 image 中，供 entrypoint 直接 symlink（避免 VOLUME 覆蓋 plugin cache）
-RUN mkdir -p /opt/opencode/baked-plugins && \
+RUN mkdir -p /opt/ai-engkit && echo "$AI_ENGKIT_VERSION" > /opt/ai-engkit/VERSION && \
+    mkdir -p /opt/opencode/baked-plugins && \
     cd /tmp && \
     git clone --depth 1 https://github.com/obra/superpowers.git superpowers-bake && \
     cp -r superpowers-bake /opt/opencode/baked-plugins/superpowers && \
