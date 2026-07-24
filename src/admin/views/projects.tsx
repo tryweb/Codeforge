@@ -7,6 +7,18 @@ const ProjectsContent: FC<{ projects: string[] }> = ({ projects }) => (
     <div class="flex items-center justify-between mb-4">
       <h2>OpenCode Projects</h2>
       <button onclick="showCreateForm()" class="btn-outline">+ New Project</button>
+      <button onclick="syncProjects()" class="btn-outline">↻ Sync</button>
+    </div>
+    <div id="sync-modal" class="modal-overlay" style="display:none;">
+      <div class="modal">
+        <h3>Project Sync</h3>
+        <div id="sync-status" class="text-sm" style="margin-bottom:8px;">Checking...</div>
+        <div id="sync-results" style="display:none;"></div>
+        <div id="sync-actions" style="display:none;" class="flex gap-2" style="justify-content:flex-end;margin-top:12px;">
+          <button class="btn-outline" onclick="closeSync()">Cancel</button>
+          <button id="btn-sync-fix" onclick="applySync()">Fix All</button>
+        </div>
+      </div>
     </div>
     <div class="card">
       <table id="projects-table">
@@ -141,6 +153,47 @@ const ProjectsContent: FC<{ projects: string[] }> = ({ projects }) => (
           document.getElementById("create-error").textContent = d.error || "Failed to create"; }
       }
 
+      let syncData = null;
+      async function syncProjects() {
+        document.getElementById("sync-modal").style.display = "flex";
+        document.getElementById("sync-status").textContent = "Checking...";
+        document.getElementById("sync-results").style.display = "none";
+        document.getElementById("sync-actions").style.display = "none";
+        const res = await fetch("/api/projects/sync").then(r => r.json());
+        syncData = res;
+        const results = document.getElementById("sync-results");
+        results.style.display = "block";
+        let html = "";
+        if (res.missingInOC && res.missingInOC.length > 0) {
+          html += "<p><strong>Missing in OpenChamber</strong> (will be added):</p><ul>";
+          res.missingInOC.forEach(n => { html += "<li><code>" + n + "</code></li>"; });
+          html += "</ul>";
+        }
+        if (res.staleInOC && res.staleInOC.length > 0) {
+          html += "<p><strong>Stale in OpenChamber</strong> (will be removed):</p><ul>";
+          res.staleInOC.forEach(n => { html += "<li><code>" + n + "</code></li>"; });
+          html += "</ul>";
+        }
+        if (!html) {
+          document.getElementById("sync-status").textContent = "All projects are in sync.";
+          return;
+        }
+        results.innerHTML = html;
+        document.getElementById("sync-status").textContent = res.missingInOC.length + " missing, " + res.staleInOC.length + " stale.";
+        document.getElementById("sync-actions").style.display = "flex";
+      }
+      async function applySync() {
+        const btn = document.getElementById("btn-sync-fix");
+        btn.disabled = true;
+        btn.textContent = "Syncing...";
+        const res = await fetch("/api/projects/sync", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ add: syncData.missingInOC, remove: syncData.staleInOC }),
+        }).then(r => r.json());
+        if (res.ok) { location.reload(); }
+        else { alert("Sync failed"); btn.disabled = false; btn.textContent = "Fix All"; }
+      }
+      function closeSync() { document.getElementById("sync-modal").style.display = "none"; }
       loadFeatures();
     `}</script>
   </div>

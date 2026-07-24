@@ -209,6 +209,58 @@ projects.put("/api/projects/:name/git-remote", async (c) => {
   return c.json({ ok: true });
 });
 
+const OPENCHAMBER_SETTINGS = "/home/devuser/.config/openchamber/settings.json";
+
+async function getOpenChamberProjects(): Promise<string[]> {
+  const r = await execInAiDev(
+    `jq -r '.projects[] | select(.path | startswith("/home/devuser/workspace/")) | .path' ${OPENCHAMBER_SETTINGS} 2>/dev/null || true`,
+    10_000,
+  );
+  return r.stdout.split("\n").filter(Boolean).map(p => p.replace("/home/devuser/workspace/", ""));
+}
+
+projects.get("/api/projects/sync", async (c) => {
+  const [workspaceDirs, ocProjects] = await Promise.all([listProjects(), getOpenChamberProjects()]);
+  const workspaceSet = new Set(workspaceDirs);
+  const ocSet = new Set(ocProjects);
+
+  const missingInOC = workspaceDirs.filter(d => !ocSet.has(d));
+  const staleInOC = ocProjects.filter(d => !workspaceSet.has(d));
+
+  return c.json({ missingInOC, staleInOC });
+});
+
+projects.post("/api/projects/sync", async (c) => {
+  const body = await c.req.json();
+  const add: string[] = body.add || [];
+  const remove: string[] = body.remove || [];
+  const msgs: string[] = [];
+
+  for (const name of add) {
+    const fullPath = `/home/devuser/workspace/${name}`;
+    const id = `path_$(printf '%s' "$fullPath" | base64 -w0)`;
+    const r = await execInAiDev(
+      `jq --arg path "${fullPath}" --arg id "${id}" ` +
+      `'.projects += [{"id": $id, "path": $path}]' ${OPENCHAMBER_SETTINGS} > /tmp/oc.json && mv /tmp/oc.json ${OPENCHAMBER_SETTINGS}`,
+      10_000,
+    );
+    if (r.exitCode === 0 || r.exitCode === -1) msgs.push(`Added ${name} to OpenChamber`);
+    else msgs.push(`Failed to add ${name}: ${r.stderr}`);
+  }
+
+  for (const name of remove) {
+    const fullPath = `/home/devuser/workspace/${name}`;
+    const r = await execInAiDev(
+      `jq 'del(.projects[] | select(.path == "${fullPath}"))' ${OPENCHAMBER_SETTINGS} > /tmp/oc.json && mv /tmp/oc.json ${OPENCHAMBER_SETTINGS}`,
+      10_000,
+    );
+    if (r.exitCode === 0 || r.exitCode === -1) msgs.push(`Removed ${name} from OpenChamber`);
+    else msgs.push(`Failed to remove ${name}: ${r.stderr}`);
+  }
+
+  return c.json({ ok: true, messages: msgs });
+});
+
 projects.get("/projects", async (c) => {
   const list = await listProjects();
   return c.html(ProjectsPage(list));
