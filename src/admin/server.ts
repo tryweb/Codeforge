@@ -34,6 +34,10 @@ const RATE_LIMIT = 30;
 const RATE_WINDOW = 60_000;
 
 async function rateLimit(c: any, next: any) {
+  const path = c.req.path;
+  // Skip rate limiting for static assets and health checks
+  if (path === "/healthz" || path.startsWith("/static/")) return next();
+
   const ip = c.req.header("x-forwarded-for") || "local";
   const now = Date.now();
   const entry = rateLimitMap.get(ip);
