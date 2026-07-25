@@ -135,9 +135,22 @@ const DashboardContent: FC<{ data: DashboardData }> = ({ data }) => {
           if (!res.ok) { alert("Failed to start upgrade"); return; }
           connectUpgradeSSE();
         }
+        function ensureProgressElements() {
+          var card = document.querySelector(".card h3");
+          if (!card) return null;
+          var existing = document.getElementById("upgrade-inline-progress");
+          if (existing) return existing;
+          var container = document.createElement("div");
+          container.id = "upgrade-inline-progress";
+          container.style.marginTop = "12px";
+          container.innerHTML = '<div class="progress-bar mb-4"><div class="fill" id="inline-progress-fill" style="width:0%;"></div></div><div id="inline-log-viewer" class="log-viewer" style="max-height:200px;"></div>';
+          card.closest(".card").appendChild(container);
+          return container;
+        }
         function connectUpgradeSSE() {
           if (inlineEventSource) inlineEventSource.close();
-          inlineEventSource = new EventSource("/api/upgrade/log?history=1");
+          ensureProgressElements();
+          inlineEventSource = new EventSource("/api/upgrade/log");
           inlineEventSource.onmessage = function(e) {
             try {
               const ev = JSON.parse(e.data);
