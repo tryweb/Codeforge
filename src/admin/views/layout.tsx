@@ -1,4 +1,5 @@
 import type { FC, Child } from "hono/jsx";
+import { html } from "hono/html";
 
 const NAV_ITEMS = [
   { href: "/", label: "Dashboard", icon: "⊞" },
@@ -55,7 +56,7 @@ export const Layout: FC<LayoutProps> = ({ title, children, currentPath }) => {
                       <span>{item.label}</span>
                     </a>
               ))}
-              <a href="https://github.com/tryweb/ai-engkit" target="_blank" rel="noopener" style="margin-top:auto;">
+              <a href="#" onclick="document.getElementById('about-modal').style.display='flex';return false;" style="margin-top:auto;">
                 <span>🛈</span><span>About</span>
               </a>
               <a href="/api/logout" style="margin-top:8px;border-top:1px solid var(--border);padding-top:16px;">
@@ -68,7 +69,26 @@ export const Layout: FC<LayoutProps> = ({ title, children, currentPath }) => {
             {children}
           </main>
         </div>
-        <div class="toast-container" id="toasts" />
+        <div id="about-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)this.style.display='none';">
+          <div class="modal" style="max-width:400px;text-align:center;">
+            <img src="/static/favicon.svg" alt="AI-EngKit" style="width:80px;height:80px;margin:0 auto 16px;" />
+            <h2 style="margin-bottom:4px;">AI-EngKit</h2>
+            <p class="text-muted" style="margin-bottom:16px;font-size:0.75rem;" id="about-version">ai-admin</p>
+            <script>{html`
+              fetch("/api/versions/image").then(r => r.json()).then(function(d) {
+                var el = document.getElementById("about-version");
+                if (el && d.version) el.textContent = "ai-admin v" + d.version;
+              }).catch(function() {});
+            `}</script>
+            <p style="margin-bottom:20px;font-size:0.85rem;color:var(--text-muted);">Empowering AI builders to create, automate, and innovate.</p>
+            <div class="flex gap-2" style="justify-content:center;margin-bottom:16px;">
+              <a href="https://github.com/tryweb/ai-engkit" target="_blank" rel="noopener" class="btn-outline" style="text-decoration:none;font-size:0.85rem;">GitHub</a>
+              <a href="https://discord.gg/ZcFTYTWvZ2" target="_blank" rel="noopener" class="btn-outline" style="text-decoration:none;font-size:0.85rem;">Discord</a>
+            </div>
+            <button class="btn-outline" onclick="document.getElementById('about-modal').style.display='none';">Close</button>
+          </div>
+        </div>
+        <script src="/static/app.js" />
         <script src="/static/app.js" />
       </body>
     </html>
