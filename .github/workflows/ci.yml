@@ -109,6 +109,8 @@ jobs:
           sleep 60
 
       - name: Run tests
+        env:
+          ADMIN_PORT: 8081
         run: |
           chmod +x test/run-tests.sh
 
