@@ -6,8 +6,8 @@ const ProjectsContent: FC<{ projects: string[] }> = ({ projects }) => (
   <div>
     <div class="flex items-center justify-between mb-4">
       <h2>OpenCode Projects</h2>
-      <button onclick="showCreateForm()" class="btn-outline">+ New Project</button>
       <button onclick="syncProjects()" class="btn-outline">↻ Sync</button>
+      <button onclick="showCreateForm()" class="btn" style="margin-left:8px;">+ New Project</button>
     </div>
     <div id="sync-modal" class="modal-overlay" style="display:none;">
       <div class="modal">
