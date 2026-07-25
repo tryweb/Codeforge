@@ -2,9 +2,6 @@ import type { FC, Child } from "hono/jsx";
 
 const NAV_ITEMS = [
   { href: "/", label: "Dashboard", icon: "⊞" },
-  { href: "/versions", label: "Versions", icon: "↻" },
-  { href: "/env", label: "Environment", icon: "⚙" },
-  { href: "/upgrade", label: "Upgrade", icon: "▲" },
   { href: "/projects", label: "Projects", icon: "◰" },
   { href: "/separator", label: "", icon: "" },
   { href: "/auth/github", label: "GitHub Auth", icon: "◆" },
@@ -12,6 +9,10 @@ const NAV_ITEMS = [
   { href: "/separator2", label: "", icon: "" },
   { href: "/git-config", label: "Git Config", icon: "⚡" },
   { href: "/ssh-keys", label: "SSH Keys", icon: "🔑" },
+  { href: "/separator3", label: "", icon: "" },
+  { href: "/versions", label: "Versions", icon: "↻" },
+  { href: "/env", label: "Environment", icon: "⚙" },
+  { href: "/upgrade", label: "Upgrade", icon: "▲" },
 ];
 
 interface LayoutProps {
