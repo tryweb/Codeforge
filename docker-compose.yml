@@ -34,7 +34,7 @@ services:
     entrypoint: ["/usr/bin/tini", "--"]
     command: ["bun", "run", "/opt/admin/server.ts"]
     ports:
-      - "${ADMIN_PORT:-8080}:8080"
+      - "${ADMIN_PORT:-8080}:${ADMIN_PORT:-8080}"
     volumes:
       - ./.env:/opt/ai-engkit/.env:rw
       - ./docker-compose.yml:/opt/ai-engkit/compose.yml:rw
@@ -43,7 +43,7 @@ services:
     environment:
       - ADMIN_PORT=${ADMIN_PORT:-8080}
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+      test: ["CMD", "curl", "-f", "http://localhost:${ADMIN_PORT:-8080}/healthz"]
       interval: 30s
       timeout: 10s
       retries: 3
