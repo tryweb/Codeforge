@@ -188,12 +188,38 @@ versions.get("/api/versions", async (c) => {
 
 versions.get("/versions", async (c) => {
   const baseUrl = c.req.url.replace("/versions", "");
+  const internalBase = `http://localhost:${process.env.ADMIN_PORT || "8080"}`;
   const cookie = c.req.header("cookie") || "";
   const headers = cookie ? { cookie } : {};
-  const [versionsData, imageMeta] = await Promise.all([
-    (await (await fetch(`${baseUrl}/api/versions`, { headers })).json()) as Record<string, Record<string, string>>,
-    (await (await fetch(`${baseUrl}/api/versions/image`, { headers })).json()) as Record<string, string>,
-  ]);
+
+  async function fetchJson(url: string): Promise<unknown> {
+    const res = await fetch(url, { headers });
+    if (!res.ok) throw new Error(`fetch ${url} returned ${res.status}`);
+    return res.json();
+  }
+
+  let versionsData: Record<string, Record<string, string>> = {};
+  let imageMeta: Record<string, string> = {};
+
+  // Try the external-facing URL first; fall back to internal localhost
+  // (needed when port mapping differs, e.g. host 8081 → container 8080)
+  try {
+    [versionsData, imageMeta] = (await Promise.all([
+      fetchJson(`${baseUrl}/api/versions`),
+      fetchJson(`${baseUrl}/api/versions/image`),
+    ])) as [typeof versionsData, typeof imageMeta];
+  } catch {
+    try {
+      [versionsData, imageMeta] = (await Promise.all([
+        fetchJson(`${internalBase}/api/versions`),
+        fetchJson(`${internalBase}/api/versions/image`),
+      ])) as [typeof versionsData, typeof imageMeta];
+    } catch {
+      // Both attempts failed — render empty page with an error banner
+      return c.html(VersionsPage({}, {}));
+    }
+  }
+
   return c.html(VersionsPage(versionsData, imageMeta));
 });
 
