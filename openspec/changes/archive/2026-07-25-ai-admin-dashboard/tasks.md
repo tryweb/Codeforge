@@ -82,9 +82,7 @@
 - [x] 10.6 Update `install.sh` to handle new `ai-admin` service startup
 - [x] 10.7 Update `.env.example` with admin service defaults (`ADMIN_PORT=8080`, `ADMIN_DEV_PORT=8081`, `ADMIN_PASSWORD=`, `BACKUP_RETENTION=5`)
 
-## 11. Admin API & Agent Connection (Capability: admin-api)
-
-### Phase 1 — Local REST API
+## 11. Admin API (Capability: admin-api)
 
 - [x] 11.1 Implement `POST /api/login` endpoint (validate password → set HMAC-signed session cookie, no Max-Age)
 - [x] 11.2 Implement `POST /api/logout` endpoint (clear session cookie)
@@ -95,13 +93,6 @@
 - [x] 11.7 Implement brute-force protection on login (5 failures → 3s delay)
 - [x] 11.8 Add rate limiting middleware (30 req/min for API routes)
 - [x] 11.9 Add OpenAPI spec for the admin API at `GET /api/openapi.json`
-
-### Phase 2+ — Agent Connection Module (Not in Phase 1 scope)
-
-- [ ] *(Future)* Implement outbound WebSocket client with exponential backoff reconnect
-- [ ] *(Future)* Implement heartbeat protocol (status report every 60s)
-- [ ] *(Future)* Implement command dispatch (upgrade, reconfigure, restart)
-- [ ] *(Future)* Implement TLS mutual authentication for Center connection
 
 ## 12. Testing & Documentation
 

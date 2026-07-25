@@ -12,6 +12,7 @@ The constraint: **zero additional image layers**. Everything must run on the bun
 - Provide a web UI for `.env` configuration (read + edit with validation)
 - Display pinned component versions from the running image
 - Trigger container upgrade (pull + recreate) from the browser with real-time log streaming — replacing the existing `upgrade.sh` CLI script
+- **Auto-check for newer ai-engkit image versions on GHCR and show upgrade badge on Dashboard**
 - Create OpenCode project directories in the workspace volume
 - Guide users through GitHub CLI authentication via device-code flow
 - Guide users through GitLab CLI authentication via device-code flow
@@ -26,6 +27,7 @@ The constraint: **zero additional image layers**. Everything must run on the bun
 - Manage ai-engkit containers running on remote hosts (future centralized Agent concern)
 - Rebuild or restart ai-dev from the dashboard (upgrade replaces the whole container)
 - Expose sensitive secrets in plaintext in the dashboard (`.env` values masked by default)
+- Provide version checking against non-GHCR registries (only `ghcr.io/tryweb/ai-engkit` is supported)
 
 ## Decisions
 
@@ -283,6 +285,106 @@ The `/api/status` response includes a `container_status` field:
 }
 ```
 
+### D11: Version check against GHCR with in-memory cache
+
+**Decision:** A new `GET /api/versions/check-update` endpoint fetches the tag list
+from `https://ghcr.io/v2/tryweb/ai-engkit/tags/list` (anonymous, public registry),
+finds the highest valid semver tag, compares with the local version, and returns
+the result. Results are cached in-memory for 5 minutes.
+
+```typescript
+interface UpdateCheckResult {
+  current: string;        // local version from /opt/ai-engkit/VERSION
+  latest: string;         // highest remote semver tag (empty if check failed)
+  published_at: string;   // ISO timestamp (empty if check failed)
+  update_available: boolean;
+  status: "checking" | "up-to-date" | "update-available" | "check-failed";
+}
+```
+
+**Version comparison semantics:**
+- Strip leading `v` prefix before comparison (`v1.2.3` → `1.2.3`)
+- Exclude pre-release tags (`-rc`, `-beta`, `-alpha`, `-pre`) from upgrade candidates
+- Ignore non-semver tags (`latest`, date strings, random strings)
+- Pad missing numeric segments (`1.0` → `1.0.0`)
+- If local version is `dev`, report `check-failed` with message
+
+**Cache semantics:**
+- Single key-value cache with 5-minute TTL
+- Collapse concurrent cache misses into a single in-flight promise
+- Cache failures do NOT overwrite a previous valid cached result
+- Constant memory footprint (one record, not per-user)
+
+### D12: Server-side version check resolution (not client-side)
+
+**Decision:** The version check result SHALL be resolved server-side during the
+Dashboard's `GET /` handler, not via a separate client-side fetch. This keeps the
+Dashboard's data flow consistent (all data arrives with the initial HTML render).
+
+Flow:
+```
+GET / → check cache → if cold: initiate background fetch → render "checking"
+                        if warm: render "up-to-date" / "update-available"
+```
+
+The `/api/versions/check-update` endpoint exists for the `/versions` page and
+for manual refresh, but the Dashboard always uses the cached server-side result.
+
+**Rationale:**
+- Dashboard currently renders all data server-side (no JS fetch for initial data)
+- Client-side fetch would cause badge flash (no badge → check → badge appears)
+- SSR with cached data means the badge is present on first paint
+- Cold cache fallback to "checking" is a transient state (resolved on reload)
+
+### D13: SSE lifecycle management
+
+**Decision:** The SSE endpoint SHALL use proper stream lifecycle handling and
+event deduplication to fix the existing subscriber leak and reconnect issues.
+
+**Changes to the existing SSE implementation:**
+
+1. **Subscriber cleanup:** Replace the `return () => unsub()` pattern (which
+   Web Streams API ignores) with explicit abort/close handling via the request
+   `close` event or an AbortSignal.
+
+2. **Event IDs:** Each `UpgradeEvent` SHALL carry a monotonic `id: number` field.
+   The client SHALL track the last received event ID and skip duplicates on
+   reconnect.
+
+3. **Unified status endpoint:** `GET /api/upgrade/status` returns `{ state, events,
+   current_step, progress_pct }`. Both Dashboard inline progress and the standalone
+   `/upgrade` page bootstrap from this endpoint on load, then switch to SSE for
+   live updates.
+
+4. **409 handling:** On `POST /api/upgrade` receiving 409, the client SHALL
+   transition to "follow existing upgrade" mode instead of showing an error —
+   attach to the running upgrade's SSE stream.
+
+### D14: Dashboard inline upgrade UI
+
+**Decision:** The Component Versions card on the Dashboard SHALL contain the
+upgrade trigger and inline progress view, replacing the need to navigate to
+the `/upgrade` page for common cases.
+
+**Layout:**
+```
+Component Versions
+┌─────────────────────────────────────────────┐
+│ AI-EngKit    1.0.0    [⚡ 1.2.0] [▲ Upgrade] │
+│ OpenCode     0.8.0                           │
+│ ...                                          │
+│  ┌─ Expand on upgrade ──────────────────┐    │ ← hidden until upgrade starts
+│  │ digest_compare  ✓                    │    │
+│  │ backup         ✓                    │    │
+│  │ merge_env      → running...         │    │
+│  │ ...                                  │    │
+│  └──────────────────────────────────────┘    │
+└─────────────────────────────────────────────┘
+```
+
+The standalone `/upgrade` page is retained for full-screen log review and
+post-upgrade history.
+
 ## Risks / Trade-offs
 
 | Risk | Mitigation |
@@ -292,6 +394,10 @@ The `/api/status` response includes a `container_status` field:
 | [R3] **Device code timeout** — `gh auth login --web` has a 15-minute window. User may start the flow, walk away, and return to an expired code. | Dashboard shows a countdown timer; expired code prompts a retry with a fresh code. |
 | [R4] **Security surface increase** — exposing a Docker-socket-mounted web service expands the attack surface beyond OpenChamber's port. | Dashboard auth is mandatory (no unauthenticated endpoints except login); Docker socket is used only for upgrade execution, not exposed to API callers. |
 | [R5] **`.env` editing without validation** — user could enter invalid values (e.g., malformed port, non-numeric BACKUP_RETENTION) and break ai-dev on next restart. | Each `.env` key gets a schema definition (type, allowed values, regex, apply tier) with client-side + server-side validation. |
+| [R6] **SSE subscriber leak** — current `ReadableStream.start()` returning a cleanup function is not called by the Web Streams API on disconnect. | Fix with explicit abort handling via request close event or AbortSignal. |
+| [R7] **SSE reconnect doubles events** — reconnecting to `/api/upgrade/log` replays full history without dedup, causing duplicate log entries. | Add monotonic event IDs; client tracks last received ID and skips duplicates. |
+| [R8] **GHCR rate limiting** — anonymous requests to GHCR have rate limits (~100-200 req/hr). | 5-minute cache reduces dashboard loads to ~288 req/day; cache failures don't overwrite valid results. |
+| [R9] **Version check target mismatch** — check compares against highest semver tag, but `runUpgrade()` always pulls `:latest`, which may point to a different version. | Document that the check reflects highest stable semver tag; the upgrade always pulls `:latest` (which may be newer). Consider adding tag-pinned upgrade in future. |
 
 ### .env variable apply tiers
 
