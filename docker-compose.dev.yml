@@ -34,11 +34,7 @@ services:
     restart: unless-stopped
 
   ai-admin:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        - AI_ENGKIT_VERSION=dev
+    image: ai-engkit-ai-dev
     container_name: ai-engkit-admin-dev
     working_dir: /opt/admin
     env_file:
