@@ -64,7 +64,9 @@ label { display: block; margin-bottom: 4px; color: var(--text-muted); font-size:
 .sidebar {
   width: var(--sidebar); background: var(--surface); border-right: 1px solid var(--border);
   padding: 20px 0; position: fixed; top: 0; left: 0; height: 100vh; overflow-y: auto;
+  display: flex; flex-direction: column;
 }
+.sidebar nav { flex: 1; padding: 0 8px; display: flex; flex-direction: column; }
 .sidebar .logo { padding: 0 20px 20px; border-bottom: 1px solid var(--border); margin-bottom: 12px; }
 .sidebar .logo h1 { font-size: var(--text-lg); font-weight: 600; }
 .sidebar .logo .subtitle { font-size: var(--text-xs); color: var(--text-muted); }
