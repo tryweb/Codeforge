@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { serveStatic } from "hono/bun";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
+import { readFileSync } from "fs";
 import { validateSession, isConfigured } from "./lib/auth";
 import { readEnvFile } from "./lib/env";
 
@@ -138,8 +139,14 @@ app.get("/", async (c) => {
   const gitUser = gitResult.stdout.trim();
   const projectCount = parseInt(projectsResult.stdout.trim() || "0", 10);
 
-  const [aiEngkitVer, opencodeVer, openchamberVer, dockerVer] = await Promise.all([
-    getVer("cat /opt/ai-engkit/VERSION 2>/dev/null || echo 'dev'"),
+  let aiEngkitVer = "";
+  try {
+    aiEngkitVer = readFileSync("/opt/ai-engkit/VERSION", "utf-8").trim();
+  } catch {
+    aiEngkitVer = "dev";
+  }
+
+  const [opencodeVer, openchamberVer, dockerVer] = await Promise.all([
     getVer("opencode --version 2>/dev/null || echo ''"),
     getVer("/home/devuser/.bun/bin/openchamber --version 2>/dev/null || echo ''"),
     getVer("docker --version 2>/dev/null | cut -d' ' -f3 | tr -d ',' || echo ''"),

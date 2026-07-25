@@ -6,6 +6,49 @@
 const DOCKER_SOCKET = "/var/run/docker.sock";
 const DEFAULT_TIMEOUT_MS = 30_000;
 
+/**
+ * Get the current container's ID from /etc/hostname (set by Docker).
+ * Used to inspect the admin container's own image metadata.
+ */
+export async function getSelfContainerRef(): Promise<string> {
+  try {
+    const id = await Bun.file("/etc/hostname").text();
+    const trimmed = id.trim();
+    if (trimmed) return trimmed;
+  } catch {}
+  return "ai-engkit-admin";
+}
+
+/**
+ * Get this container's own name (e.g. "ai-engkit-admin" or "ai-engkit-admin-dev").
+ * Used to derive the sibling dev container name.
+ */
+async function getOwnContainerName(): Promise<string> {
+  const ref = await getSelfContainerRef();
+  const result = await runCommand(
+    ["docker", "inspect", "--format={{.Name}}", ref],
+    5_000,
+  );
+  if (result.exitCode === 0 && result.stdout.trim()) {
+    // Docker name starts with "/"
+    return result.stdout.trim().replace(/^\//, "");
+  }
+  return "ai-engkit-admin";
+}
+
+/**
+ * Derive the dev container name from this admin container's name.
+ * Convention: ai-engkit-admin → ai-engkit, ai-engkit-admin-dev → ai-engkit-dev
+ */
+async function getSiblingDevContainerName(): Promise<string> {
+  const self = await getOwnContainerName();
+  // Strip "-admin-dev" or "-admin" suffix to get the dev container name
+  // ai-engkit-admin-dev → ai-engkit-dev,  ai-engkit-admin → ai-engkit
+  if (self.endsWith("-admin-dev")) return self.slice(0, -"-admin-dev".length) + "-dev";
+  if (self.endsWith("-admin")) return self.slice(0, -"-admin".length);
+  return self;
+}
+
 export interface ExecResult {
   stdout: string;
   stderr: string;
@@ -13,16 +56,15 @@ export interface ExecResult {
 }
 
 export async function getAiDevContainerRef(): Promise<string> {
-  for (const name of ["ai-engkit-dev", "ai-engkit"]) {
-    const result = await runCommand(
-      ["docker", "ps", "--filter", `name=${name}`, "--format", "{{.ID}}"],
-      10_000,
-    );
-    if (result.exitCode === 0 && result.stdout.trim()) {
-      return result.stdout.trim().split("\n")[0];
-    }
+  const devName = await getSiblingDevContainerName();
+  const result = await runCommand(
+    ["docker", "ps", "--filter", "status=running", "--filter", `name=^/${devName}$`, "--format", "{{.ID}}"],
+    10_000,
+  );
+  if (result.exitCode === 0 && result.stdout.trim()) {
+    return result.stdout.trim().split("\n")[0];
   }
-  return "ai-engkit";
+  return devName;
 }
 
 export async function execInAiDev(
@@ -60,14 +102,12 @@ export async function dockerCommand(
  * Check if the ai-dev container is running.
  */
 export async function isAiDevRunning(): Promise<boolean> {
-  for (const name of ["ai-engkit-dev", "ai-engkit"]) {
-    const result = await runCommand(
-      ["docker", "ps", "--filter", "status=running", "--filter", `name=${name}`, "--format", "{{.Names}}"],
-      10_000,
-    );
-    if (result.exitCode === 0 && result.stdout.trim().length > 0) return true;
-  }
-  return false;
+  const devName = await getSiblingDevContainerName();
+  const result = await runCommand(
+    ["docker", "ps", "--filter", "status=running", "--filter", `name=^/${devName}$`, "--format", "{{.Names}}"],
+    10_000,
+  );
+  return result.exitCode === 0 && result.stdout.trim().length > 0;
 }
 
 /**

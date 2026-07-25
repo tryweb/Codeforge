@@ -1,6 +1,6 @@
 import { readFileSync } from "fs";
 import { Hono } from "hono";
-import { execInAiDev, dockerCommand, getAiDevContainerRef } from "../lib/docker";
+import { execInAiDev, dockerCommand, getAiDevContainerRef, getSelfContainerRef } from "../lib/docker";
 import { VersionsPage } from "../views/versions";
 
 const IMAGE = "ghcr.io/tryweb/ai-engkit:latest";
@@ -27,7 +27,7 @@ async function getRemoteDigest(): Promise<string | null> {
 }
 
 async function getLocalDigest(): Promise<string | null> {
-  const ref = await getAiDevContainerRef();
+  const ref = await getSelfContainerRef();
   const result = await dockerCommand(
     `inspect --format='{{.Image}}' ${ref}`,
     10_000,
@@ -97,7 +97,7 @@ versions.get("/api/versions/check-update", async (c) => {
 
 versions.get("/api/versions/image", async (c) => {
   const meta: Record<string, string> = {};
-  const ref = await getAiDevContainerRef();
+  const ref = await getSelfContainerRef();
 
   try {
     const result = await dockerCommand(
