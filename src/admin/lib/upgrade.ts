@@ -8,19 +8,6 @@ const COMPOSE_FILE = "/opt/ai-engkit/compose.yml";
 const ENV_FILE = "/opt/ai-engkit/.env";
 const IMAGE = "ghcr.io/tryweb/ai-engkit:latest";
 
-// Dev mode detection: returns true when compose file uses build: instead of image:
-function isDevMode(): boolean {
-  try {
-    const content = readFileSync(COMPOSE_FILE, "utf-8");
-    // Count build: / image: directives — dev uses build:, production uses image:
-    const buildCount = (content.match(/^ {4}build\s*:/gm) || []).length;
-    const imageCount = (content.match(/^\s+image\s*:/gm) || []).length;
-    return buildCount > 0 && imageCount === 0;
-  } catch {
-    return false;
-  }
-}
-
 export type UpgradeStep =
   | "digest_compare"
   | "backup"
@@ -108,20 +95,14 @@ export async function runUpgrade(): Promise<boolean> {
   currentState = "running";
   eventLog = [];
 
-  const devMode = isDevMode();
-
   try {
-    // Step 1: Digest compare (skip in dev mode — build: triggers rebuild instead)
-    if (devMode) {
-      emit("digest_compare", "success", "Dev mode: skipping pull, will rebuild from source");
-    } else {
-      emit("digest_compare", "running", "Fetching latest image digest...");
-      const pullResult = await dockerCommand(`pull ${IMAGE}`, 180_000);
-      if (pullResult.exitCode !== 0) {
-        throw new Error(`Failed to pull image: ${pullResult.stderr}`);
-      }
-      emit("digest_compare", "success", "Latest image pulled successfully");
+    // Step 1: Digest compare
+    emit("digest_compare", "running", "Fetching latest image digest...");
+    const pullResult = await dockerCommand(`pull ${IMAGE}`, 180_000);
+    if (pullResult.exitCode !== 0) {
+      throw new Error(`Failed to pull image: ${pullResult.stderr}`);
     }
+    emit("digest_compare", "success", "Latest image pulled successfully");
 
     // Step 2: Backup
     emit("backup", "running", "Creating pre-upgrade backup...");
@@ -142,7 +123,7 @@ export async function runUpgrade(): Promise<boolean> {
     emit("merge_env", "success", "Environment variables merged");
 
     // Step 4: Recreate ai-dev
-    emit("recreate", "running", devMode ? "Rebuilding image from source (dev mode)..." : "Recreating ai-dev container with new image...");
+    emit("recreate", "running", "Recreating ai-dev container with new image...");
     const recreateResult = await composeCommand(
       `-f "${COMPOSE_FILE}" up -d --force-recreate ai-dev`,
       300_000,
@@ -150,7 +131,7 @@ export async function runUpgrade(): Promise<boolean> {
     if (recreateResult.exitCode !== 0) {
       throw new Error(`Failed to recreate ai-dev: ${recreateResult.stderr}`);
     }
-    emit("recreate", "success", devMode ? "ai-dev rebuilt and restarted from source" : "ai-dev container recreated");
+    emit("recreate", "success", "ai-dev container recreated");
 
     // Step 5: Poll health
     emit("poll_health", "running", "Waiting for ai-dev to become healthy...");
