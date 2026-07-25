@@ -41,7 +41,7 @@ export const Layout: FC<LayoutProps> = ({ title, children, currentPath }) => {
           <aside class="sidebar">
             <div class="logo">
               <h1>ai-admin</h1>
-              <div class="subtitle">ai-engkit Dashboard</div>
+              <div class="subtitle">AI-EngKit Dashboard</div>
             </div>
             <nav>
               {NAV_ITEMS.map((item) => (

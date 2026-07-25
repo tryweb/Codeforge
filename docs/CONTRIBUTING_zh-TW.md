@@ -2,7 +2,7 @@
 
 [English](../CONTRIBUTING.md) | 繁體中文
 
-感謝您考慮為 ai-engkit 專案貢獻！本文檔說明如何參與開發。
+感謝您考慮為 AI-EngKit 專案貢獻！本文檔說明如何參與開發。
 
 ## 目錄
 

@@ -2,11 +2,11 @@
 
 English | [繁體中文](./docs/SECURITY_zh-TW.md)
 
-This document describes the security model, risk profile, and vulnerability reporting process for ai-engkit.
+This document describes the security model, risk profile, and vulnerability reporting process for AI-EngKit.
 
 ## Supported use model
 
-ai-engkit is designed for **trusted development environments**.
+AI-EngKit is designed for **trusted development environments**.
 
 It is not intended to be exposed directly to untrusted networks without additional hardening.
 
@@ -89,7 +89,7 @@ Please **do not** report security vulnerabilities through public GitHub issues.
 Report vulnerabilities privately by email:
 
 - Email: `tryweb@ichiayi.com`
-- Subject: `[SECURITY] ai-engkit vulnerability report`
+- Subject: `[SECURITY] AI-EngKit vulnerability report`
 
 ### Please include
 
@@ -112,7 +112,7 @@ The repository workflow `.github/workflows/dependency-update.yml` performs regul
 
 ## Scope and limitations
 
-ai-engkit reduces some credential exposure by isolating Git, SSH, and CLI state into dedicated container volumes, but it does **not** eliminate all risk.
+AI-EngKit reduces some credential exposure by isolating Git, SSH, and CLI state into dedicated container volumes, but it does **not** eliminate all risk.
 
 In particular:
 

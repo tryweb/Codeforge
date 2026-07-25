@@ -212,7 +212,7 @@ pull_image() {
     if [ -n "$old_id" ]; then
         echo "  當前映像 ID: ${old_id:0:12}"
     else
-        info "本地尚無 ai-engkit 映像"
+        info "本地尚無 AI-EngKit 映像"
     fi
 
     echo "  正在拉取 ghcr.io/tryweb/ai-engkit:latest..."
@@ -359,7 +359,7 @@ verify_installed_environment() {
         return 0
     fi
 
-    fail "找不到 ai-engkit 安裝環境（缺少 docker-compose.yml 或 .env）。
+    fail "找不到 AI-EngKit 安裝環境（缺少 docker-compose.yml 或 .env）。
 
 upgrade.sh 僅供已安裝環境使用。首次安裝請改執行 install.sh：
 
@@ -378,7 +378,7 @@ main() {
 
     echo
     echo -e "${BOLD}╔══════════════════════════════════════╗${NC}"
-    echo -e "${BOLD}║   ai-engkit 升級腳本                ║${NC}"
+    echo -e "${BOLD}║   AI-EngKit 升級腳本                ║${NC}"
     echo -e "${BOLD}╚══════════════════════════════════════╝${NC}"
 
     check_system

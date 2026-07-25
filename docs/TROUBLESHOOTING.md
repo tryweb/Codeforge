@@ -1,6 +1,6 @@
 # Troubleshooting Guide
 
-This document collects common ai-engkit issues and their recommended fixes.
+This document collects common AI-EngKit issues and their recommended fixes.
 
 ## Table of Contents
 
@@ -155,7 +155,7 @@ sudo ufw allow 8000/tcp
 
 ### A Nested Project Started Inside the Container Is Not Reachable from the Host
 
-> ⚠️ **This section describes a host Docker daemon environment issue, not an ai-engkit bug.** On a standard Docker host (CI / staging / production), this usually does not happen. It belongs to the same class of issue as [glab as a Git credential helper with a versioned path](#glab-as-a-git-credential-helper-with-a-versioned-path): the problem is on the user's host, not inside the container.
+> ⚠️ **This section describes a host Docker daemon environment issue, not an AI-EngKit bug.** On a standard Docker host (CI / staging / production), this usually does not happen. It belongs to the same class of issue as [glab as a Git credential helper with a versioned path](#glab-as-a-git-credential-helper-with-a-versioned-path): the problem is on the user's host, not inside the container.
 
 **Scenario**: you start your own nested project inside the ai-engkit container with `docker compose up -d`. Port mapping looks correct (for example, `0.0.0.0:8020:80`), but from the host `curl http://localhost:8020/` returns `Connection refused`.
 

@@ -1,8 +1,8 @@
-# ai-engkit
+# AI-EngKit
 
 > **Your Self-hosted AI Engineering Kit for Dev & Ops**
 
-ai-engkit is a self-hosted AI development environment that packages [OpenCode](https://opencode.ai), [OpenChamber](https://openchamber.dev/), browser automation, code navigation, and everyday developer tooling into a single Ubuntu 24.04 container.
+AI-EngKit is a self-hosted AI development environment that packages [OpenCode](https://opencode.ai), [OpenChamber](https://openchamber.dev/), browser automation, code navigation, and everyday developer tooling into a single Ubuntu 24.04 container.
 
 It is designed for teams and individuals who want a reproducible AI coding workspace without rebuilding their toolchain from scratch.
 
@@ -29,7 +29,7 @@ It is designed for teams and individuals who want a reproducible AI coding works
 
 ## Admin Dashboard
 
-ai-engkit includes a web-based admin dashboard (`ai-admin`) running as a Docker sidecar alongside the main container. It provides a browser UI for operational tasks:
+AI-EngKit includes a web-based admin dashboard (`ai-admin`) running as a Docker sidecar alongside the main container. It provides a browser UI for operational tasks:
 
 - **Version Dashboard** — CLI and runtime version overview
 - **Env Config Editor** — Edit `.env` variables with masked secret fields
@@ -168,7 +168,7 @@ This allows you to edit files with your local IDE while the container runs.
 
 ## MCP and Knowledge Tooling
 
-ai-engkit ships with a preconfigured MCP stack for code navigation and browser automation:
+AI-EngKit ships with a preconfigured MCP stack for code navigation and browser automation:
 
 - **CodeGraph** — code graph and dependency analysis
 - **lean-ctx** — context-aware read/search/shell workflow helpers
@@ -200,7 +200,7 @@ For HTTPS, SSH, `gh`, `glab`, multiple accounts, and security notes, see:
 | `8080` | `${ADMIN_PORT:-8080}` | Admin Dashboard Web UI |
 | `8081` | *(dev)* | Admin Dashboard (dev mode with `--watch`) |
 
-## When to Use ai-engkit
+## When to Use AI-EngKit
 
 - You want a ready-to-run AI coding environment with persistent state
 - You need browser automation, code graph tooling, and agent plugins in one place

@@ -1,10 +1,10 @@
-# Contributing to ai-engkit
+# Contributing to AI-EngKit
 
 English | [繁體中文](./docs/CONTRIBUTING_zh-TW.md)
 
-Thanks for your interest in contributing to ai-engkit.
+Thanks for your interest in contributing to AI-EngKit.
 
-ai-engkit is a self-hosted AI engineering environment built around OpenCode, OpenChamber, browser automation, code navigation, and a reproducible Docker-based workflow.
+AI-EngKit is a self-hosted AI engineering environment built around OpenCode, OpenChamber, browser automation, code navigation, and a reproducible Docker-based workflow.
 
 We welcome:
 

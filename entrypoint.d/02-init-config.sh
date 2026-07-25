@@ -325,11 +325,11 @@ if [ -f "$AI_ENGKIT_AGENTS_DEFAULT" ]; then
     if ! grep -q '<!-- @ai-engkit -->' "$USER_AGENTS_MD" 2>/dev/null; then
       echo "" >> "$USER_AGENTS_MD"
       cat "$AI_ENGKIT_AGENTS_DEFAULT" >> "$USER_AGENTS_MD"
-      echo "Appended ai-engkit environment knowledge to AGENTS.md"
+      echo "Appended AI-EngKit environment knowledge to AGENTS.md"
     fi
   else
     cp "$AI_ENGKIT_AGENTS_DEFAULT" "$USER_AGENTS_MD"
-    echo "Created AGENTS.md with ai-engkit environment knowledge"
+    echo "Created AGENTS.md with AI-EngKit environment knowledge"
   fi
 fi
 

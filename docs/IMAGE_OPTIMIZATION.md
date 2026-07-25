@@ -3,7 +3,7 @@
 > **Status**: Draft / RFC
 > **Date**: 2026-06-29
 > **Context**: Analysis of the current 3.64 GB Docker image, waste identification, and paths toward a leaner architecture.
-> **Principle**: ai-engkit intentionally provides a batteries-included AI development environment. Tool removals must preserve that experience; pure waste is different from useful tooling that happens to be large.
+> **Principle**: AI-EngKit intentionally provides a batteries-included AI development environment. Tool removals must preserve that experience; pure waste is different from useful tooling that happens to be large.
 
 ---
 

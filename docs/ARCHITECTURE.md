@@ -1,6 +1,6 @@
 # Architecture Guide
 
-This document explains the ai-engkit system architecture, the relationships between components, and the main data flows.
+This document explains the AI-EngKit system architecture, the relationships between components, and the main data flows.
 
 ## Table of Contents
 
@@ -16,7 +16,7 @@ This document explains the ai-engkit system architecture, the relationships betw
 
 ## System Overview
 
-ai-engkit is a Docker-based AI development environment that combines the OpenCode AI assistant (backend), the OpenChamber web UI (frontend), and a preinstalled day-to-day developer toolchain.
+AI-EngKit is a Docker-based AI development environment that combines the OpenCode AI assistant (backend), the OpenChamber web UI (frontend), and a preinstalled day-to-day developer toolchain.
 
 ```mermaid
 graph TB

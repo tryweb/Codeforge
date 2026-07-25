@@ -178,7 +178,7 @@ app.get("/api/openapi.json", (c) => {
     info: {
       title: "ai-admin API",
       version: "1.0.0",
-      description: "Local REST API for ai-engkit admin dashboard",
+      description: "Local REST API for AI-EngKit admin dashboard",
     },
     servers: [{ url: "", description: "Local admin server" }],
     paths: {
