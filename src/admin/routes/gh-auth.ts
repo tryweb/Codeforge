@@ -18,10 +18,10 @@ ghAuth.get("/api/auth/gh/status", async (c) => {
 });
 
 ghAuth.post("/api/auth/gh/start", async (c) => {
-  // Start the device code flow
+  // Start the device code flow in background, capture initial output
   const result = await execInAiDev(
-    "gh auth login --web --hostname github.com 2>&1 || true",
-    30_000,
+    "nohup sh -c 'gh auth login --web --hostname github.com >/tmp/gh-device.log 2>&1 &' && sleep 1 && cat /tmp/gh-device.log 2>/dev/null || true",
+    10_000,
   );
   const output = result.stdout || result.stderr;
 
