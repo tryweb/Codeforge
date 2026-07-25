@@ -109,3 +109,23 @@
 - [x] 12.2 Add UI smoke test using Playwright (login → view dashboard)
 - [x] 12.3 Update `docs/ARCHITECTURE.md` with ai-admin service and architecture decisions
 - [x] 12.4 Update `README.md` with admin dashboard section (URL, default credentials, features)
+
+## 13. Update Check Engine (Capability: upgrade-engine)
+
+- [x] 13.1 Implement semver comparison utility (parse, strip leading v, ignore pre-release, pad segments)
+- [x] 13.2 Implement `GET /api/versions/check-update` endpoint (fetch GHCR tags, find highest semver, compare with local)
+- [x] 13.3 Implement in-memory cache with 5-minute TTL, in-flight promise collapsing, and failure isolation
+- [x] 13.4 Integrate update check into Dashboard's `GET /` handler (server-side resolution with cache)
+- [x] 13.5 Add GHCR registry tag parsing (filter valid semver from `tags/list` response, handle empty/error)
+
+## 14. Dashboard Inline Upgrade (Capability: upgrade-engine)
+
+- [x] 14.1 Implement `GET /api/upgrade/status` unified endpoint (returns `{ state, events, current_step, progress_pct }`)
+- [x] 14.2 Add monotonic `id` field to `UpgradeEvent` type and emit logic
+- [x] 14.3 Fix SSE subscriber leak (replace `return () => unsub()` with proper abort handling)
+- [x] 14.4 Add event deduplication to SSE client (track last received ID, skip duplicates)
+- [x] 14.5 Handle `409` on POST `/api/upgrade` as "attach to existing run" instead of error
+- [x] 14.6 Modify Dashboard's Component Versions card to show tri-state update badge (checking/current/update-available/check-failed)
+- [x] 14.7 Implement inline upgrade progress UI in Dashboard (expandable step-by-step progress below version row)
+- [x] 14.8 Add confirmation dialog before upgrade trigger
+- [x] 14.9 Re-run version check after upgrade completes and update badge

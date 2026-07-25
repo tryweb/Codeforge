@@ -1,5 +1,22 @@
 import type { FC } from "hono/jsx";
+import { html } from "hono/html";
 import { Layout } from "./layout";
+
+interface UpdateCheckResult {
+  current: string;
+  latest: string;
+  update_available: boolean;
+  status: "checking" | "up-to-date" | "update-available" | "check-failed";
+  message: string;
+}
+
+interface UpgradeEvent {
+  id: number;
+  step: string;
+  status: string;
+  message: string;
+  timestamp: string;
+}
 
 interface DashboardData {
   container_status: string;
@@ -9,10 +26,26 @@ interface DashboardData {
   glab_auth: string;
   git_user: string;
   project_count: number;
+  update_check: UpdateCheckResult;
+  upgrade_state: string;
+  upgrade_events: UpgradeEvent[];
+  upgrade_current_step: string;
+  upgrade_progress_pct: number;
 }
+
+const UpdateBadge: FC<{ check: UpdateCheckResult }> = ({ check }) => {
+  if (check.status === "update-available") {
+    return <span class="badge badge-warning" style="cursor:pointer;" onclick="startUpgrade()">▲ Upgrade</span>;
+  }
+  if (check.status === "check-failed") {
+    return <span class="badge" style="background:rgba(139,143,163,0.15);color:var(--text-muted);font-size:0.65rem;">? unavailable</span>;
+  }
+  return <span class="badge badge-success" style="font-size:0.65rem;">✓ Latest</span>;
+};
 
 const DashboardContent: FC<{ data: DashboardData }> = ({ data }) => {
   const isRunning = data.container_status === "running";
+  const isUpgrading = data.upgrade_state === "running";
   return (
     <div>
       <h2 style="margin-bottom:24px;">Dashboard</h2>
@@ -59,10 +92,93 @@ const DashboardContent: FC<{ data: DashboardData }> = ({ data }) => {
         <table>
           <tr><th>Component</th><th>Version</th></tr>
           {Object.entries(data.versions).map(([name, version]) => (
-            <tr><td>{name}</td><td><code>{version}</code></td></tr>
+            <tr>
+              <td>{name}</td>
+              <td>
+                <code>{version}</code>
+                {name === "AI-EngKit" && !isUpgrading && <span style="margin-left:8px;"><UpdateBadge check={data.update_check} /></span>}
+                {name === "AI-EngKit" && isUpgrading && <span class="badge" style="background:rgba(99,102,241,0.15);color:var(--accent);margin-left:8px;">running</span>}
+              </td>
+            </tr>
           ))}
         </table>
+        {isUpgrading && (
+          <div id="upgrade-inline-progress" style="margin-top:12px;">
+            <div class="progress-bar mb-4"><div class="fill" id="inline-progress-fill" style={`width:${data.upgrade_progress_pct}%;`} /></div>
+            <div id="inline-log-viewer" class="log-viewer" style="max-height:200px;">
+              {data.upgrade_events.map(e => (
+                <div class="log-entry">
+                  <span class="step">{e.step}</span>
+                  <span class={`status ${e.status === 'success' ? 'text-success' : e.status === 'failure' ? 'text-danger' : ''}`}>{e.status}</span>
+                  <span>{e.message}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
+      <script>{html`
+        let inlineEventSource = null;
+        let lastEventId = 0;
+        async function startUpgrade() {
+          if (!confirm("ai-dev will restart during this upgrade (2-3s downtime). Proceed?")) return;
+          const res = await fetch("/api/upgrade", { method: "POST" });
+          if (res.status === 409) {
+            const data = await res.json();
+            if (data.status && data.status.state === "running") {
+              connectUpgradeSSE();
+              return;
+            }
+            alert("Upgrade already in progress");
+            return;
+          }
+          if (!res.ok) { alert("Failed to start upgrade"); return; }
+          connectUpgradeSSE();
+        }
+        function connectUpgradeSSE() {
+          if (inlineEventSource) inlineEventSource.close();
+          inlineEventSource = new EventSource("/api/upgrade/log?history=1");
+          inlineEventSource.onmessage = function(e) {
+            try {
+              const ev = JSON.parse(e.data);
+              if (ev.id && ev.id <= lastEventId) return;
+              lastEventId = ev.id;
+              var logViewer = document.getElementById("inline-log-viewer");
+              var fill = document.getElementById("inline-progress-fill");
+              var progressCard = document.getElementById("upgrade-inline-progress");
+              if (progressCard) progressCard.style.display = "block";
+              if (logViewer) {
+                var entry = document.createElement("div");
+                entry.className = "log-entry";
+                entry.innerHTML = '<span class="step">' + ev.step + '</span>' +
+                  '<span class="status ' + (ev.status === 'success' ? 'text-success' : ev.status === 'failure' ? 'text-danger' : '') + '">' + ev.status + '</span>' +
+                  '<span>' + (ev.message || '') + '</span>';
+                logViewer.appendChild(entry);
+                logViewer.scrollTop = logViewer.scrollHeight;
+              }
+              var steps = ["digest_compare","backup","merge_env","recreate","poll_health","cleanup"];
+              var idx = steps.indexOf(ev.step);
+              if (idx >= 0 && (ev.status === 'success' || ev.status === 'failure')) {
+                var pct = Math.round(((idx + 1) / steps.length) * 100);
+                if (fill) fill.style.width = pct + "%";
+              }
+              if (ev.step === "cleanup" && ev.status === "success") {
+                setTimeout(function() { location.reload(); }, 2000);
+              }
+              if (ev.step === "cleanup" && ev.status === "failure") {
+                if (inlineEventSource) inlineEventSource.close();
+              }
+            } catch(_) {}
+          };
+          inlineEventSource.onerror = function() {
+            /* reconnect automatically */
+          };
+        }
+        var us = document.getElementById("upgrade-inline-progress");
+        if (us && us.style.display !== "none") {
+          connectUpgradeSSE();
+        }
+      `}</script>
     </div>
   );
 };

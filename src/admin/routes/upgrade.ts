@@ -1,13 +1,17 @@
 import { Hono } from "hono";
-import { runUpgrade, getState, subscribe, getEventLog } from "../lib/upgrade";
+import { runUpgrade, getState, getStatus, subscribe, getEventLog } from "../lib/upgrade";
 import { UpgradePage } from "../views/upgrade";
 
 const upgrade = new Hono();
 
+upgrade.get("/api/upgrade/status", (c) => {
+  return c.json(getStatus());
+});
+
 upgrade.post("/api/upgrade", async (c) => {
   const state = getState();
   if (state === "running") {
-    return c.json({ error: "Upgrade already in progress" }, 409);
+    return c.json({ error: "Upgrade already in progress", status: getStatus() }, 409);
   }
   // Fire and forget - run in background
   runUpgrade().catch(() => {});
@@ -39,9 +43,12 @@ upgrade.get("/api/upgrade/log", (c) => {
         }
       });
 
-      // Cleanup on disconnect
-      c.eventPhase; // keep reference alive
-      return () => unsub();
+      // Proper disconnect cleanup via AbortSignal
+      const abortController = new AbortController();
+      c.req.raw.signal.addEventListener("abort", () => {
+        unsub();
+        abortController.abort();
+      });
     },
   });
 

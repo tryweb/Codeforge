@@ -15,6 +15,8 @@ import glabAuthRoutes from "./routes/glab-auth";
 import gitConfigRoutes from "./routes/git-config";
 import sshKeyRoutes from "./routes/ssh-keys";
 import statusRoutes from "./routes/status";
+import { getUpdateCheck } from "./routes/versions";
+import { getStatus as getUpgradeStatus } from "./lib/upgrade";
 import { DashboardPage } from "./views/dashboard";
 
 const app = new Hono();
@@ -139,6 +141,9 @@ app.get("/", async (c) => {
     getVer("docker --version 2>/dev/null | cut -d' ' -f3 | tr -d ',' || echo ''"),
   ]);
 
+  const updateCheck = await getUpdateCheck();
+  const upgradeStatus = getUpgradeStatus();
+
   return c.html(
     DashboardPage({
       container_status: containerRunning ? "running" : "stopped",
@@ -153,6 +158,11 @@ app.get("/", async (c) => {
       glab_auth: glabAuth,
       git_user: gitUser,
       project_count: projectCount,
+      update_check: updateCheck,
+      upgrade_state: upgradeStatus.state,
+      upgrade_events: upgradeStatus.events,
+      upgrade_current_step: upgradeStatus.current_step,
+      upgrade_progress_pct: upgradeStatus.progress_pct,
     })
   );
 });

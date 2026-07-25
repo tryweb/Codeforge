@@ -19,11 +19,14 @@ export type UpgradeStep =
 export type StepStatus = "pending" | "running" | "success" | "failure";
 
 export interface UpgradeEvent {
+  id: number;
   step: UpgradeStep;
   status: StepStatus;
   message: string;
   timestamp: string;
 }
+
+let nextEventId = 1;
 
 export type UpgradeState = "idle" | "running" | "completed" | "failed";
 
@@ -48,6 +51,7 @@ export function subscribe(subscriber: (event: UpgradeEvent) => void): () => void
 
 function emit(step: UpgradeStep, status: StepStatus, message: string): void {
   const event: UpgradeEvent = {
+    id: nextEventId++,
     step,
     status,
     message,
@@ -57,6 +61,21 @@ function emit(step: UpgradeStep, status: StepStatus, message: string): void {
   for (const sub of logSubscribers) {
     sub(event);
   }
+}
+
+export function getStatus(): { state: UpgradeState; events: UpgradeEvent[]; current_step: UpgradeStep | ""; progress_pct: number } {
+  const steps: UpgradeStep[] = ["digest_compare", "backup", "merge_env", "recreate", "poll_health", "cleanup"];
+  const lastRunning = [...eventLog].reverse().find((e) => e.status === "running");
+  const lastFailed = [...eventLog].reverse().find((e) => e.status === "failure");
+  const currentStep = lastFailed?.step || lastRunning?.step || "";
+  const doneSteps = eventLog.filter((e) => e.status === "success").length;
+  const totalSteps = steps.length;
+  return {
+    state: currentState,
+    events: [...eventLog],
+    current_step: currentStep,
+    progress_pct: Math.round((doneSteps / totalSteps) * 100),
+  };
 }
 
 async function sleep(ms: number): Promise<void> {

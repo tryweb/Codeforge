@@ -3,6 +3,97 @@ import { Hono } from "hono";
 import { execInAiDev, dockerCommand, getAiDevContainerRef } from "../lib/docker";
 import { VersionsPage } from "../views/versions";
 
+const GHCR_REPO = "ghcr.io/tryweb/ai-engkit";
+const GHCR_TAGS_URL = `https://ghcr.io/v2/tryweb/ai-engkit/tags/list`;
+
+interface UpdateCheckResult {
+  current: string;
+  latest: string;
+  update_available: boolean;
+  status: "checking" | "up-to-date" | "update-available" | "check-failed";
+  message: string;
+}
+
+// In-memory cache with 5-min TTL
+let cachedCheck: { result: UpdateCheckResult; expiresAt: number } | null = null;
+let inFlightCheck: Promise<UpdateCheckResult> | null = null;
+
+function parseSemver(tag: string): { major: number; minor: number; patch: number } | null {
+  let t = tag.trim();
+  if (t.startsWith("v")) t = t.slice(1);
+  const parts = t.split(".");
+  const nums = parts.map((p) => parseInt(p, 10));
+  if (nums.some(isNaN)) return null;
+  return { major: nums[0] || 0, minor: nums[1] || 0, patch: nums[2] || 0 };
+}
+
+function compareSemver(a: { major: number; minor: number; patch: number }, b: { major: number; minor: number; patch: number }): number {
+  if (a.major !== b.major) return a.major - b.major;
+  if (a.minor !== b.minor) return a.minor - b.minor;
+  return a.patch - b.patch;
+}
+
+function isPreRelease(tag: string): boolean {
+  return /-(rc|beta|alpha|pre|dev)/i.test(tag);
+}
+
+async function fetchLatestRemoteVersion(): Promise<string> {
+  const res = await fetch(GHCR_TAGS_URL, { signal: AbortSignal.timeout(10_000) });
+  if (!res.ok) throw new Error(`GHCR returned ${res.status}`);
+  const data = await res.json() as { tags?: string[] };
+  const tags = (data.tags || []).filter((t: string) => t !== "latest" && !isPreRelease(t));
+  let best: { major: number; minor: number; patch: number } | null = null;
+  let bestTag = "";
+  for (const tag of tags) {
+    const sv = parseSemver(tag);
+    if (!sv) continue;
+    if (!best || compareSemver(sv, best) > 0) {
+      best = sv;
+      bestTag = tag.startsWith("v") ? tag : tag;
+    }
+  }
+  if (!bestTag) throw new Error("No valid semver tag found");
+  return bestTag;
+}
+
+export async function getUpdateCheck(): Promise<UpdateCheckResult> {
+  const now = Date.now();
+  if (cachedCheck && now < cachedCheck.expiresAt) {
+    return cachedCheck.result;
+  }
+  if (inFlightCheck) return inFlightCheck;
+
+  inFlightCheck = (async () => {
+    const current = await getAiEngkitVersion();
+    try {
+      if (current === "dev") {
+        return { current, latest: "", update_available: false, status: "check-failed", message: "Development build" };
+      }
+      const latest = await fetchLatestRemoteVersion();
+      const curSv = parseSemver(current);
+      const latSv = parseSemver(latest);
+      const available = curSv && latSv && compareSemver(latSv, curSv) > 0;
+      const result: UpdateCheckResult = {
+        current,
+        latest: latest.startsWith("v") ? latest : "v" + latest,
+        update_available: !!available,
+        status: available ? "update-available" : "up-to-date",
+        message: available ? `Version ${latest.startsWith("v") ? latest : "v" + latest} available` : "Up to date",
+      };
+      cachedCheck = { result, expiresAt: now + 300_000 };
+      return result;
+    } catch (err) {
+      // Don't overwrite a valid cache with a failure
+      if (cachedCheck) return cachedCheck.result;
+      return { current, latest: "", update_available: false, status: "check-failed", message: err instanceof Error ? err.message : "Check failed" };
+    } finally {
+      inFlightCheck = null;
+    }
+  })();
+
+  return inFlightCheck;
+}
+
 async function getAiEngkitVersion(): Promise<string> {
   try {
     return readFileSync("/opt/ai-engkit/VERSION", "utf-8").trim();
@@ -25,6 +116,11 @@ async function getVersion(name: string, command: string): Promise<string> {
     return "";
   }
 }
+
+versions.get("/api/versions/check-update", async (c) => {
+  const result = await getUpdateCheck();
+  return c.json(result);
+});
 
 versions.get("/api/versions/image", async (c) => {
   const meta: Record<string, string> = {};
