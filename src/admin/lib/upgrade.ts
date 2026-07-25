@@ -87,6 +87,11 @@ export async function runUpgrade(): Promise<boolean> {
     throw new Error("Upgrade already in progress");
   }
 
+  // Pre-flight check: compose file must exist
+  if (!existsSync(COMPOSE_FILE)) {
+    throw new Error(`Compose file not found at ${COMPOSE_FILE}. Upgrade cannot proceed without a compose file.`);
+  }
+
   currentState = "running";
   eventLog = [];
 
