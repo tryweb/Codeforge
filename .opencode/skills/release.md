@@ -26,44 +26,84 @@ echo "[release] Dev container not running. Building and starting..."
 docker compose -f docker-compose.dev.yml up --build -d
 ```
 
-Then wait for the container to be healthy and ready:
+Then wait for both containers to be healthy and ready:
 
 ```bash
-echo "[release] Waiting for container to be ready..."
+echo "[release] Waiting for containers to be ready..."
 for i in $(seq 1 30); do
-  STATUS=$(docker inspect ai-engkit-dev --format='{{.State.Status}}' 2>/dev/null)
-  if [ "$STATUS" = "running" ]; then
-    echo "[release] Container is running."
+  DEV_STATUS=$(docker inspect ai-engkit-dev --format='{{.State.Status}}' 2>/dev/null)
+  ADMIN_STATUS=$(docker inspect ai-engkit-admin-dev --format='{{.State.Status}}' 2>/dev/null)
+  if [ "$DEV_STATUS" = "running" ] && [ "$ADMIN_STATUS" = "running" ]; then
+    echo "[release] Both containers are running."
     break
   fi
   if [ "$i" -eq 30 ]; then
-    echo "[release] ERROR: Container failed to start after 30s."
+    echo "[release] ERROR: Containers failed to start after 30s."
+    echo "[release] ai-engkit-dev status: ${DEV_STATUS:-not found}"
+    echo "[release] ai-engkit-admin-dev status: ${ADMIN_STATUS:-not found}"
     docker compose -f docker-compose.dev.yml logs --tail=20
     exit 1
   fi
   sleep 2
 done
 
-# Brief extra wait for services to initialize inside the container
+# Brief extra wait for services to initialize inside the containers
 sleep 5
 
-# Detect the actual container name from docker-compose (handles mismatched service/container names)
-COMPOSE_CONTAINER=$(docker compose -f docker-compose.dev.yml ps --format '{{.Name}}' 2>/dev/null | head -1)
-if [ -z "$COMPOSE_CONTAINER" ]; then
-  echo "[release] ERROR: Could not detect container name from docker-compose."
+# Detect both container names from docker-compose (avoids alphabetical ordering issue with head -1)
+DEV_CONTAINER="ai-engkit-dev"
+ADMIN_CONTAINER="ai-engkit-admin-dev"
+
+# Verify both are actually running (from this compose file)
+RUNNING_CONTAINERS=$(docker compose -f docker-compose.dev.yml ps --format '{{.Name}}' 2>/dev/null || echo "")
+
+if ! echo "$RUNNING_CONTAINERS" | grep -q "$DEV_CONTAINER"; then
+  echo "[release] ERROR: Main dev container ($DEV_CONTAINER) is not running."
   exit 1
 fi
-echo "[release] Using container: $COMPOSE_CONTAINER"
+if ! echo "$RUNNING_CONTAINERS" | grep -q "$ADMIN_CONTAINER"; then
+  echo "[release] ERROR: Admin container ($ADMIN_CONTAINER) is not running."
+  exit 1
+fi
+echo "[release] Using containers: $DEV_CONTAINER (main), $ADMIN_CONTAINER (admin)"
 ```
 
 ### 2. Run Local Tests
 
+There are three test suites that cover both the main dev container and the admin container separately:
+
 ```bash
-# Pass the detected container name so tests use the correct name
-./test/run-tests.sh "$COMPOSE_CONTAINER"
+# === 1. Main dev container — basic functionality ===
+# Tests: OpenChamber, OpenCode, Web UI, Health API, dev tools, CodeGraph, LeanCTX
+echo "[release] Running main dev container tests against $DEV_CONTAINER..."
+./test/run-tests.sh "$DEV_CONTAINER"
+if [ $? -ne 0 ]; then
+  echo "[release] ERROR: Main dev container tests failed."
+  exit 1
+fi
+
+# === 2. Admin container — dashboard integration ===
+# Tests: container status, healthcheck, auth, OpenAPI spec
+echo "[release] Running admin container tests against $ADMIN_CONTAINER..."
+./test/test-admin.sh "$ADMIN_CONTAINER"
+if [ $? -ne 0 ]; then
+  echo "[release] ERROR: Admin container tests failed."
+  exit 1
+fi
+
+# === 3. Admin UI — smoke tests ===
+# Tests: login flow, dashboard, versions page, static assets
+echo "[release] Running admin UI smoke tests..."
+./test/test-admin-ui.sh
+if [ $? -ne 0 ]; then
+  echo "[release] ERROR: Admin UI smoke tests failed."
+  exit 1
+fi
+
+echo "[release] All tests passed."
 ```
 
-If any test fails, stop and report the failures. Do not proceed with release.
+If any test suite fails, stop and report the failures. Do not proceed with release.
 
 ### 3. Check for Uncommitted Changes
 

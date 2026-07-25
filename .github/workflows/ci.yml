@@ -111,12 +111,20 @@ jobs:
       - name: Run tests
         run: |
           chmod +x test/run-tests.sh
+
+          # === 1. Main dev container — basic functionality ===
           ./test/run-tests.sh ci-test
+
+          # === 2. Admin container — dashboard integration ===
+          ./test/test-admin.sh ai-engkit-admin-dev
+
+          # === 3. Admin UI — smoke tests ===
+          ADMIN_BASE_URL="http://localhost:8081" ./test/test-admin-ui.sh
 
       - name: Collect logs on failure
         if: failure()
         run: |
-          docker compose -f docker-compose.dev.yml logs ci-test || true
+          docker compose -f docker-compose.dev.yml logs ci-test ai-engkit-admin-dev || true
           docker compose -f docker-compose.dev.yml ps || true
 
       - name: Cleanup
