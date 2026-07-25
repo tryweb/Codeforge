@@ -167,7 +167,7 @@ export async function runUpgrade(): Promise<boolean> {
     emit("cleanup", "running", "Cleaning up old images and restarting admin dashboard...");
     await dockerCommand("image prune -f", 60_000);
     // Restart admin container so getUpdateCheck() compares the new image
-    await dockerCommand(`compose -f ${COMPOSE_FILE} up -d --force-recreate ai-admin`, 120_000);
+    await dockerCommand(`compose --env-file ${ENV_FILE} -f ${COMPOSE_FILE} up -d --force-recreate ai-admin`, 120_000);
     emit("cleanup", "success", "Upgrade complete");
 
     currentState = "completed";

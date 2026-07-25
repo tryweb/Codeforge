@@ -60,9 +60,10 @@ env.post("/api/env/restart", async (c) => {
 
   // Prefer compose recreate (picks up new .env vars); fall back to docker restart
   const composePath = "/opt/ai-engkit/compose.yml";
+  const envFilePath = "/opt/ai-engkit/.env";
   if (existsSync(composePath)) {
     const result = await dockerCommand(
-      `compose -f ${composePath} up -d --force-recreate ai-dev 2>&1`,
+      `compose --env-file ${envFilePath} -f ${composePath} up -d --force-recreate ai-dev 2>&1`,
       120_000,
     );
     if (result.exitCode === 0) return c.json({ ok: true });
