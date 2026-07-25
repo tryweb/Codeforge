@@ -55,7 +55,7 @@ export const Layout: FC<LayoutProps> = ({ title, children, currentPath }) => {
                       <span>{item.label}</span>
                     </a>
               ))}
-              <a href="https://github.com/tryweb/ai-engkit" target="_blank" rel="noopener" style="margin-top:auto;font-size:0.75rem;color:var(--text-muted);">
+              <a href="https://github.com/tryweb/ai-engkit" target="_blank" rel="noopener" style="margin-top:auto;">
                 <span>🛈</span><span>About</span>
               </a>
               <a href="/api/logout" style="margin-top:8px;border-top:1px solid var(--border);padding-top:16px;">
