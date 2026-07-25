@@ -8,6 +8,7 @@ const GhAuthContent: FC<{ status: string }> = ({ status }) => {
     <div>
       <h2 style="margin-bottom:24px;">GitHub CLI Authentication</h2>
       <div class="card">
+        <div id="gh-user-info" />
         <h3>Status: <span class={`badge ${authenticated ? "badge-success" : "badge-warning"}`}>{status}</span></h3>
         {authenticated
           ? <button onclick="logout()" class="btn-danger">Disconnect GitHub</button>
@@ -23,6 +24,17 @@ const GhAuthContent: FC<{ status: string }> = ({ status }) => {
         <div id="poll-status" class="text-sm text-muted mt-4" />
       </div>
       <script>{html`
+        fetch("/api/auth/gh/user").then(r => r.json()).then(function(u) {
+          if (u.login) {
+            var el = document.getElementById("gh-user-info");
+            el.innerHTML = '<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid var(--border);">' +
+              '<img src="' + u.avatar_url + '" alt="" style="width:48px;height:48px;border-radius:50%;" />' +
+              '<div><strong style="font-size:1.05rem;">' + u.login + '</strong>' +
+              (u.name ? '<br/><span class="text-muted" style="font-size:0.85rem;">' + u.name + '</span>' : '') +
+              (u.scopes && u.scopes.length ? '<br/><span class="text-muted" style="font-size:0.75rem;">Scopes: ' + u.scopes.join(", ") + '</span>' : '') +
+              '</div></div>';
+          }
+        });
         let pollInterval = null;
         async function startAuth() {
           document.getElementById("auth-flow").style.display = "block";
