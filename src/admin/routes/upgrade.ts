@@ -1,6 +1,11 @@
+import { readFileSync } from "fs";
 import { Hono } from "hono";
 import { runUpgrade, getState, getStatus, subscribe, getEventLog } from "../lib/upgrade";
 import { UpgradePage } from "../views/upgrade";
+
+const VERSION = (() => {
+  try { return readFileSync("/opt/ai-engkit/VERSION", "utf-8").trim(); } catch { return "unknown"; }
+})();
 
 const upgrade = new Hono();
 
@@ -56,7 +61,7 @@ upgrade.get("/api/upgrade/log", (c) => {
 });
 
 upgrade.get("/upgrade", (c) => {
-  return c.html(UpgradePage());
+  return c.html(UpgradePage({ devBuild: VERSION === "dev" }));
 });
 
 export default upgrade;

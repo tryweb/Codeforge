@@ -45,6 +45,12 @@ export async function getUpdateCheck(): Promise<UpdateCheckResult> {
 
   inFlightCheck = (async () => {
     const current = await getAiEngkitVersion();
+    // Dev builds (AI_ENGKIT_VERSION=dev) should not compare against GHCR releases
+    if (current === "dev") {
+      const result: UpdateCheckResult = { current, latest: "", update_available: false, status: "up-to-date", message: "Dev build" };
+      cachedCheck = { result, expiresAt: now + 300_000 };
+      return result;
+    }
     const [remoteDigest, localDigest] = await Promise.all([
       getRemoteDigest(),
       getLocalDigest(),

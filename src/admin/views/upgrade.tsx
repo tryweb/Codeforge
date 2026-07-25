@@ -2,16 +2,23 @@ import type { FC } from "hono/jsx";
 import { html } from "hono/html";
 import { Layout } from "./layout";
 
-const UpgradeContent: FC = () => (
+const UpgradeContent: FC<{ devBuild?: boolean }> = ({ devBuild }) => (
   <div>
     <h2 style="margin-bottom:24px;">Upgrade Engine</h2>
     <div id="status-banner" />
+    {devBuild ? (
+      <div class="card" style="border-color:var(--accent);">
+        <h3>Not Available in Dev Build</h3>
+        <p class="text-sm text-muted">This environment is a locally-built dev image. Upgrade is only available for production releases pulled from <code>ghcr.io/tryweb/ai-engkit:latest</code>.</p>
+      </div>
+    ) : (
     <div class="card">
       <h3>Upgrade ai-dev Container</h3>
       <p class="text-sm text-muted mb-4">Pulls the latest image, backs up config, recreates the ai-dev container.</p>
       <button id="start-upgrade" onclick="startUpgrade()">▲ Start Upgrade</button>
       <button id="cancel-upgrade" class="btn-danger" style="display:none;margin-left:8px;" onclick="cancelUpgrade()">Cancel</button>
     </div>
+    )}
     <div class="card" id="progress-card" style="display:none;">
       <h3>Progress</h3>
       <div class="progress-bar mb-4"><div class="fill" id="progress-fill" style="width:0%;" /></div>
@@ -94,10 +101,10 @@ const UpgradeContent: FC = () => (
   </div>
 );
 
-export function UpgradePage() {
+export function UpgradePage({ devBuild }: { devBuild?: boolean }) {
   return (
     <Layout title="Upgrade" currentPath="/upgrade">
-      <UpgradeContent />
+      <UpgradeContent devBuild={devBuild} />
     </Layout>
   );
 }

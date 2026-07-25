@@ -1,5 +1,5 @@
 import { execInAiDev, composeCommand, dockerCommand } from "./docker";
-import { readFileSync, writeFileSync, existsSync, mkdirSync, cpSync, rmSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, cpSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { readEnvFile, writeEnvFile } from "./env";
 
@@ -87,9 +87,26 @@ export async function runUpgrade(): Promise<boolean> {
     throw new Error("Upgrade already in progress");
   }
 
-  // Pre-flight check: compose file must exist
-  if (!existsSync(COMPOSE_FILE)) {
-    throw new Error(`Compose file not found at ${COMPOSE_FILE}. Upgrade cannot proceed without a compose file.`);
+  // Pre-flight: ensure compose file is a regular file (not a DooD-empty directory)
+  try {
+    const st = statSync(COMPOSE_FILE);
+    if (st.isDirectory()) {
+      rmSync(COMPOSE_FILE, { recursive: true });
+      const siblingName = await (await import("./docker")).getSiblingDevContainerName().catch(() => "ai-engkit-dev");
+      writeFileSync(COMPOSE_FILE, `services:\n  ai-dev:\n    image: ${IMAGE}\n    container_name: ${siblingName}\n    restart: unless-stopped\n`);
+    }
+  } catch {
+    const siblingName = await (await import("./docker")).getSiblingDevContainerName().catch(() => "ai-engkit-dev");
+    writeFileSync(COMPOSE_FILE, `services:\n  ai-dev:\n    image: ${IMAGE}\n    container_name: ${siblingName}\n    restart: unless-stopped\n`);
+  }
+
+  // Dev build guard: version=dev indicates a locally-built image, skip upgrade
+  let localVersion = "dev";
+  try {
+    localVersion = readFileSync("/opt/ai-engkit/VERSION", "utf-8").trim();
+  } catch {}
+  if (localVersion === "dev") {
+    throw new Error("Dev build detected. Upgrade is only available for production releases (ghcr.io/tryweb/ai-engkit:latest).");
   }
 
   currentState = "running";
@@ -113,7 +130,10 @@ export async function runUpgrade(): Promise<boolean> {
       cpSync(ENV_FILE, join(backupPath, ".env"));
     }
     if (existsSync(COMPOSE_FILE)) {
-      cpSync(COMPOSE_FILE, join(backupPath, "compose.yml"));
+      try {
+        const st = statSync(COMPOSE_FILE);
+        if (!st.isDirectory()) cpSync(COMPOSE_FILE, join(backupPath, "compose.yml"));
+      } catch {}
     }
     emit("backup", "success", `Backup saved to ${backupPath}`);
 
@@ -125,11 +145,13 @@ export async function runUpgrade(): Promise<boolean> {
     // Step 4: Recreate ai-dev
     emit("recreate", "running", "Recreating ai-dev container with new image...");
     const recreateResult = await composeCommand(
-      `-f "${COMPOSE_FILE}" up -d --force-recreate ai-dev`,
+      `-f ${COMPOSE_FILE} up -d --force-recreate ai-dev`,
       300_000,
     );
     if (recreateResult.exitCode !== 0) {
-      throw new Error(`Failed to recreate ai-dev: ${recreateResult.stderr}`);
+      throw new Error(
+        `Failed to recreate ai-dev: ${recreateResult.stderr || recreateResult.stdout || `exit code ${recreateResult.exitCode}`}`,
+      );
     }
     emit("recreate", "success", "ai-dev container recreated");
 
