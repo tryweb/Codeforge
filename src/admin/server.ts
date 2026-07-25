@@ -30,7 +30,7 @@ app.use("/static/*", serveStatic({ root: "/opt/admin" }));
 
 // Rate limiting store
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
-const RATE_LIMIT = 30;
+const RATE_LIMIT = 120;
 const RATE_WINDOW = 60_000;
 
 async function rateLimit(c: any, next: any) {
@@ -38,7 +38,7 @@ async function rateLimit(c: any, next: any) {
   // Skip rate limiting for static assets and health checks
   if (path === "/healthz" || path.startsWith("/static/")) return next();
 
-  const ip = c.req.header("x-forwarded-for") || "local";
+  const ip = c.req.header("x-forwarded-for") || c.req.header("x-real-ip") || c.req.raw.remoteAddress || "local";
   const now = Date.now();
   const entry = rateLimitMap.get(ip);
 
