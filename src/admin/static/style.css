@@ -93,6 +93,7 @@ label { display: block; margin-bottom: 4px; color: var(--text-muted); font-size:
 /* Tables */
 table { width: 100%; border-collapse: collapse; }
 th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+.text-center { text-align: center !important; }
 th { color: var(--text-muted); font-weight: 500; font-size: var(--text-sm); text-transform: uppercase; letter-spacing: 0.05em; }
 
 /* Status badges */

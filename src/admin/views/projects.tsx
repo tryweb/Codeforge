@@ -23,14 +23,14 @@ const ProjectsContent: FC<{ projects: string[] }> = ({ projects }) => (
       </div>
     </div>
     <div class="card">
-      <table id="projects-table" style="text-align:center;">
-        <tr><th style="text-align:left;">Name</th><th>Knowledge</th><th>Maintenance</th><th>OpenSpec</th></tr>
+      <table id="projects-table">
+        <tr><th>Name</th><th class="text-center">Knowledge</th><th class="text-center">Maintenance</th><th class="text-center">OpenSpec</th></tr>
         {projects.map(name => (
           <tr data-project={name}>
-            <td style="text-align:left;"><code>{name}</code></td>
-            <td class="feat-cell" data-feat="knowledge"><span class="text-muted">...</span></td>
-            <td class="feat-cell" data-feat="maintenance"><span class="text-muted">...</span></td>
-            <td class="feat-cell" data-feat="openspec"><span class="text-muted">...</span></td>
+            <td><code>{name}</code></td>
+            <td class="feat-cell text-center" data-feat="knowledge"><span class="text-muted">...</span></td>
+            <td class="feat-cell text-center" data-feat="maintenance"><span class="text-muted">...</span></td>
+            <td class="feat-cell text-center" data-feat="openspec"><span class="text-muted">...</span></td>
           </tr>
         ))}
         {projects.length === 0 && <tr><td colspan="4" class="text-muted">No projects yet</td></tr>}
