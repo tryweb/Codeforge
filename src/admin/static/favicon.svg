@@ -1,59 +1,73 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 560" width="100%" height="100%">
   <defs>
-    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#1c1e22"/>
-      <stop offset="100%" stop-color="#0d0e10"/>
-    </linearGradient>
     <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
-      <feGaussianBlur stdDeviation="12" result="blur"/>
+      <feGaussianBlur stdDeviation="10" result="blur"/>
       <feMerge>
         <feMergeNode in="blur"/>
         <feMergeNode in="SourceGraphic"/>
       </feMerge>
     </filter>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#212224"/>
+      <stop offset="100%" stop-color="#151618"/>
+    </linearGradient>
   </defs>
-  <rect width="512" height="512" rx="96" fill="url(#bg)"/>
-  <g transform="translate(256, 200) scale(0.85) translate(-256, -210)">
-    <polygon points="256,80 416,170 416,330 256,420 96,330 96,170" fill="#2a2d32" stroke="#ffffff" stroke-width="10" stroke-linejoin="round"/>
-    <polygon points="256,260 256,420 96,330 96,170" fill="#3a3f47"/>
-    <polygon points="256,260 256,420 416,330 416,170" fill="#1a2a1e"/>
-    <polygon points="256,80 256,260 96,170 96,330" fill="#4a4f57"/>
-    <polygon points="256,80 256,260 416,170 416,330" fill="#2a2d32"/>
-    <polygon points="256,80 416,170 416,330 256,420 96,330 96,170" fill="#3d4048"/>
-    <g stroke="#ffffff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none">
-      <polygon points="256,80 416,170 416,330 256,420 96,330 96,170"/>
-      <line x1="256" y1="260" x2="256" y2="420"/>
-      <line x1="256" y1="260" x2="96" y2="170"/>
-      <line x1="256" y1="260" x2="416" y2="170"/>
+  <rect width="512" height="560" rx="96" fill="url(#bg)"/>
+  <g transform="translate(0, 30)">
+    <polygon points="100,190 200,248 200,365 100,307" fill="#585c63"/>
+    <polygon points="200,248 300,190 300,307 200,365" fill="#0d2b20"/>
+    <polygon points="200,132 300,190 200,248 100,190" fill="#1d2024"/>
+    <g transform="translate(150, 268) skewY(28.7) scale(0.9, 1.1)">
+      <g transform="scale(1.3)" stroke="#ffffff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" fill="none">
+        <path d="M -20,-10 L -30,0 L -20,10"/>
+        <path d="M 20,-10 L 30,0 L 20,10"/>
+        <line x1="-6" y1="18" x2="6" y2="-18" stroke-width="8"/>
+      </g>
     </g>
-    <g stroke="#ffffff" stroke-width="5" stroke-linecap="round" fill="none">
-      <path d="M 155,310 L 145,316 L 155,322"/>
-      <path d="M 175,310 L 185,316 L 175,322"/>
-      <line x1="160" y1="326" x2="166" y2="306"/>
+    <g transform="translate(250, 268) skewY(-28.7) scale(0.9, 1.1)">
+      <g transform="scale(1.1)" stroke="#00e676" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" fill="none">
+        <g transform="translate(0, -10)">
+          <path d="M -20,10 A 20,20 0 0,1 20,10" stroke="#ffffff" stroke-width="6"/>
+          <line x1="-10" y1="10" x2="-2" y2="-8" stroke="#00e676" stroke-width="6"/>
+          <circle cx="-10" cy="10" r="3" fill="#00e676"/>
+        </g>
+        <path d="M -25,25 L -25,45 L -10,45"/>
+        <g transform="translate(-10, 40)">
+          <rect x="-10" y="-12" width="30" height="18" rx="3" stroke="#00e676"/>
+          <line x1="-2" y1="-5" x2="15" y2="-5" stroke-width="4"/>
+          <line x1="-2" y1="3" x2="15" y2="3" stroke-width="4"/>
+          <circle cx="19" cy="-5" r="2.2" fill="#00e676"/>
+          <circle cx="19" cy="3" r="2.2" fill="#00e676"/>
+        </g>
+      </g>
     </g>
-    <g stroke="#00e676" stroke-width="4" stroke-linecap="round" fill="none">
-      <path d="M 305,300 A 20,20 0 0,1 340,280" stroke="#ffffff" stroke-width="4.5"/>
-      <line x1="318" y1="296" x2="332" y2="282" stroke="#00e676" stroke-width="4.5"/>
-      <rect x="340" y="288" width="30" height="18" rx="3" stroke="#00e676" stroke-width="3.5"/>
-      <line x1="345" y1="295" x2="357" y2="295" stroke="#00e676" stroke-width="2.5"/>
-      <circle cx="363" cy="295" r="1.5" fill="#00e676"/>
-      <line x1="345" y1="301" x2="357" y2="301" stroke="#00e676" stroke-width="2.5"/>
-      <circle cx="363" cy="301" r="1.5" fill="#00e676"/>
-      <circle cx="305" cy="305" r="3" fill="#1a2a1e" stroke="#00e676" stroke-width="2.5"/>
+    <g stroke="#00e676" stroke-width="3" stroke-linecap="round" fill="none">
+      <line x1="200" y1="180" x2="160" y2="157" stroke="#ffffff"/>
+      <line x1="200" y1="180" x2="240" y2="157"/>
+      <line x1="200" y1="180" x2="200" y2="210"/>
+      <path d="M160,157 L200,132 L240,157"/>
+      <path d="M160,157 L160,190"/>
+      <path d="M240,157 L240,190"/>
+      <path d="M160,190 L200,210 L240,190"/>
+      <circle cx="160" cy="157" r="4.5" fill="#ffffff" stroke="none"/>
+      <circle cx="240" cy="157" r="4.5" fill="#00e676" stroke="none"/>
+      <circle cx="200" cy="210" r="4.5" fill="#00e676" stroke="none"/>
+      <circle cx="160" cy="190" r="4.5" fill="#00e676" stroke="none"/>
+      <circle cx="240" cy="190" r="4.5" fill="#00e676" stroke="none"/>
     </g>
-    <g stroke="#ffffff" stroke-width="4" stroke-linecap="round" fill="none">
-      <line x1="200" y1="140" x2="256" y2="170"/>
-      <line x1="305" y1="140" x2="256" y2="170"/>
-      <line x1="256" y1="170" x2="256" y2="260"/>
-      <line x1="256" y1="170" x2="96" y2="170"/>
-      <line x1="256" y1="170" x2="416" y2="170"/>
+    <g stroke="#ffffff" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" fill="none">
+      <polygon points="200,132 300,190 300,307 200,365 100,307 100,190"/>
+      <line x1="200" y1="248" x2="200" y2="365"/>
+      <line x1="200" y1="248" x2="100" y2="190"/>
+      <line x1="200" y1="248" x2="300" y2="190"/>
     </g>
-    <circle cx="256" cy="80" r="18" fill="#00e676" filter="url(#glow)"/>
-    <circle cx="256" cy="80" r="10" fill="#ffffff"/>
-    <circle cx="416" cy="250" r="18" fill="#00e676" filter="url(#glow)"/>
-    <circle cx="416" cy="250" r="10" fill="#ffffff"/>
-    <circle cx="96" cy="250" r="12" fill="#00e676" filter="url(#glow)"/>
-    <circle cx="96" cy="250" r="7" fill="#ffffff"/>
+    <g filter="url(#glow)">
+      <circle cx="200" cy="132" r="16" fill="#00e676"/>
+      <circle cx="200" cy="132" r="11" fill="#ffffff"/>
+      <circle cx="298" cy="189" r="16" fill="#00e676"/>
+      <circle cx="298" cy="189" r="11" fill="#ffffff"/>
+      <circle cx="298" cy="308" r="16" fill="#00e676"/>
+      <circle cx="298" cy="308" r="11" fill="#ffffff"/>
+    </g>
   </g>
-  <text x="256" y="490" font-family="system-ui, -apple-system, sans-serif" font-weight="700" font-size="56" fill="#ffffff" text-anchor="middle">AI-EngKit</text>
 </svg>
