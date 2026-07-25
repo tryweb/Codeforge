@@ -79,6 +79,11 @@ jobs:
       - name: Load image
         run: docker load -i /tmp/image.tar
 
+      - name: Create .env for CI
+        run: |
+          cp .env.example .env
+          sed -i 's/^ADMIN_PASSWORD=.*/ADMIN_PASSWORD=testadmin123/' .env
+
       - name: Start services
         run: |
           cat > docker-compose.override.yml << 'EOF'
