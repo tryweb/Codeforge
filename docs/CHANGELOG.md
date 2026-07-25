@@ -1,6 +1,12 @@
 ## [Unreleased]
 
 
+## [1.5.1] - 2026-07-25
+
+### Fixed
+- Add `--env-file` to env-restart compose command (fixes "Compose recreate failed" after env save)
+- Add `--env-file` to post-upgrade admin restart for consistency
+
 ## [1.5.0] - 2026-07-25
 
 ### Added
@@ -844,7 +850,7 @@
 
 ## Format
 
-[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.5.0...HEAD
+[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.5.1...HEAD
 [0.3.0]: https://github.com/tryweb/ai-engkit/releases/tag/v0.3.0
 [0.3.3]: https://github.com/tryweb/ai-engkit/compare/v0.3.0...v0.3.3
 [0.5.0]: https://github.com/tryweb/ai-engkit/compare/v0.3.3...v0.5.0
@@ -939,4 +945,5 @@
 [1.4.0]: https://github.com/tryweb/ai-engkit/compare/v1.3.0...v1.4.0
 [1.4.1]: https://github.com/tryweb/ai-engkit/compare/v1.4.0...v1.4.1
 [1.4.2]: https://github.com/tryweb/ai-engkit/compare/v1.4.1...v1.4.2
+[1.5.1]: https://github.com/tryweb/ai-engkit/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/tryweb/ai-engkit/compare/v1.4.2...v1.5.0
