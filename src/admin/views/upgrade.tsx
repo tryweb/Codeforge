@@ -26,14 +26,26 @@ const UpgradeContent: FC<{ devBuild?: boolean }> = ({ devBuild }) => (
     </div>
     <script>{html`
       let eventSource = null;
+      let lastEventId = 0;
       async function startUpgrade() {
         document.getElementById("start-upgrade").disabled = true;
         document.getElementById("start-upgrade").textContent = "Running...";
         document.getElementById("progress-card").style.display = "block";
         const res = await fetch("/api/upgrade", { method: "POST" });
+        if (res.status === 409) {
+          const data = await res.json();
+          if (data.status && data.status.state === "running") {
+            connectLog();
+            return;
+          }
+          alert("Upgrade already in progress");
+          document.getElementById("start-upgrade").disabled = false;
+          document.getElementById("start-upgrade").textContent = "▲ Start Upgrade";
+          return;
+        }
         if (!res.ok) {
           const data = await res.json();
-          alert(data.error || "Upgrade already in progress");
+          alert(data.error || "Failed to start upgrade");
           document.getElementById("start-upgrade").disabled = false;
           document.getElementById("start-upgrade").textContent = "▲ Start Upgrade";
           return;
@@ -41,12 +53,16 @@ const UpgradeContent: FC<{ devBuild?: boolean }> = ({ devBuild }) => (
         connectLog();
       }
       function connectLog() {
+        document.getElementById("progress-card").style.display = "block";
+        if (eventSource) eventSource.close();
         eventSource = new EventSource("/api/upgrade/log");
         const steps = ["digest_compare","backup","merge_env","recreate","poll_health","cleanup"];
         const stepIdx = {};
         steps.forEach((s, i) => stepIdx[s] = i);
         eventSource.onmessage = (e) => {
           const ev = JSON.parse(e.data);
+          if (ev.id && ev.id <= lastEventId) return;
+          lastEventId = ev.id;
           const viewer = document.getElementById("log-viewer");
           const entry = document.createElement("div");
           entry.className = "log-entry";
@@ -76,26 +92,16 @@ const UpgradeContent: FC<{ devBuild?: boolean }> = ({ devBuild }) => (
             eventSource.close();
           }
         };
-        eventSource.onerror = () => { eventSource.close(); };
+        eventSource.onerror = function() {};
       }
       function cancelUpgrade() {
         if (eventSource) eventSource.close();
         document.getElementById("start-upgrade").disabled = false;
         document.getElementById("start-upgrade").textContent = "▲ Start Upgrade";
       }
-      fetch("/api/upgrade/log?history=1").then(r => r.json()).then(events => {
-        if (events.length > 0) {
-          document.getElementById("progress-card").style.display = "block";
-          const viewer = document.getElementById("log-viewer");
-          events.forEach(ev => {
-            const entry = document.createElement("div"); entry.className = "log-entry";
-            entry.innerHTML = '<span class="time">' + new Date(ev.timestamp).toLocaleTimeString() + '</span>' +
-              '<span class="step">' + ev.step + '</span>' +
-              '<span class="status ' + (ev.status === 'success' ? 'text-success' : ev.status === 'failure' ? 'text-danger' : '') + '">' + ev.status + '</span>' +
-              '<span>' + ev.message + '</span>';
-            viewer.appendChild(entry);
-          });
-        }
+      // Auto-connect if upgrade is already running on page load
+      fetch("/api/upgrade/status").then(r => r.json()).then(s => {
+        if (s.state === "running") connectLog();
       });
     `}</script>
   </div>
