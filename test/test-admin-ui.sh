@@ -37,7 +37,7 @@ echo ""
 
 # 1. Login page renders
 LOGIN_HTML=$(curl -s "$BASE/login" 2>/dev/null || echo "")
-assert_contains "Login page loads" "ai-admin" "$LOGIN_HTML"
+assert_contains "Login page loads" "AI-EngKit Admin" "$LOGIN_HTML"
 assert_contains "Login page has password field" "password" "$LOGIN_HTML"
 assert_contains "Login page has form" "form" "$LOGIN_HTML"
 
@@ -53,7 +53,7 @@ else
 fi
 
 # 3. Login attempt (get session cookie)
-ADMIN_PASSWORD="${ADMIN_PASSWORD:-admin}"
+ADMIN_PASSWORD="${ADMIN_PASSWORD:-testadmin123}"
 LOGIN_RES=$(curl -s -c "$COOKIE_JAR" -b "$COOKIE_JAR" \
   -X POST "$BASE/api/login" \
   -H "Content-Type: application/json" \
