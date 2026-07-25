@@ -6,8 +6,10 @@ const ProjectsContent: FC<{ projects: string[] }> = ({ projects }) => (
   <div>
     <div class="flex items-center justify-between mb-4">
       <h2>OpenCode Projects</h2>
-      <button onclick="syncProjects()" class="btn-outline">↻ Sync</button>
-      <button onclick="showCreateForm()" class="btn" style="margin-left:8px;">+ New Project</button>
+      <div class="flex gap-2">
+        <button onclick="syncProjects()" class="btn-outline">↻ Sync</button>
+        <button onclick="showCreateForm()" class="btn-outline">+ New Project</button>
+      </div>
     </div>
     <div id="sync-modal" class="modal-overlay" style="display:none;">
       <div class="modal">
@@ -21,11 +23,11 @@ const ProjectsContent: FC<{ projects: string[] }> = ({ projects }) => (
       </div>
     </div>
     <div class="card">
-      <table id="projects-table">
-        <tr><th>Name</th><th>Knowledge</th><th>Maintenance</th><th>OpenSpec</th></tr>
+      <table id="projects-table" style="text-align:center;">
+        <tr><th style="text-align:left;">Name</th><th>Knowledge</th><th>Maintenance</th><th>OpenSpec</th></tr>
         {projects.map(name => (
           <tr data-project={name}>
-            <td><code>{name}</code></td>
+            <td style="text-align:left;"><code>{name}</code></td>
             <td class="feat-cell" data-feat="knowledge"><span class="text-muted">...</span></td>
             <td class="feat-cell" data-feat="maintenance"><span class="text-muted">...</span></td>
             <td class="feat-cell" data-feat="openspec"><span class="text-muted">...</span></td>
