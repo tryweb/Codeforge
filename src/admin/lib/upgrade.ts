@@ -145,7 +145,7 @@ export async function runUpgrade(): Promise<boolean> {
     // Step 4: Recreate ai-dev
     emit("recreate", "running", "Recreating ai-dev container with new image...");
     const recreateResult = await composeCommand(
-      `-f ${COMPOSE_FILE} up -d --force-recreate ai-dev`,
+      `--env-file ${ENV_FILE} -f ${COMPOSE_FILE} up -d --force-recreate ai-dev`,
       300_000,
     );
     if (recreateResult.exitCode !== 0) {
@@ -164,9 +164,11 @@ export async function runUpgrade(): Promise<boolean> {
     emit("poll_health", "success", "ai-dev is healthy");
 
     // Step 6: Cleanup
-    emit("cleanup", "running", "Cleaning up old images...");
+    emit("cleanup", "running", "Cleaning up old images and restarting admin dashboard...");
     await dockerCommand("image prune -f", 60_000);
-    emit("cleanup", "success", "Cleanup complete");
+    // Restart admin container so getUpdateCheck() compares the new image
+    await dockerCommand(`compose -f ${COMPOSE_FILE} up -d --force-recreate ai-admin`, 120_000);
+    emit("cleanup", "success", "Upgrade complete");
 
     currentState = "completed";
     return true;
