@@ -1,6 +1,92 @@
 ## [Unreleased]
 
 
+## [1.4.0] - 2026-07-25
+
+### Added
+- Replace About link with modal dialog
+- Add About link at bottom of sidebar
+- Apply Zinc/Emerald color scheme + menu reorg + Inter font
+- Add SSH key delete functionality
+- Auto-check GHCR for new ai-engkit version + inline upgrade on Dashboard
+- GitLab multi-instance auth with token support
+- Auto-register generated SSH keys with ssh-agent
+- Add Deploy button to SSH Keys table with Linux/Windows deploy command copy
+- Add project sync with OpenChamber
+- Add git error handling and post-creation remote management
+- Add git init and remote URL to project creation
+- Replace Init OpenCode with project feature enablement (knowledge, maintenance, openspec)
+- Auto-register new projects in OpenChamber settings
+- Add restart ai-dev button to env editor
+- Restrict dashboard Component Versions to AI-EngKit, OpenCode, OpenChamber, Docker
+- Align admin dashboard typography with OpenChamber
+- Embed AI-EngKit version into image and expose in admin UI
+- Integrate ai-admin as Docker sidecar service
+- Add ai-admin dashboard server and views
+
+### Fixed
+- Replace favicon with final AI-EngKit logo version
+- Refine favicon SVG - remove red/orange accents, keep green glow only
+- Optimize favicon SVG to match PNG logo design
+- Replace favicon with new 3D cube Dev/Ops/AI logo
+- Remove smaller font from About link, match nav default
+- Center feature columns in Projects table
+- Match Projects header to env page layout + center feature columns
+- Promote +New Project to primary button, reorder with Sync
+- Update favicon from blue-purple gradient to Zinc/Emerald
+- Reorder sidebar menu per user preference
+- Exclude static assets and health check from rate limiting
+- Detect dev mode in upgrade pipeline, skip unnecessary docker pull
+- Dev admin container missing compose.yml mount causes upgrade to hang
+- Gh device code flow blocks indefinitely, run in background
+- Replace Deploy popup with inline Linux/Win buttons
+- Copy button in SSH Keys pubkey modal now works on HTTP pages
+- Resolve Hono JSX inline script escaping in 4 view files; add baked playwright skill for subagent usage
+- Fix All button hidden due to duplicate style attr in sync modal
+- Show Cancel button when sync modal has no diffs
+- Properly detect empty git repo and fetch on remote set, improve error display
+- Fetch remote content when setting git URL on empty or detached repo
+- Add batch overview endpoint to avoid rate limiting
+- Clone repo when remote URL provided, handle empty-dir init
+- Prevent HTML escaping of inline script in projects page
+- Prevent HTML escaping of inline script in env editor
+- Make env editor work in DooD dev environment
+- Wrap dockerCommand in sh -c so shell constructs (pipes, redirects) work
+- Correct version extraction for Playwright and Node
+- Correct version extraction for OpenChamber, glab, Node, Playwright
+- Forward session cookie in versions page self-fetch
+- Resolve login 500, logout 404, and DooD test port detection
+- Align release skill CHANGELOG fallback format with existing convention
+- Populate CHANGELOG v1.3.0 with commit content and fix release skill
+
+### Changed
+- Share single image between ai-dev and ai-admin in dev compose
+- Bump OpenCode 1.18.4→1.18.5, Playwright 1.61.1→1.62.0
+- Archive completed changes, extract Agent Connection Module
+- Remove dead 'Initialize with OpenCode' checkbox from project creation
+- Align ENV_SCHEMA with README and clean up dev env noise
+- Archive completed redesign-versions-page change
+- Add OpenSpec change definition for ai-admin-dashboard
+- Add admin dashboard integration and UI smoke tests
+
+### Documentation
+- Unify product name casing to AI-EngKit in all user-facing text
+- Add missing knowledge entries from earlier sessions
+- Add production verification plan for upgrade and env editor
+- Document dev verification limitations for upgrade and env editor
+- Add knowledge entry for environment-agnostic operations pipeline
+- Add knowledge entry for GitLab multi-instance auth
+- Add knowledge entry for SSH key auto-registration with ssh-agent
+- Add project-sync spec and fill task gaps in openspec artifacts
+- Sync openspec artifacts with actual implementation
+- Add OpenChamber project auto-registration pattern
+- Add self-version-embedding pattern + update DooD troublshooting with solution C
+- Add ai-admin service architecture and usage documentation
+
+### Changed
+- Upgrade OpenCode from 1.18.4 to 1.18.5.
+- Upgrade Playwright from 1.61.1 to 1.62.0.
+
 ## [1.3.0] - 2026-07-24
 
 ### Added
@@ -720,7 +806,7 @@
 
 ## Format
 
-[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.4.0...HEAD
 [0.3.0]: https://github.com/tryweb/ai-engkit/releases/tag/v0.3.0
 [0.3.3]: https://github.com/tryweb/ai-engkit/compare/v0.3.0...v0.3.3
 [0.5.0]: https://github.com/tryweb/ai-engkit/compare/v0.3.3...v0.5.0
@@ -812,3 +898,4 @@
 [1.2.0]: https://github.com/tryweb/ai-engkit/compare/v1.1.23...v1.2.0
 [1.2.1]: https://github.com/tryweb/ai-engkit/compare/v1.2.0...v1.2.1
 [1.3.0]: https://github.com/tryweb/ai-engkit/compare/v1.2.1...v1.3.0
+[1.4.0]: https://github.com/tryweb/ai-engkit/compare/v1.3.0...v1.4.0
