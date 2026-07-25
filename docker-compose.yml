@@ -31,7 +31,7 @@ services:
   ai-admin:
     image: ghcr.io/tryweb/ai-engkit:latest
     container_name: ai-engkit-admin
-    entrypoint: ["/usr/bin/tini", "--"]
+    entrypoint: ["/usr/bin/tini", "--", "/entrypoint.sh"]
     working_dir: /opt/admin
     command: ["bun", "run", "/opt/admin/server.ts"]
     ports:
