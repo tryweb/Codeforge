@@ -1,6 +1,17 @@
 ## [Unreleased]
 
 
+## [1.4.2] - 2026-07-25
+
+### Fixed
+- Replace GHCR HTTP version check with Docker digest comparison
+- Fix bug
+- Add working_dir to ai-admin for correct JSX transform
+- Make admin port mapping respect ADMIN_PORT env var
+
+### Changed
+- Remove ADMIN_DEV_PORT from .env.example
+
 ## [1.4.1] - 2026-07-25
 
 ### Added
@@ -814,7 +825,7 @@
 
 ## Format
 
-[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.4.1...HEAD
+[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.4.2...HEAD
 [0.3.0]: https://github.com/tryweb/ai-engkit/releases/tag/v0.3.0
 [0.3.3]: https://github.com/tryweb/ai-engkit/compare/v0.3.0...v0.3.3
 [0.5.0]: https://github.com/tryweb/ai-engkit/compare/v0.3.3...v0.5.0
@@ -908,3 +919,4 @@
 [1.3.0]: https://github.com/tryweb/ai-engkit/compare/v1.2.1...v1.3.0
 [1.4.0]: https://github.com/tryweb/ai-engkit/compare/v1.3.0...v1.4.0
 [1.4.1]: https://github.com/tryweb/ai-engkit/compare/v1.4.0...v1.4.1
+[1.4.2]: https://github.com/tryweb/ai-engkit/compare/v1.4.1...v1.4.2
