@@ -2,22 +2,54 @@ import type { FC } from "hono/jsx";
 import { html } from "hono/html";
 import { Layout } from "./layout";
 
-const GlabAuthContent: FC<{ status: string }> = ({ status }) => {
+interface GlabInstance {
+  hostname: string;
+  username: string;
+  authenticated: boolean;
+}
+
+const GlabInstanceRow: FC<{ inst: GlabInstance }> = ({ inst }) => (
+  <tr>
+    <td><code>{inst.hostname}</code></td>
+    <td>{inst.username || <span class="text-muted">—</span>}</td>
+    <td><span class={`badge ${inst.authenticated ? "badge-success" : "badge-warning"}`}>{inst.authenticated ? "authenticated" : "not authenticated"}</span></td>
+    <td><button class="btn-outline" style="padding:3px 6px;font-size:0.7rem;" onclick={`removeInstance('${inst.hostname}')`}>Remove</button></td>
+  </tr>
+);
+
+const GlabAuthContent: FC<{ instances: GlabInstance[]; status: string }> = ({ instances, status }) => {
   const authenticated = status === "authenticated";
   return (
     <div>
       <h2 style="margin-bottom:24px;">GitLab CLI Authentication</h2>
+
       <div class="card">
-        <h3>Status: <span class={`badge ${authenticated ? "badge-success" : "badge-warning"}`}>{status}</span></h3>
-        <div class="form-group">
-          <label for="hostname">GitLab Instance (for self-hosted)</label>
-          <input type="text" id="hostname" placeholder="gitlab.com" value="gitlab.com" />
-        </div>
-        {authenticated
-          ? <button onclick="logout()" class="btn-danger">Disconnect GitLab</button>
-          : <button onclick="startAuth()" class="btn">Connect GitLab</button>
+        <h3>Configured Instances</h3>
+        {instances.length > 0
+          ? <table>
+              <tr><th>Hostname</th><th>User</th><th>Status</th><th></th></tr>
+              {instances.map(inst => <GlabInstanceRow inst={inst} />)}
+            </table>
+          : <p class="text-muted">No GitLab instances configured.</p>
         }
       </div>
+
+      <div class="card">
+        <h3>Add Instance</h3>
+        <div class="form-group">
+          <label for="hostname">GitLab Host URL</label>
+          <input type="text" id="hostname" placeholder="gitlab-238.ichiayi.com" />
+        </div>
+        <div class="form-group">
+          <label for="token">Personal Access Token</label>
+          <div style="display:flex;gap:4px;">
+            <input type="password" id="token" placeholder="glpat-..." style="flex:1;" />
+            <button class="btn-outline" style="padding:4px 10px;font-size:0.75rem;" onclick="toggleTokenVis()">Show</button>
+          </div>
+        </div>
+        <button onclick="startAuth()" class="btn">Connect</button>
+      </div>
+
       <div id="auth-flow" style="display:none;" class="card">
         <h3>Device Code</h3>
         <p class="text-sm text-muted">Open the verification URL and enter the code below.</p>
@@ -28,36 +60,32 @@ const GlabAuthContent: FC<{ status: string }> = ({ status }) => {
       </div>
       <script>{html`
         let pollInterval = null;
+        function toggleTokenVis() {
+          const el = document.getElementById("token");
+          const btn = el.nextElementSibling;
+          if (el.type === "password") { el.type = "text"; btn.textContent = "Hide"; }
+          else { el.type = "password"; btn.textContent = "Show"; }
+        }
         async function startAuth() {
-          const hostname = document.getElementById("hostname").value.trim() || "gitlab.com";
-          document.getElementById("auth-flow").style.display = "block";
+          const hostname = document.getElementById("hostname").value.trim();
+          if (!hostname) { alert("Please enter a GitLab host URL"); return; }
+          const token = document.getElementById("token").value.trim();
+          if (!token) { alert("Please enter a Personal Access Token"); return; }
+          const btn = event.target;
+          btn.disabled = true; btn.textContent = "Connecting...";
           const res = await fetch("/api/auth/glab/start", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ hostname, token }),
+          });
+          if (res.ok) { location.reload(); }
+          else { const d = await res.json(); alert(d.error || "Auth failed"); btn.disabled = false; btn.textContent = "Connect"; }
+        }
+        async function removeInstance(hostname) {
+          if (!confirm("Remove \\"" + hostname + "\\"? Logout from this GitLab instance.")) return;
+          await fetch("/api/auth/glab/logout", {
             method: "POST", headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ hostname }),
           });
-          const data = await res.json();
-          document.getElementById("device-code-display").textContent = data.device_code || "---";
-          document.getElementById("verification-url").textContent = data.verification_uri || "https://gitlab.com/activate";
-          document.getElementById("verification-url").href = data.verification_uri || "https://gitlab.com/activate";
-          let countdown = 900;
-          document.getElementById("countdown").textContent = "Code expires in " + Math.floor(countdown / 60) + ":" + String(countdown % 60).padStart(2, "0");
-          const countInterval = setInterval(() => { countdown--;
-            if (countdown <= 0) clearInterval(countInterval);
-            document.getElementById("countdown").textContent = "Code expires in " + Math.floor(countdown / 60) + ":" + String(countdown % 60).padStart(2, "0"); }, 1000);
-          pollInterval = setInterval(async () => {
-            const statusRes = await fetch("/api/auth/glab/status");
-            const statusData = await statusRes.json();
-            if (statusData.status === "authenticated") {
-              clearInterval(pollInterval); clearInterval(countInterval);
-              document.getElementById("poll-status").innerHTML = '<strong class="text-success">✓ Authenticated!</strong>';
-              setTimeout(() => location.reload(), 1500);
-            } else {
-              document.getElementById("poll-status").textContent = "Waiting for authentication...";
-            }
-          }, 3000);
-        }
-        async function logout() {
-          await fetch("/api/auth/glab/logout", { method: "POST" });
           location.reload();
         }
       `}</script>
@@ -65,10 +93,10 @@ const GlabAuthContent: FC<{ status: string }> = ({ status }) => {
   );
 };
 
-export function GitLabAuthPage(status: string) {
+export function GitLabAuthPage(instances: GlabInstance[], status: string) {
   return (
     <Layout title="GitLab Auth" currentPath="/auth/gitlab">
-      <GlabAuthContent status={status} />
+      <GlabAuthContent instances={instances} status={status} />
     </Layout>
   );
 }
