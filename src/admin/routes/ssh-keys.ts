@@ -54,6 +54,18 @@ sshKeys.post("/api/ssh/keys", async (c) => {
   return c.json({ ok: true });
 });
 
+sshKeys.delete("/api/ssh/keys/:name", async (c) => {
+  const name = c.req.param("name");
+  const result = await execInAiDev(
+    `ssh-add -d ~/.ssh/${JSON.stringify(name)} 2>/dev/null; rm -f ~/.ssh/${JSON.stringify(name)} ~/.ssh/${JSON.stringify(name)}.pub; echo ok`,
+    15_000,
+  );
+  if (result.exitCode !== 0) {
+    return c.json({ error: result.stderr || "Failed to delete key" }, 500);
+  }
+  return c.json({ ok: true });
+});
+
 sshKeys.get("/api/ssh/keys/:name/pub", async (c) => {
   const name = c.req.param("name");
   const result = await execInAiDev(`cat ~/.ssh/${JSON.stringify(name)}.pub 2>/dev/null || true`, 10_000);

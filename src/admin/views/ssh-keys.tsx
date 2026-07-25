@@ -16,7 +16,7 @@ const SshKeysContent: FC<{ keys: SshKey[] }> = ({ keys }) => (
     </div>
     <div class="card">
       <table>
-        <tr><th>Name</th><th>Type</th><th>Fingerprint</th><th></th><th></th></tr>
+        <tr><th>Name</th><th>Type</th><th>Fingerprint</th><th></th><th></th><th></th></tr>
         {keys.map(k => (
           <tr>
             <td><code>{k.name}</code></td>
@@ -27,9 +27,10 @@ const SshKeysContent: FC<{ keys: SshKey[] }> = ({ keys }) => (
               <button class="btn-outline" style="padding:3px 6px;font-size:0.7rem;margin-right:4px;" onclick={`copyDeploy('${k.name}','linux')`}>Linux</button>
               <button class="btn-outline" style="padding:3px 6px;font-size:0.7rem;" onclick={`copyDeploy('${k.name}','windows')`}>Win</button>
             </td>
+            <td><button class="btn-outline" style="padding:3px 6px;font-size:0.7rem;color:var(--danger);border-color:var(--danger);" onclick={`deleteKey('${k.name}')`}>✕</button></td>
           </tr>
         ))}
-        {keys.length === 0 && <tr><td colspan="5" class="text-muted">No SSH keys found</td></tr>}
+        {keys.length === 0 && <tr><td colspan="6" class="text-muted">No SSH keys found</td></tr>}
       </table>
     </div>
     <div id="generate-modal" class="modal-overlay" style="display:none;">
@@ -99,6 +100,12 @@ const SshKeysContent: FC<{ keys: SshKey[] }> = ({ keys }) => (
         }
         btn.textContent = "\u2713 Copied!";
         setTimeout(function() { btn.textContent = orig; }, 2000);
+      }
+      async function deleteKey(name) {
+        if (!confirm('Delete SSH key "' + name + '"? This will permanently remove the private key. You will lose SSH access to any host using this key.')) return;
+        const res = await fetch("/api/ssh/keys/" + encodeURIComponent(name), { method: "DELETE" });
+        if (res.ok) { location.reload(); }
+        else { const d = await res.json(); alert(d.error || "Failed to delete key"); }
       }
       async function copyPubKey() {
         const el = document.getElementById("pubkey-content");
