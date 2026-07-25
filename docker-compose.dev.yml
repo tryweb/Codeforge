@@ -43,7 +43,6 @@ services:
     ports:
       - "${ADMIN_DEV_PORT:-8081}:8080"
     volumes:
-      - ./docker-compose.dev.yml:/opt/ai-engkit/compose.yml:rw
       - ./backups:/opt/ai-engkit/backups:rw
       - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
