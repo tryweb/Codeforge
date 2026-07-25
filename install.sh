@@ -326,10 +326,32 @@ setup_env() {
     esac
 }
 
+prepare_volumes() {
+    echo
+    echo "========================================"
+    echo "6. 準備 Volume 目錄"
+    echo "========================================"
+
+    echo "  建立 ./backups （供 admin 容器備份使用）..."
+    mkdir -p ./backups
+    chmod 777 ./backups
+    echo "  ✅ ./backups 已就緒"
+
+    echo "  建立 ./workspace （供 code 編輯使用）..."
+    WS_PATH=$(grep -E "^WORKSPACE_PATH=" .env 2>/dev/null | cut -d= -f2- || echo "")
+    if [ -n "$WS_PATH" ]; then
+        WS_PATH=$(eval echo "$WS_PATH" 2>/dev/null || true)
+        if [ ! -d "$WS_PATH" ]; then
+            mkdir -p "$WS_PATH"
+        fi
+    fi
+    echo "  ✅ workspace 目錄已確認"
+}
+
 start_services() {
     echo
     echo "========================================"
-    echo "6. 啟動服務"
+    echo "7. 啟動服務"
     echo "========================================"
 
     echo "  執行 docker compose up -d..."
@@ -353,7 +375,7 @@ start_services() {
 show_info() {
     echo
     echo "========================================"
-    echo "7. 連線資訊"
+    echo "8. 連線資訊"
     echo "========================================"
 
     HOST_IP=""
@@ -438,6 +460,7 @@ main() {
     check_and_prepare_volumes
     download_files
     setup_env
+    prepare_volumes
     start_services
     show_info
 }

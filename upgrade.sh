@@ -230,10 +230,31 @@ pull_image() {
 }
 
 # ──────────────────────────────────────────────────────────
+# Prepare host volumes for admin container
+# ──────────────────────────────────────────────────────────
+prepare_volumes() {
+    header "7. 準備 Volume 目錄"
+
+    mkdir -p ./backups
+    chmod 777 ./backups
+    ok "./backups 已就緒"
+
+    local ws_path
+    ws_path=$(grep -E "^WORKSPACE_PATH=" .env 2>/dev/null | cut -d= -f2- || true)
+    if [ -n "$ws_path" ]; then
+        ws_path=$(eval echo "$ws_path" 2>/dev/null || true)
+        if [ ! -d "$ws_path" ]; then
+            mkdir -p "$ws_path"
+            ok "workspace 目錄已建立: ${ws_path}"
+        fi
+    fi
+}
+
+# ──────────────────────────────────────────────────────────
 # Recreate containers
 # ──────────────────────────────────────────────────────────
 recreate_containers() {
-    header "7. 重建容器"
+    header "8. 重建容器"
 
     if [ -f ".env" ]; then
         local ws_path
@@ -271,7 +292,7 @@ recreate_containers() {
 # Clean up dangling images
 # ──────────────────────────────────────────────────────────
 cleanup_images() {
-    header "8. 清理舊映像"
+    header "9. 清理舊映像"
 
     local pruned
     pruned=$(docker image prune -f 2>&1 | grep -oP 'Total reclaimed space: \K.*' || true)
@@ -387,6 +408,7 @@ main() {
     update_compose
     merge_env
     pull_image
+    prepare_volumes
     recreate_containers
     cleanup_images
     show_info
