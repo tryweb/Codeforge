@@ -1,73 +1,138 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 560" width="100%" height="100%">
+<svg id="centeredLogoSvg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 560" width="100%" height="100%">
   <defs>
     <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
-      <feGaussianBlur stdDeviation="10" result="blur"/>
+      <feGaussianBlur stdDeviation="8" result="blur"></feGaussianBlur>
       <feMerge>
-        <feMergeNode in="blur"/>
-        <feMergeNode in="SourceGraphic"/>
+        <feMergeNode in="blur"></feMergeNode>
+        <feMergeNode in="SourceGraphic"></feMergeNode>
+      </feMerge>
+    </filter>
+    <filter id="glow-strong" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="12" result="blur1"></feGaussianBlur>
+      <feGaussianBlur stdDeviation="4" result="blur2"></feGaussianBlur>
+      <feMerge>
+        <feMergeNode in="blur1"></feMergeNode>
+        <feMergeNode in="blur2"></feMergeNode>
+        <feMergeNode in="SourceGraphic"></feMergeNode>
       </feMerge>
     </filter>
     <linearGradient id="bg" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#212224"/>
-      <stop offset="100%" stop-color="#151618"/>
+      <stop offset="0%" stop-color="#1e2025"></stop>
+      <stop offset="100%" stop-color="#111215"></stop>
+    </linearGradient>
+    <linearGradient id="aiFaceGrad" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#1f1a14"></stop>
+      <stop offset="100%" stop-color="#3d2b12"></stop>
+    </linearGradient>
+    <linearGradient id="devFaceGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2d3139"></stop>
+      <stop offset="100%" stop-color="#16181d"></stop>
+    </linearGradient>
+    <linearGradient id="opsFaceGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0e3326"></stop>
+      <stop offset="100%" stop-color="#0a1d17"></stop>
+    </linearGradient>
+    <linearGradient id="aiAccent" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fbbf24"></stop>
+      <stop offset="100%" stop-color="#f59e0b"></stop>
     </linearGradient>
   </defs>
-  <rect width="512" height="560" rx="96" fill="url(#bg)"/>
-  <g transform="translate(0, 30)">
-    <polygon points="100,190 200,248 200,365 100,307" fill="#585c63"/>
-    <polygon points="200,248 300,190 300,307 200,365" fill="#0d2b20"/>
-    <polygon points="200,132 300,190 200,248 100,190" fill="#1d2024"/>
-    <g transform="translate(150, 268) skewY(28.7) scale(0.9, 1.1)">
-      <g transform="scale(1.3)" stroke="#ffffff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" fill="none">
-        <path d="M -20,-10 L -30,0 L -20,10"/>
-        <path d="M 20,-10 L 30,0 L 20,10"/>
-        <line x1="-6" y1="18" x2="6" y2="-18" stroke-width="8"/>
+  <rect width="512" height="560" rx="48" fill="url(#bg)" stroke="#2a2d35" stroke-width="2"></rect>
+  <g opacity="0.05" stroke="#ffffff" stroke-width="1">
+    <line x1="256" y1="0" x2="256" y2="560"></line>
+    <line x1="0" y1="270" x2="512" y2="270"></line>
+  </g>
+  <g id="logoMainGroup">
+    <polygon id="faceAI" points="256,130 386,205 256,280 126,205" fill="url(#aiFaceGrad)" stroke="#f59e0b" stroke-width="1.5" stroke-opacity="0.5"></polygon>
+    <polygon id="faceDev" points="126,205 256,280 256,430 126,355" fill="url(#devFaceGrad)" stroke="#64748b" stroke-width="1.5" stroke-opacity="0.4"></polygon>
+    <polygon id="faceOps" points="256,280 386,205 386,355 256,430" fill="url(#opsFaceGrad)" stroke="#00e676" stroke-width="1.5" stroke-opacity="0.4"></polygon>
+    <g id="devContent" transform="translate(191, 317.5) skewY(30) scale(0.88, 1)">
+      <g stroke="#ffffff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none">
+        <path d="M -22,-12 L -34,0 L -22,12"></path>
+        <path d="M 22,-12 L 34,0 L 22,12"></path>
+        <line x1="-7" y1="20" x2="7" y2="-20" stroke-width="7"></line>
+      </g>
+      <g stroke="#38bdf8" stroke-width="3" stroke-linecap="round" fill="none" opacity="0.8">
+        <path d="M -35,38 L 0,38 L 20,55"></path>
+        <circle cx="-35" cy="38" r="3" fill="#38bdf8"></circle>
+        <circle cx="0" cy="38" r="3" fill="#38bdf8"></circle>
+        <circle cx="20" cy="55" r="3" fill="#38bdf8"></circle>
       </g>
     </g>
-    <g transform="translate(250, 268) skewY(-28.7) scale(0.9, 1.1)">
-      <g transform="scale(1.1)" stroke="#00e676" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" fill="none">
-        <g transform="translate(0, -10)">
-          <path d="M -20,10 A 20,20 0 0,1 20,10" stroke="#ffffff" stroke-width="6"/>
-          <line x1="-10" y1="10" x2="-2" y2="-8" stroke="#00e676" stroke-width="6"/>
-          <circle cx="-10" cy="10" r="3" fill="#00e676"/>
-        </g>
-        <path d="M -25,25 L -25,45 L -10,45"/>
-        <g transform="translate(-10, 40)">
-          <rect x="-10" y="-12" width="30" height="18" rx="3" stroke="#00e676"/>
-          <line x1="-2" y1="-5" x2="15" y2="-5" stroke-width="4"/>
-          <line x1="-2" y1="3" x2="15" y2="3" stroke-width="4"/>
-          <circle cx="19" cy="-5" r="2.2" fill="#00e676"/>
-          <circle cx="19" cy="3" r="2.2" fill="#00e676"/>
-        </g>
+    <g id="opsContent" transform="translate(321, 317.5) skewY(-30) scale(0.88, 1)">
+      <rect x="-38" y="-40" width="76" height="80" rx="10" stroke="#00e676" stroke-width="2.5" stroke-opacity="0.8" fill="#062318" fill-opacity="0.75"></rect>
+      <line x1="-38" y1="-22" x2="38" y2="-22" stroke="#00e676" stroke-width="1.5" opacity="0.4"></line>
+      <circle cx="-28" cy="-31" r="2.5" fill="#00e676"></circle>
+      <circle cx="-20" cy="-31" r="2.5" fill="#38bdf8"></circle>
+      <circle cx="28" cy="-31" r="2.5" fill="#00e676"></circle>
+      <g transform="translate(0, -2)">
+        <path d="M -22,8 A 22,22 0 1,1 22,8" stroke="#104a35" stroke-width="5" stroke-linecap="round" fill="none"></path>
+        <path d="M -22,8 A 22,22 0 0,1 15.5,-15.5" stroke="#00e676" stroke-width="5" stroke-linecap="round" fill="none"></path>
+        <line x1="-16" y1="8" x2="-12" y2="8" stroke="#00e676" stroke-width="2"></line>
+        <line x1="12" y1="8" x2="16" y2="8" stroke="#00e676" stroke-width="2"></line>
+        <line x1="0" y1="-14" x2="0" y2="-10" stroke="#00e676" stroke-width="2"></line>
+        <line x1="0" y1="8" x2="12" y2="-12" stroke="#ffffff" stroke-width="3" stroke-linecap="round"></line>
+        <circle cx="0" cy="8" r="4" fill="#00e676"></circle>
+        <circle cx="0" cy="8" r="2" fill="#ffffff"></circle>
+      </g>
+      <g transform="translate(0, 24)">
+        <rect x="-26" y="-10" width="6" height="16" rx="1.5" fill="#00e676" opacity="0.4"></rect>
+        <rect x="-16" y="-16" width="6" height="22" rx="1.5" fill="#00e676" opacity="0.7"></rect>
+        <rect x="-6" y="-22" width="6" height="28" rx="1.5" fill="#00e676" opacity="1"></rect>
+        <rect x="4" y="-12" width="6" height="18" rx="1.5" fill="#00e676" opacity="0.6"></rect>
+        <rect x="14" y="-18" width="6" height="24" rx="1.5" fill="#38bdf8" opacity="0.9"></rect>
+        <path d="M -23,-2 L -13,-10 L -3,-18 L 7,-8 L 17,-14" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"></path>
       </g>
     </g>
-    <g stroke="#00e676" stroke-width="3" stroke-linecap="round" fill="none">
-      <line x1="200" y1="180" x2="160" y2="157" stroke="#ffffff"/>
-      <line x1="200" y1="180" x2="240" y2="157"/>
-      <line x1="200" y1="180" x2="200" y2="210"/>
-      <path d="M160,157 L200,132 L240,157"/>
-      <path d="M160,157 L160,190"/>
-      <path d="M240,157 L240,190"/>
-      <path d="M160,190 L200,210 L240,190"/>
-      <circle cx="160" cy="157" r="4.5" fill="#ffffff" stroke="none"/>
-      <circle cx="240" cy="157" r="4.5" fill="#00e676" stroke="none"/>
-      <circle cx="200" cy="210" r="4.5" fill="#00e676" stroke="none"/>
-      <circle cx="160" cy="190" r="4.5" fill="#00e676" stroke="none"/>
-      <circle cx="240" cy="190" r="4.5" fill="#00e676" stroke="none"/>
+    <g id="aiContent">
+      <polygon points="256,155 342,205 256,255 170,205" fill="#2a1f0c" fill-opacity="0.7" stroke="#f59e0b" stroke-width="1.5"></polygon>
+      <polygon points="256,180 299,205 256,230 213,205" fill="#422c0e" fill-opacity="0.85" stroke="#fbbf24" stroke-width="2"></polygon>
+      <g stroke="#f59e0b" stroke-width="1.5" stroke-linecap="round" opacity="0.85">
+        <line x1="213" y1="205" x2="156" y2="205"></line>
+        <line x1="234" y1="192.5" x2="198" y2="171.5"></line>
+        <line x1="256" y1="180" x2="256" y2="148"></line>
+        <line x1="278" y1="192.5" x2="314" y2="171.5"></line>
+        <line x1="299" y1="205" x2="356" y2="205"></line>
+        <line x1="278" y1="217.5" x2="314" y2="238.5"></line>
+        <line x1="256" y1="230" x2="256" y2="262"></line>
+        <line x1="234" y1="217.5" x2="198" y2="238.5"></line>
+      </g>
+      <g fill="#fbbf24">
+        <circle cx="156" cy="205" r="3.5"></circle>
+        <circle cx="198" cy="171.5" r="3.5"></circle>
+        <circle cx="256" cy="148" r="3.5"></circle>
+        <circle cx="314" cy="171.5" r="3.5"></circle>
+        <circle cx="356" cy="205" r="3.5"></circle>
+        <circle cx="314" cy="238.5" r="3.5"></circle>
+        <circle cx="256" cy="262" r="3.5"></circle>
+        <circle cx="198" cy="238.5" r="3.5"></circle>
+      </g>
+      <g transform="translate(256, 205)" filter="url(#glow)">
+        <line x1="-12" y1="-7" x2="12" y2="7" stroke="#ffffff" stroke-width="1" opacity="0.6"></line>
+        <line x1="-12" y1="7" x2="12" y2="-7" stroke="#ffffff" stroke-width="1" opacity="0.6"></line>
+        <path d="M 0,-11 Q 0,0 -11,0 Q 0,0 0,11 Q 0,0 11,0 Q 0,0 0,-11 Z" fill="#ffffff"></path>
+        <circle cx="0" cy="0" r="2.5" fill="#f59e0b"></circle>
+      </g>
     </g>
-    <g stroke="#ffffff" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" fill="none">
-      <polygon points="200,132 300,190 300,307 200,365 100,307 100,190"/>
-      <line x1="200" y1="248" x2="200" y2="365"/>
-      <line x1="200" y1="248" x2="100" y2="190"/>
-      <line x1="200" y1="248" x2="300" y2="190"/>
+    <g stroke="#ffffff" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" fill="none">
+      <polygon points="256,130 386,205 386,355 256,430 126,355 126,205"></polygon>
+      <line x1="256" y1="280" x2="256" y2="430"></line>
+      <line x1="256" y1="280" x2="126" y2="205"></line>
+      <line x1="256" y1="280" x2="386" y2="205"></line>
     </g>
-    <g filter="url(#glow)">
-      <circle cx="200" cy="132" r="16" fill="#00e676"/>
-      <circle cx="200" cy="132" r="11" fill="#ffffff"/>
-      <circle cx="298" cy="189" r="16" fill="#00e676"/>
-      <circle cx="298" cy="189" r="11" fill="#ffffff"/>
-      <circle cx="298" cy="308" r="16" fill="#00e676"/>
-      <circle cx="298" cy="308" r="11" fill="#ffffff"/>
+    <g filter="url(#glow-strong)">
+      <circle cx="256" cy="130" r="12" fill="#f59e0b"></circle>
+      <circle cx="256" cy="130" r="7" fill="#ffffff"></circle>
+      <circle cx="386" cy="205" r="10" fill="#00e676"></circle>
+      <circle cx="386" cy="205" r="6" fill="#ffffff"></circle>
+      <circle cx="386" cy="355" r="10" fill="#00e676"></circle>
+      <circle cx="386" cy="355" r="6" fill="#ffffff"></circle>
+      <circle cx="256" cy="280" r="14" fill="#38bdf8"></circle>
+      <circle cx="256" cy="280" r="8" fill="#ffffff"></circle>
+      <circle cx="126" cy="355" r="10" fill="#38bdf8"></circle>
+      <circle cx="126" cy="355" r="6" fill="#ffffff"></circle>
+      <circle cx="126" cy="205" r="10" fill="#f59e0b"></circle>
+      <circle cx="126" cy="205" r="6" fill="#ffffff"></circle>
     </g>
   </g>
 </svg>
