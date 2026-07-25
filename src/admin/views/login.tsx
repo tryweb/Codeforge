@@ -6,7 +6,7 @@ export function LoginPage(redirect?: string) {
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Login — ai-admin</title>
+  <title>Login — AI-EngKit Admin</title>
   <link rel="icon" type="image/svg+xml" href="/static/favicon.svg" />
   <link rel="alternate icon" href="/static/favicon.ico" sizes="any" />
   <link rel="stylesheet" href="/static/style.css" />
@@ -14,7 +14,7 @@ export function LoginPage(redirect?: string) {
 <body>
   <div class="auth-page">
     <div class="auth-card">
-      <h1>ai-admin</h1>
+      <h1>AI-EngKit Admin</h1>
       <p>Enter your admin password to continue.</p>
       <form action="/api/login" method="POST">
         <input type="hidden" name="redirect" value="${redirect || "/"}" />

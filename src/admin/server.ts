@@ -183,7 +183,7 @@ app.get("/api/openapi.json", (c) => {
   return c.json({
     openapi: "3.0.3",
     info: {
-      title: "ai-admin API",
+      title: "AI-EngKit Admin API",
       version: "1.0.0",
       description: "Local REST API for AI-EngKit admin dashboard",
     },
