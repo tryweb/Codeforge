@@ -1,12 +1,40 @@
 import { Hono } from "hono";
-import { isAiDevRunning, getAiDevUptime } from "../lib/docker";
+import { isAiDevRunning, getAiDevUptime, getSelfContainerRef, dockerCommand } from "../lib/docker";
 import { execInAiDev } from "../lib/docker";
 import { readEnvFile } from "../lib/env";
+import { readFileSync } from "node:fs";
 
 const status_route = new Hono();
 
+async function getAdminVersion(): Promise<string> {
+  try {
+    return readFileSync("/opt/ai-engkit/VERSION", "utf-8").trim();
+  } catch {
+    return "unknown";
+  }
+}
+
+async function getAdminImageDigest(): Promise<string | null> {
+  const ref = await getSelfContainerRef();
+  const result = await dockerCommand(
+    `inspect --format='{{.Image}}' ${ref}`,
+    10_000,
+  );
+  if (result.exitCode !== 0 || !result.stdout) return null;
+  return result.stdout.trim();
+}
+
+async function getAiDevImageDigest(): Promise<string | null> {
+  const result = await dockerCommand(
+    `inspect --format='{{.Image}}' ai-engkit`,
+    10_000,
+  );
+  if (result.exitCode !== 0 || !result.stdout) return null;
+  return result.stdout.trim();
+}
+
 status_route.get("/api/status", async (c) => {
-  const [containerRunning, uptime, ghResult, glabResult, gitResult, projectsResult] =
+  const [containerRunning, uptime, ghResult, glabResult, gitResult, projectsResult, adminVersion, adminDigest, aiDevDigest] =
     await Promise.all([
       isAiDevRunning(),
       getAiDevUptime(),
@@ -14,6 +42,9 @@ status_route.get("/api/status", async (c) => {
       execInAiDev("glab auth status 2>&1 || true", 10_000),
       execInAiDev("git config --global user.name 2>/dev/null || echo ''", 10_000),
       execInAiDev("ls ~/workspace/ 2>/dev/null | wc -l || echo '0'", 10_000),
+      getAdminVersion(),
+      getAdminImageDigest(),
+      getAiDevImageDigest(),
     ]);
 
   const ghAuth = ghResult.stdout.includes("Logged in") || ghResult.stderr.includes("Logged in")
@@ -24,6 +55,7 @@ status_route.get("/api/status", async (c) => {
     : "not authenticated";
   const gitUser = gitResult.stdout.trim();
   const projectCount = parseInt(projectsResult.stdout.trim() || "0", 10);
+  const adminVersionMismatch = adminDigest !== null && aiDevDigest !== null && adminDigest !== aiDevDigest;
 
   return c.json({
     container_status: containerRunning ? "running" : "stopped",
@@ -33,6 +65,8 @@ status_route.get("/api/status", async (c) => {
     glab_auth: glabAuth,
     git_user: gitUser,
     project_count: projectCount,
+    admin_version: adminVersion,
+    admin_version_mismatch: adminVersionMismatch,
   });
 });
 

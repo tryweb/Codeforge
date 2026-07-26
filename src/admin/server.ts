@@ -15,10 +15,12 @@ import ghAuthRoutes from "./routes/gh-auth";
 import glabAuthRoutes from "./routes/glab-auth";
 import gitConfigRoutes from "./routes/git-config";
 import sshKeyRoutes from "./routes/ssh-keys";
+import adminRoutes from "./routes/admin";
 import statusRoutes from "./routes/status";
 import { getUpdateCheck } from "./routes/versions";
 import { getStatus as getUpgradeStatus } from "./lib/upgrade";
 import { DashboardPage } from "./views/dashboard";
+import { getSelfContainerRef, dockerCommand } from "./lib/docker";
 
 const app = new Hono();
 
@@ -108,6 +110,7 @@ app.route("/", ghAuthRoutes);
 app.route("/", glabAuthRoutes);
 app.route("/", gitConfigRoutes);
 app.route("/", sshKeyRoutes);
+app.route("/", adminRoutes);
 
 // Dashboard main page — gathers data directly instead of HTTP loopback
 app.get("/", async (c) => {
@@ -155,6 +158,18 @@ app.get("/", async (c) => {
   const updateCheck = await getUpdateCheck();
   const upgradeStatus = getUpgradeStatus();
 
+  const [adminDigest, aiDevDigest] = await Promise.all([
+    (async () => {
+      const ref = await getSelfContainerRef();
+      const result = await dockerCommand(`inspect --format='{{.Image}}' ${ref}`, 10_000);
+      return result.exitCode === 0 && result.stdout ? result.stdout.trim() : null;
+    })(),
+    (async () => {
+      const result = await dockerCommand(`inspect --format='{{.Image}}' ai-engkit`, 10_000);
+      return result.exitCode === 0 && result.stdout ? result.stdout.trim() : null;
+    })(),
+  ]);
+
   return c.html(
     DashboardPage({
       container_status: containerRunning ? "running" : "stopped",
@@ -174,6 +189,8 @@ app.get("/", async (c) => {
       upgrade_events: upgradeStatus.events,
       upgrade_current_step: upgradeStatus.current_step,
       upgrade_progress_pct: upgradeStatus.progress_pct,
+      admin_version: aiEngkitVer,
+      admin_version_mismatch: adminDigest !== null && aiDevDigest !== null && adminDigest !== aiDevDigest,
     })
   );
 });

@@ -31,6 +31,8 @@ interface DashboardData {
   upgrade_events: UpgradeEvent[];
   upgrade_current_step: string;
   upgrade_progress_pct: number;
+  admin_version: string;
+  admin_version_mismatch: boolean;
 }
 
 const UpdateBadge: FC<{ check: UpdateCheckResult }> = ({ check }) => {
@@ -62,6 +64,16 @@ const DashboardContent: FC<{ data: DashboardData }> = ({ data }) => {
             <span class={`badge ${isRunning ? "badge-success" : "badge-danger"}`}>{data.container_status}</span>
             {data.uptime_seconds != null && <span class="text-sm text-muted">Uptime: {Math.floor(data.uptime_seconds / 60)}m</span>}
           </div>
+          {data.admin_version_mismatch && (
+            <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);">
+              <div class="flex items-center gap-2">
+                <span class="text-sm">ai-admin</span>
+                <span class="badge badge-warning" style="font-size:0.65rem;">⚠ v{data.admin_version}</span>
+                <button onclick="restartAdmin()" class="btn-outline" style="padding:2px 8px;font-size:0.7rem;color:var(--danger);border-color:var(--danger);">↻ Restart</button>
+              </div>
+              <p class="text-sm text-muted" style="margin-top:4px;">Admin container needs restart to match ai-dev version</p>
+            </div>
+          )}
         </div>
         <div class="card">
           <h3>Projects</h3>
@@ -134,6 +146,31 @@ const DashboardContent: FC<{ data: DashboardData }> = ({ data }) => {
           }
           if (!res.ok) { alert("Failed to start upgrade"); return; }
           connectUpgradeSSE();
+        }
+        async function restartAdmin() {
+          if (!confirm("Restart admin container? Dashboard will reload in ~3 seconds.")) return;
+          const btn = event.target;
+          btn.disabled = true;
+          btn.textContent = "Restarting...";
+          try {
+            const res = await fetch("/api/admin/restart", { method: "POST" });
+            if (res.ok) {
+              const poll = setInterval(async () => {
+                try {
+                  const h = await fetch("/healthz");
+                  if (h.ok) { clearInterval(poll); location.reload(); }
+                } catch {}
+              }, 1000);
+            } else {
+              alert("Failed to restart admin");
+              btn.disabled = false;
+              btn.textContent = "↻ Restart";
+            }
+          } catch (e) {
+            alert("Error: " + e.message);
+            btn.disabled = false;
+            btn.textContent = "↻ Restart";
+          }
         }
         function ensureProgressElements() {
           var card = document.querySelector(".card h3");
