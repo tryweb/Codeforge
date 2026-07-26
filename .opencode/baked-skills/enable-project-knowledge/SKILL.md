@@ -5,7 +5,7 @@ description: Bootstrap project-local knowledge base with docs/knowledge/ structu
 
 # Enable Project Knowledge
 
-Bootstraps `docs/knowledge/` + `.opencode/skills/knowledge-capture.md` into a target project.
+Bootstraps `docs/knowledge/` + `.opencode/skills/knowledge-capture/SKILL.md` into a target project.
 Delegates all file creation to a deterministic script — no inline copy-paste.
 
 ## Triggers
@@ -26,7 +26,8 @@ The finished project will contain:
 <project-root>/
 ├── .opencode/
 │   └── skills/
-│       └── knowledge-capture.md
+│       └── knowledge-capture/
+│           └── SKILL.md
 └── docs/
     └── knowledge/
         ├── README.md
@@ -61,7 +62,7 @@ If not inside a git repo, ask the user to confirm the intended project directory
 
 ## Step 2 — Check if Already Enabled
 
-If `<project-root>/.opencode/skills/knowledge-capture.md` **and** `<project-root>/docs/knowledge/README.md` both exist, report:
+If `<project-root>/.opencode/skills/knowledge-capture/SKILL.md` **and** `<project-root>/docs/knowledge/README.md` both exist, report:
 
 > Knowledge base already enabled for this project. Nothing changed.
 
@@ -143,7 +144,7 @@ immediately — no reload needed. Verify with:
 ls ~/.config/opencode/skills/knowledge-capture/SKILL.md
 ```
 
-The project-local copy at `.opencode/skills/knowledge-capture.md` (created by
+The project-local copy at `.opencode/skills/knowledge-capture/SKILL.md` (created by
 the bootstrap script) exists for git portability outside ai-engkit environments.
 
 ---

@@ -6,7 +6,7 @@ description: Bootstrap docs/knowledge/maintenance/ scaffold with report template
 # Enable Finalize Maintenance
 
 Bootstraps `docs/knowledge/maintenance/` directory structure with report
-template, index README, and `.opencode/skills/finalize-maintenance.md`
+template, index README, and `.opencode/skills/finalize-maintenance/SKILL.md`
 into a target project.
 
 Delegates all file creation to a deterministic script — no inline copy-paste.
@@ -30,7 +30,8 @@ The finished project will contain:
 <project-root>/
 ├── .opencode/
 │   └── skills/
-│       └── finalize-maintenance.md
+│       └── finalize-maintenance/
+│           └── SKILL.md
 └── docs/
     └── knowledge/
         └── maintenance/
@@ -52,7 +53,7 @@ The bootstrap script lives at:
 
 Before bootstrapping, the target project should already have the
 `enable-project-knowledge` baked-skill enabled (so `docs/knowledge/`
-and `.opencode/skills/knowledge-capture.md` exist).
+and `.opencode/skills/knowledge-capture/SKILL.md` exist).
 
 If not, run `enable-project-knowledge` first:
 
@@ -77,7 +78,7 @@ directory. Do not guess.
 
 ## Step 2 — Check if Already Enabled
 
-If `<project-root>/.opencode/skills/finalize-maintenance.md` **and**
+If `<project-root>/.opencode/skills/finalize-maintenance/SKILL.md` **and**
 `<project-root>/docs/knowledge/maintenance/README.md` both exist, report:
 
 > Maintenance workflow already enabled for this project. Nothing changed.
@@ -109,7 +110,7 @@ If all items were `skipped (exists)`, also say:
 "Maintenance workflow already enabled. Nothing changed."
 
 **Note:** The `finalize-maintenance` project-local skill is now available
-in the target project at `.opencode/skills/finalize-maintenance.md`.
+in the target project at `.opencode/skills/finalize-maintenance/SKILL.md`.
 The global `finalize-maintenance` skill is also available system-wide:
 
 ```bash
