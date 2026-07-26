@@ -1,6 +1,20 @@
 ## [Unreleased]
 
 
+## [1.6.1] - 2026-07-26
+
+### Added
+- Migrate project skills to folder SKILL.md format
+
+### Fixed
+- Update bootstrap.sh to produce folder SKILL.md format
+
+### Documentation
+- Add troubleshooting entry for OpenCode project skill discovery format
+- Update pattern docs for skill folder format and add migration guide
+- Update enable skill doc references to folder format
+
+
 ## [1.6.0] - 2026-07-26
 
 ### Added
@@ -874,7 +888,7 @@
 
 ## Format
 
-[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.6.0...HEAD
+[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.6.1...HEAD
 [0.3.0]: https://github.com/tryweb/ai-engkit/releases/tag/v0.3.0
 [0.3.3]: https://github.com/tryweb/ai-engkit/compare/v0.3.0...v0.3.3
 [0.5.0]: https://github.com/tryweb/ai-engkit/compare/v0.3.3...v0.5.0
@@ -973,3 +987,4 @@
 [1.5.1]: https://github.com/tryweb/ai-engkit/compare/v1.5.0...v1.5.1
 [1.5.2]: https://github.com/tryweb/ai-engkit/compare/v1.5.1...v1.5.2
 [1.6.0]: https://github.com/tryweb/ai-engkit/compare/v1.5.2...v1.6.0
+[1.6.1]: https://github.com/tryweb/ai-engkit/compare/v1.6.0...v1.6.1
