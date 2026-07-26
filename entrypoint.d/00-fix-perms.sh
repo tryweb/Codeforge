@@ -28,4 +28,5 @@ fix_perms "$HOME"/.ssh
 fix_perms "$HOME"/.config/git
 fix_perms "$HOME"/workspace
 fix_perms /opt/ai-engkit/.env
+fix_perms /opt/ai-engkit/backups
 echo
