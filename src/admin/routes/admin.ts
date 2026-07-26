@@ -58,7 +58,7 @@ admin.post("/api/admin/restart", async (c) => {
   setTimeout(async () => {
     const project = await getComposeProject().catch(() => "ai-engkit");
     await dockerCommand(
-      `compose -p ${project} --env-file /opt/ai-engkit/.env -f /opt/ai-engkit/compose.yml up -d --force-recreate ai-engkit-admin`,
+      `compose -p ${project} --env-file /opt/ai-engkit/.env -f /opt/ai-engkit/compose.yml up -d --force-recreate ai-admin`,
       120_000,
     ).catch(() => {});
   }, 2000);
