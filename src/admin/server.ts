@@ -143,6 +143,10 @@ app.get("/", async (c) => {
   const projectCount = parseInt(projectsResult.stdout.trim() || "0", 10);
 
   let aiEngkitVer = await getVer("cat /opt/ai-engkit/VERSION") || "dev";
+  let adminVer = "dev";
+  try {
+    adminVer = readFileSync("/opt/ai-engkit/VERSION", "utf-8").trim();
+  } catch {}
 
   const [opencodeVer, openchamberVer, dockerVer] = await Promise.all([
     getVer("opencode --version 2>/dev/null || echo ''"),
@@ -184,7 +188,7 @@ app.get("/", async (c) => {
       upgrade_events: upgradeStatus.events,
       upgrade_current_step: upgradeStatus.current_step,
       upgrade_progress_pct: upgradeStatus.progress_pct,
-      admin_version: aiEngkitVer,
+      admin_version: adminVer,
       admin_version_mismatch: adminDigest !== null && aiDevDigest !== null && adminDigest !== aiDevDigest,
     })
   );
