@@ -68,7 +68,7 @@ const DashboardContent: FC<{ data: DashboardData }> = ({ data }) => {
             <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);">
               <div class="flex items-center gap-2">
                 <span class="text-sm">ai-admin</span>
-                <span class="badge badge-warning" style="font-size:0.65rem;">⚠ v{data.admin_version}</span>
+                <span class="badge badge-warning" style="font-size:0.65rem;">⚠ {data.admin_version}</span>
                 <button onclick="restartAdmin()" class="btn-outline" style="padding:2px 8px;font-size:0.7rem;color:var(--danger);border-color:var(--danger);">↻ Restart</button>
               </div>
               <p class="text-sm text-muted" style="margin-top:4px;">Admin container needs restart to match ai-dev version</p>
