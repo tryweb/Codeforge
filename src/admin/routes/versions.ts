@@ -27,7 +27,7 @@ async function getRemoteDigest(): Promise<string | null> {
 }
 
 async function getLocalDigest(): Promise<string | null> {
-  const ref = await getSelfContainerRef();
+  const ref = await getAiDevContainerRef();
   const result = await dockerCommand(
     `inspect --format='{{.Image}}' ${ref}`,
     10_000,

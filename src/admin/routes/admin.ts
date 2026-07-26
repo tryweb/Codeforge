@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { dockerCommand, getSelfContainerRef } from "../lib/docker";
+import { dockerCommand, getComposeProject, getSelfContainerRef } from "../lib/docker";
 import { readFileSync } from "node:fs";
 
 const admin = new Hono();
@@ -50,12 +50,17 @@ admin.get("/api/admin/status", async (c) => {
 /**
  * Response sent BEFORE restart to avoid connection drop.
  * Client polls /healthz after receiving response.
+ * Uses compose recreate so admin picks up the latest ghcr.io image.
  */
 admin.post("/api/admin/restart", async (c) => {
-  const responsePromise = c.json({ ok: true, message: "Admin will restart in 2 seconds..." });
+  const responsePromise = c.json({ ok: true, message: "Admin pulling latest image and recreating..." });
   
   setTimeout(async () => {
-    await dockerCommand("restart ai-engkit-admin", 30_000).catch(() => {});
+    const project = await getComposeProject().catch(() => "ai-engkit");
+    await dockerCommand(
+      `compose -p ${project} --env-file /opt/ai-engkit/.env -f /opt/ai-engkit/compose.yml up -d --force-recreate ai-engkit-admin`,
+      120_000,
+    ).catch(() => {});
   }, 2000);
   
   return responsePromise;

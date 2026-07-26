@@ -142,12 +142,7 @@ app.get("/", async (c) => {
   const gitUser = gitResult.stdout.trim();
   const projectCount = parseInt(projectsResult.stdout.trim() || "0", 10);
 
-  let aiEngkitVer = "";
-  try {
-    aiEngkitVer = readFileSync("/opt/ai-engkit/VERSION", "utf-8").trim();
-  } catch {
-    aiEngkitVer = "dev";
-  }
+  let aiEngkitVer = await getVer("cat /opt/ai-engkit/VERSION") || "dev";
 
   const [opencodeVer, openchamberVer, dockerVer] = await Promise.all([
     getVer("opencode --version 2>/dev/null || echo ''"),
