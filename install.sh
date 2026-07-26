@@ -187,6 +187,9 @@ check_gh_cli() {
                     | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
                 sudo apt-get update -qq && sudo apt-get install -y gh
                 echo "  ✅ gh 安裝完成，請執行 gh auth login 登入"
+            elif command -v apk &> /dev/null; then
+                apk add gh
+                echo "  ✅ gh 安裝完成，請執行 gh auth login 登入"
             elif command -v brew &> /dev/null; then
                 brew install gh
                 echo "  ✅ gh 安裝完成，請執行 gh auth login 登入"
@@ -214,7 +217,11 @@ check_glab_cli() {
 
     echo "  ℹ️  未偵測到 GitLab CLI (glab)"
     echo "     glab 可讓容器內直接操作 GitLab MR / Issue / Repo"
-    echo "     如有需要，可在容器內執行: sudo apt-get install -y glab"
+    if command -v apk &> /dev/null; then
+        echo "     如有需要，可在容器內執行: apk add glab"
+    else
+        echo "     如有需要，可在容器內執行: sudo apt-get install -y glab"
+    fi
 }
 
 download_files() {
@@ -380,7 +387,7 @@ show_info() {
 
     HOST_IP=""
     if command -v ip &> /dev/null; then
-        HOST_IP=$(ip route get 1.1.1.1 2>/dev/null | grep -oP 'src \K[^ ]+' | head -1)
+        HOST_IP=$(ip route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src") print $(i+1)}')
     elif command -v hostname &> /dev/null; then
         HOST_IP=$(hostname -I 2>/dev/null | awk '{print $1}' | grep -v '^fe80\|^::' | head -1)
     fi

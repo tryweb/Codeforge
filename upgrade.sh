@@ -116,9 +116,9 @@ backup_files() {
     fi
 
     local backups=()
-    while IFS= read -r -d '' d; do
-        backups+=("$d")
-    done < <(find . -maxdepth 1 -type d -name 'backup_*' -print0 2>/dev/null | sort -z)
+    while IFS= read -r d; do
+        [ -n "$d" ] && backups+=("$d")
+    done < <(find . -maxdepth 1 -type d -name 'backup_*' 2>/dev/null | sort)
 
     if [ "${#backups[@]}" -gt "$retention" ]; then
         local to_remove=$(( ${#backups[@]} - retention ))
@@ -295,7 +295,7 @@ cleanup_images() {
     header "9. 清理舊映像"
 
     local pruned
-    pruned=$(docker image prune -f 2>&1 | grep -oP 'Total reclaimed space: \K.*' || true)
+    pruned=$(docker image prune -f 2>&1 | grep -oE 'Total reclaimed space: .*' | sed 's/^Total reclaimed space: //' || true)
     if [ -n "$pruned" ]; then
         ok "已釋放磁碟空間: ${pruned}"
     else
@@ -309,7 +309,7 @@ cleanup_images() {
 show_info() {
     local host_ip=""
     if command -v ip &>/dev/null; then
-        host_ip=$(ip route get 1.1.1.1 2>/dev/null | grep -oP 'src \K[^ ]+' | head -1)
+        host_ip=$(ip route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src") print $(i+1)}')
     elif command -v hostname &>/dev/null; then
         host_ip=$(hostname -I 2>/dev/null | awk '{print $1}' | grep -v '^fe80\|^::' | head -1)
     fi
