@@ -93,3 +93,56 @@ Rationale:
 | WebSocket reconnection storm | Exponential backoff with jitter + max cap |
 | Command execution during upgrade | Queue commands during upgrade, execute after completion |
 | Certificate rotation | Agent reads cert files at connect time, not at startup — supports hot-reload |
+
+### D6: Command types
+
+**Decision:** Support three command types:
+
+| Command | Handler | Description |
+|---------|---------|-------------|
+| `upgrade` | `runUpgrade()` | Pull latest image, recreate ai-dev |
+| `reconfigure` | env write + restart | Update .env, restart affected container |
+| `restart` | `docker restart` | Restart specified container |
+
+Rationale:
+- Reuses existing functions from `upgrade.ts` and `env.ts`
+- restart uses response-first pattern to avoid connection drop (see `src/admin/routes/admin.ts`)
+
+### D7: Offline command queue
+
+**Decision:** Commands received while disconnected are buffered in memory and executed on reconnect.
+
+```typescript
+interface QueuedCommand {
+  id: string;
+  type: "upgrade" | "reconfigure" | "restart";
+  payload: unknown;
+  receivedAt: string;
+}
+```
+
+Rationale:
+- Ensures commands aren't lost during brief disconnections
+- In-memory queue (not persistent) — acceptable for admin dashboard use case
+- Queue drained in FIFO order after successful reconnect
+
+### D8: Status report payload
+
+**Decision:** Heartbeat payload includes:
+
+```typescript
+interface StatusReport {
+  container_status: "running" | "stopped";
+  uptime_seconds: number | null;
+  versions: Record<string, string>;
+  gh_auth: "authenticated" | "not authenticated";
+  glab_auth: "authenticated" | "not authenticated";
+  admin_version: string;
+  admin_version_mismatch: boolean;
+  upgrade_state: string;
+}
+```
+
+Rationale:
+- Reuses fields from existing `/api/status` endpoint
+- `admin_version_mismatch` enables Center Server to trigger restart
