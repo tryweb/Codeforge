@@ -1,6 +1,22 @@
 ## [Unreleased]
 
 
+## [1.6.2] - 2026-07-26
+
+### Fixed
+- Reset inFlightCheck after update check completes
+- Remove duplicate v prefix in admin version badge
+- Read version from ai-dev, restart uses compose recreate
+- Correct compose service name for ai-admin restart
+- Read versions image metadata from ai-dev instead of ai-admin
+- Run admin recreate in separate container to survive self-destruct
+- Mount specific compose file path for admin recreate container
+- Show admin own version in mismatch badge, dev version in table
+
+### Documentation
+- Add troubleshooting entry for admin restart self-destruct
+
+
 ## [1.6.1] - 2026-07-26
 
 ### Added
@@ -888,7 +904,7 @@
 
 ## Format
 
-[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.6.1...HEAD
+[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.6.2...HEAD
 [0.3.0]: https://github.com/tryweb/ai-engkit/releases/tag/v0.3.0
 [0.3.3]: https://github.com/tryweb/ai-engkit/compare/v0.3.0...v0.3.3
 [0.5.0]: https://github.com/tryweb/ai-engkit/compare/v0.3.3...v0.5.0
@@ -988,3 +1004,4 @@
 [1.5.2]: https://github.com/tryweb/ai-engkit/compare/v1.5.1...v1.5.2
 [1.6.0]: https://github.com/tryweb/ai-engkit/compare/v1.5.2...v1.6.0
 [1.6.1]: https://github.com/tryweb/ai-engkit/compare/v1.6.0...v1.6.1
+[1.6.2]: https://github.com/tryweb/ai-engkit/compare/v1.6.1...v1.6.2
