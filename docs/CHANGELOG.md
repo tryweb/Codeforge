@@ -1,6 +1,25 @@
 ## [Unreleased]
 
 
+## [1.6.0] - 2026-07-26
+
+### Added
+- Add admin container restart button with version mismatch detection
+
+### Fixed
+- Add backups directory to permission auto-fix
+- Fix health check and SSE streaming in upgrade pipeline
+- Auto-fix .env ownership on container start
+
+### Documentation
+- Add D6/D7/D8 to agent-connection-module design
+- Add upgrade engine SSE and compose troubleshooting entry
+- Add bind mount .env ownership troubleshooting entry
+- Add v1.5.2 changelog entry
+
+### Changed
+- Unify env var management via env_file directive
+
 ## [1.5.2] - 2026-07-25
 
 ### Fixed
@@ -855,7 +874,7 @@
 
 ## Format
 
-[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.5.2...HEAD
+[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.6.0...HEAD
 [0.3.0]: https://github.com/tryweb/ai-engkit/releases/tag/v0.3.0
 [0.3.3]: https://github.com/tryweb/ai-engkit/compare/v0.3.0...v0.3.3
 [0.5.0]: https://github.com/tryweb/ai-engkit/compare/v0.3.3...v0.5.0
@@ -950,6 +969,7 @@
 [1.4.0]: https://github.com/tryweb/ai-engkit/compare/v1.3.0...v1.4.0
 [1.4.1]: https://github.com/tryweb/ai-engkit/compare/v1.4.0...v1.4.1
 [1.4.2]: https://github.com/tryweb/ai-engkit/compare/v1.4.1...v1.4.2
-[1.5.2]: https://github.com/tryweb/ai-engkit/compare/v1.5.1...v1.5.2
-[1.5.1]: https://github.com/tryweb/ai-engkit/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/tryweb/ai-engkit/compare/v1.4.2...v1.5.0
+[1.5.1]: https://github.com/tryweb/ai-engkit/compare/v1.5.0...v1.5.1
+[1.5.2]: https://github.com/tryweb/ai-engkit/compare/v1.5.1...v1.5.2
+[1.6.0]: https://github.com/tryweb/ai-engkit/compare/v1.5.2...v1.6.0
