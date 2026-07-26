@@ -1,4 +1,4 @@
-import { execInAiDev, composeCommand, dockerCommand } from "./docker";
+import { execInAiDev, composeCommand, dockerCommand, getComposeProject } from "./docker";
 import { readFileSync, writeFileSync, existsSync, mkdirSync, cpSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { readEnvFile, writeEnvFile } from "./env";
@@ -144,8 +144,9 @@ export async function runUpgrade(): Promise<boolean> {
 
     // Step 4: Recreate ai-dev
     emit("recreate", "running", "Recreating ai-dev container with new image...");
+    const project = await getComposeProject();
     const recreateResult = await composeCommand(
-      `--env-file ${ENV_FILE} -f ${COMPOSE_FILE} up -d --force-recreate ai-dev`,
+      `-p ${project} --env-file ${ENV_FILE} -f ${COMPOSE_FILE} up -d --force-recreate ai-dev`,
       300_000,
     );
     if (recreateResult.exitCode !== 0) {
@@ -167,7 +168,7 @@ export async function runUpgrade(): Promise<boolean> {
     emit("cleanup", "running", "Cleaning up old images and restarting admin dashboard...");
     await dockerCommand("image prune -f", 60_000);
     // Restart admin container so getUpdateCheck() compares the new image
-    await dockerCommand(`compose --env-file ${ENV_FILE} -f ${COMPOSE_FILE} up -d --force-recreate ai-admin`, 120_000);
+    await dockerCommand(`compose -p ${project} --env-file ${ENV_FILE} -f ${COMPOSE_FILE} up -d --force-recreate ai-admin`, 120_000);
     emit("cleanup", "success", "Upgrade complete");
 
     currentState = "completed";

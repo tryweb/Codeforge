@@ -77,6 +77,22 @@ export async function execInAiDev(
 }
 
 /**
+ * Detect the docker compose project name from the running ai-dev container.
+ * Falls back to "ai-engkit" if detection fails.
+ */
+export async function getComposeProject(): Promise<string> {
+  const devName = await getSiblingDevContainerName();
+  const result = await runCommand(
+    ["docker", "inspect", "--format={{index .Config.Labels \"com.docker.compose.project\"}}", devName],
+    5_000,
+  );
+  if (result.exitCode === 0 && result.stdout.trim()) {
+    return result.stdout.trim();
+  }
+  return "ai-engkit";
+}
+
+/**
  * Run a raw docker compose command against the compose file.
  */
 export async function composeCommand(

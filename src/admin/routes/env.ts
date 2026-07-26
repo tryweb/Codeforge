@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { existsSync } from "node:fs";
 import { readEnvFile, upsertEnvVar, envFileExists } from "../lib/env";
-import { execInAiDev, getAiDevContainerRef, dockerCommand } from "../lib/docker";
+import { execInAiDev, getAiDevContainerRef, dockerCommand, getComposeProject } from "../lib/docker";
 import { EnvEditorPage } from "../views/env-editor";
 
 const env = new Hono();
@@ -62,8 +62,9 @@ env.post("/api/env/restart", async (c) => {
   const composePath = "/opt/ai-engkit/compose.yml";
   const envFilePath = "/opt/ai-engkit/.env";
   if (existsSync(composePath)) {
+    const project = await getComposeProject();
     const result = await dockerCommand(
-      `compose --env-file ${envFilePath} -f ${composePath} up -d --force-recreate ai-dev 2>&1`,
+      `compose -p ${project} --env-file ${envFilePath} -f ${composePath} up -d --force-recreate ai-dev 2>&1`,
       120_000,
     );
     if (result.exitCode === 0) return c.json({ ok: true });
