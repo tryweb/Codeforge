@@ -41,6 +41,23 @@ AI-EngKit includes a web-based admin dashboard (`ai-admin`) running as a Docker 
 
 Open [http://localhost:8080](http://localhost:8080) after installation to access the dashboard.
 
+### Screenshots
+
+<p align="center">
+  <img src="./docs/images/admin-dashboard.png" width="900" alt="AI-EngKit Admin Dashboard showing container status, authentication status, project count, and component versions">
+</p>
+<p align="center"><em>Dashboard overview</em></p>
+
+<p align="center">
+  <img src="./docs/images/admin-versions.png" width="900" alt="AI-EngKit Admin component versions page showing image metadata and Core, CLI, MCP, and Plugin versions">
+</p>
+<p align="center"><em>Component and runtime versions</em></p>
+
+<p align="center">
+  <img src="./docs/images/admin-environment.png" width="900" alt="AI-EngKit Admin environment editor showing masked secrets and configurable runtime variables">
+</p>
+<p align="center"><em>Environment configuration with masked secrets</em></p>
+
 *The admin dashboard runs on the existing Bun runtime — zero additional image layers.*
 
 ## Quick Start
