@@ -1,6 +1,11 @@
 ## [Unreleased]
 
 
+## [1.5.2] - 2026-07-25
+
+### Fixed
+- Detect docker compose project name from container labels; add `-p <project>` to all compose recreate commands (fixes "Compose recreate failed" when deployment directory differs from compose file path)
+
 ## [1.5.1] - 2026-07-25
 
 ### Fixed
@@ -850,7 +855,7 @@
 
 ## Format
 
-[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.5.1...HEAD
+[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.5.2...HEAD
 [0.3.0]: https://github.com/tryweb/ai-engkit/releases/tag/v0.3.0
 [0.3.3]: https://github.com/tryweb/ai-engkit/compare/v0.3.0...v0.3.3
 [0.5.0]: https://github.com/tryweb/ai-engkit/compare/v0.3.3...v0.5.0
@@ -945,5 +950,6 @@
 [1.4.0]: https://github.com/tryweb/ai-engkit/compare/v1.3.0...v1.4.0
 [1.4.1]: https://github.com/tryweb/ai-engkit/compare/v1.4.0...v1.4.1
 [1.4.2]: https://github.com/tryweb/ai-engkit/compare/v1.4.1...v1.4.2
+[1.5.2]: https://github.com/tryweb/ai-engkit/compare/v1.5.1...v1.5.2
 [1.5.1]: https://github.com/tryweb/ai-engkit/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/tryweb/ai-engkit/compare/v1.4.2...v1.5.0
