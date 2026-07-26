@@ -1,4 +1,4 @@
-import { execInAiDev, composeCommand, dockerCommand, getComposeProject } from "./docker";
+import { execInAiDev, composeCommand, dockerCommand, getComposeProject, isAiDevRunning } from "./docker";
 import { readFileSync, writeFileSync, existsSync, mkdirSync, cpSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { readEnvFile, writeEnvFile } from "./env";
@@ -165,10 +165,8 @@ export async function runUpgrade(): Promise<boolean> {
     emit("poll_health", "success", "ai-dev is healthy");
 
     // Step 6: Cleanup
-    emit("cleanup", "running", "Cleaning up old images and restarting admin dashboard...");
+    emit("cleanup", "running", "Cleaning up old images...");
     await dockerCommand("image prune -f", 60_000);
-    // Restart admin container so getUpdateCheck() compares the new image
-    await dockerCommand(`compose -p ${project} --env-file ${ENV_FILE} -f ${COMPOSE_FILE} up -d --force-recreate ai-admin`, 120_000);
     emit("cleanup", "success", "Upgrade complete");
 
     currentState = "completed";
@@ -211,8 +209,7 @@ async function mergeEnvFromUpstream(): Promise<void> {
 async function pollAiDevHealth(timeoutMs: number): Promise<boolean> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
-    const result = await composeCommand("ps --filter status=running --format json", 10_000);
-    if (result.exitCode === 0 && result.stdout.includes("ai-engkit")) {
+    if (await isAiDevRunning()) {
       return true;
     }
     await sleep(3000);

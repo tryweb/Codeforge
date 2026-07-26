@@ -57,7 +57,7 @@ upgrade.get("/api/upgrade/log", (c) => {
     },
   });
 
-  return new Response(stream);
+  return c.body(stream);
 });
 
 upgrade.get("/upgrade", (c) => {
