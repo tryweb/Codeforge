@@ -58,9 +58,11 @@ admin.post("/api/admin/restart", async (c) => {
   setTimeout(async () => {
     const project = await getComposeProject().catch(() => "ai-engkit");
     // Run compose in a separate container so it survives admin being killed
+    // Mount specific files (not whole dir) because host has docker-compose.yml, not compose.yml
     await dockerCommand(
       `run --rm ` +
-      `-v /opt/ai-engkit:/opt/ai-engkit ` +
+      `-v /opt/ai-engkit/.env:/opt/ai-engkit/.env ` +
+      `-v /opt/ai-engkit/docker-compose.yml:/opt/ai-engkit/compose.yml ` +
       `-v /var/run/docker.sock:/var/run/docker.sock ` +
       `ghcr.io/tryweb/ai-engkit:latest ` +
       `sh -c "docker compose -p ${project} --env-file /opt/ai-engkit/.env -f /opt/ai-engkit/compose.yml up -d --force-recreate ai-admin"`,
