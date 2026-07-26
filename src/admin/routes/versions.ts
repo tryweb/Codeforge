@@ -79,7 +79,11 @@ export async function getUpdateCheck(): Promise<UpdateCheckResult> {
 
 async function getAiEngkitVersion(): Promise<string> {
   try {
-    return readFileSync("/opt/ai-engkit/VERSION", "utf-8").trim();
+    const result = await execInAiDev("cat /opt/ai-engkit/VERSION", 5_000);
+    if (result.exitCode === 0 && result.stdout) {
+      return result.stdout.trim();
+    }
+    return "dev";
   } catch {
     return "dev";
   }
@@ -107,7 +111,7 @@ versions.get("/api/versions/check-update", async (c) => {
 
 versions.get("/api/versions/image", async (c) => {
   const meta: Record<string, string> = {};
-  const ref = await getSelfContainerRef();
+  const ref = await getAiDevContainerRef();
 
   try {
     const result = await dockerCommand(
