@@ -58,6 +58,11 @@ Open [http://localhost:8080](http://localhost:8080) after installation to access
 </p>
 <p align="center"><em>Environment configuration with masked secrets</em></p>
 
+<p align="center">
+  <img src="./docs/images/admin-projects.png" width="900" alt="AI-EngKit Admin projects page showing workspace projects with knowledge, maintenance, and OpenSpec status indicators">
+</p>
+<p align="center"><em>Workspace project management</em></p>
+
 *The admin dashboard runs on the existing Bun runtime — zero additional image layers.*
 
 ## Quick Start
