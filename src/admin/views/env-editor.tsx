@@ -9,7 +9,7 @@ const EnvEditorContent: FC<{ envVars: Record<string, string>; envSchema: Array<{
       <div class="flex gap-2">
         <span id="restart-status" class="text-sm text-muted" style="align-self:center;"></span>
         <button id="btn-restart" onclick="restartAiDev()" class="btn-outline" style="color:var(--danger);border-color:var(--danger);">↻ Restart ai-dev</button>
-        <button onclick="addVariable()" class="btn-outline">+ Add Variable</button>
+        <button onclick="addVariable()" class="btn-outline" title="Add new variable to .env (restart required to apply)">+ Add Variable</button>
       </div>
     </div>
     <div class="card">
