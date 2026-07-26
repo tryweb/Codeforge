@@ -44,30 +44,34 @@ export async function getUpdateCheck(): Promise<UpdateCheckResult> {
   if (inFlightCheck) return inFlightCheck;
 
   inFlightCheck = (async () => {
-    const current = await getAiEngkitVersion();
-    // Dev builds (AI_ENGKIT_VERSION=dev) should not compare against GHCR releases
-    if (current === "dev") {
-      const result: UpdateCheckResult = { current, latest: "", update_available: false, status: "up-to-date", message: "Dev build" };
+    try {
+      const current = await getAiEngkitVersion();
+      // Dev builds (AI_ENGKIT_VERSION=dev) should not compare against GHCR releases
+      if (current === "dev") {
+        const result: UpdateCheckResult = { current, latest: "", update_available: false, status: "up-to-date", message: "Dev build" };
+        cachedCheck = { result, expiresAt: now + 300_000 };
+        return result;
+      }
+      const [remoteDigest, localDigest] = await Promise.all([
+        getRemoteDigest(),
+        getLocalDigest(),
+      ]);
+      if (!remoteDigest || !localDigest) {
+        return { current, latest: "", update_available: false, status: "up-to-date", message: "Up to date" };
+      }
+      const available = localDigest !== remoteDigest;
+      const result: UpdateCheckResult = {
+        current,
+        latest: available ? "latest" : "",
+        update_available: available,
+        status: available ? "update-available" : "up-to-date",
+        message: available ? `New image available` : "Up to date",
+      };
       cachedCheck = { result, expiresAt: now + 300_000 };
       return result;
+    } finally {
+      inFlightCheck = null;
     }
-    const [remoteDigest, localDigest] = await Promise.all([
-      getRemoteDigest(),
-      getLocalDigest(),
-    ]);
-    if (!remoteDigest || !localDigest) {
-      return { current, latest: "", update_available: false, status: "up-to-date", message: "Up to date" };
-    }
-    const available = localDigest !== remoteDigest;
-    const result: UpdateCheckResult = {
-      current,
-      latest: available ? "latest" : "",
-      update_available: available,
-      status: available ? "update-available" : "up-to-date",
-      message: available ? `New image available` : "Up to date",
-    };
-    cachedCheck = { result, expiresAt: now + 300_000 };
-    return result;
   })();
 
   return inFlightCheck;
