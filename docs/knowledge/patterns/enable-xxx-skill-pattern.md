@@ -31,7 +31,7 @@ Source (ai-engkit repo):
 
 Project (after enable):
   <project-root>/
-    ├── .opencode/skills/xxx.md           # Project-local skill (git-tracked)
+    ├── .opencode/skills/xxx/SKILL.md      # Project-local skill (git-tracked)
     └── docs/knowledge/xxx/               # Optional scaffold
         ├── README.md
         └── _template.md
@@ -71,7 +71,7 @@ fi
 ## Why It Works
 
 - **Separation of concerns**: Global skill is the installer; project skill is the user-facing tool. Changing the workflow (SKILL.md) or scaffold (bootstrap.sh) is a single update in the ai-engkit repo.
-- **Git portability**: The project-local `.opencode/skills/xxx.md` file means CI and other agents in that project can use the skill without depending on ai-engkit being installed.
+- **Git portability**: The project-local `.opencode/skills/xxx/SKILL.md` file means CI and other agents in that project can use the skill without depending on ai-engkit being installed.
 - **Idempotency guarantees safety**: Running the enable workflow on an already-configured project is a no-op.
 - **Baked-skills as source of truth**: `baked-skills/enable-xxx/` is the canonical copy — installing globally is just copying these files.
 

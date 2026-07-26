@@ -47,7 +47,7 @@ Extended with 4 flags:
 
 ### 2. check-updates skill — One-shot update workflow
 
-New skill (`.opencode/skills/check-updates.md`) that:
+New skill (`.opencode/skills/check-updates/SKILL.md`) that:
 1. Runs `check-versions.sh outdated` to detect outdated pins
 2. Shows the user what's outdated, asks which to update
 3. Applies `sed -i` to Dockerfile ARGs (using JSON output from
@@ -115,9 +115,9 @@ Three gaps closed:
 ## Related Files
 
 - `.opencode/scripts/check-versions.sh` — Core version inspection script
-- `.opencode/skills/check-updates.md` — New update workflow skill
-- `.opencode/skills/release.md` — Enhanced release skill (3 sections updated)
-- `.opencode/skills/vuln-scan.md` — Quick reference updated for new flags
+- `.opencode/skills/check-updates/SKILL.md` — New update workflow skill
+- `.opencode/skills/release/SKILL.md` — Enhanced release skill (3 sections updated)
+- `.opencode/skills/vuln-scan/SKILL.md` — Quick reference updated for new flags
 - `entrypoint.d/02-init-config.sh` — OPENCODE_PROVIDER merge logic
 - `docker-compose.yml` / `docker-compose.dev.yml` — Env var passthrough
 - `.env.example` — OPENCODE_PROVIDER example
