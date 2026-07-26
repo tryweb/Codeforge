@@ -18,8 +18,26 @@ if [ -S "$SOCKET_PATH" ]; then
             fi
         else
             echo "[docker-gid] Creating docker group with GID: $SOCKET_GID"
-            groupadd -g "$SOCKET_GID" docker
-            echo "[docker-gid] Docker group created"
+            if groupadd -g "$SOCKET_GID" docker 2>/dev/null; then
+                echo "[docker-gid] Docker group created"
+            else
+                # GID conflict — find a free fallback GID (common reserved range)
+                echo "[docker-gid] GID $SOCKET_GID unavailable (conflict), finding fallback..."
+                fallback=""
+                for try in 999 998 997 996 995; do
+                    if ! getent group "$try" > /dev/null 2>&1; then
+                        fallback="$try"
+                        break
+                    fi
+                done
+                if [ -n "$fallback" ]; then
+                    echo "[docker-gid] Creating docker group with fallback GID: $fallback"
+                    groupadd -g "$fallback" docker
+                    echo "[docker-gid] Docker group created (GID $fallback)"
+                else
+                    echo "[docker-gid] WARNING: Could not create docker group, continuing without it"
+                fi
+            fi
         fi
         
         if ! id -nG devuser | grep -qw docker; then
