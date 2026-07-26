@@ -193,6 +193,35 @@ else
   fail "Web UI returned HTTP $HTTP_CODE (expected 200)"
 fi
 
+# --------------------------------------------------
+# 6.1 OpenChamber Static Assets
+# --------------------------------------------------
+echo ""
+echo "--- OpenChamber Static Assets ---"
+
+OPENCHAMBER_LOG="/home/devuser/.config/openchamber/logs/openchamber-3000.log"
+NOTFOUND_BEFORE=$(docker exec "$CONTAINER" sh -c \
+  "grep -c 'NotFoundError' '$OPENCHAMBER_LOG' 2>/dev/null || true")
+
+for asset in /favicon.ico /favicon.svg /favicon-32.png /site.webmanifest; do
+  ASSET_CODE=$(docker exec "$CONTAINER" sh -c \
+    "curl -sf -o /dev/null -w '%{http_code}' 'http://localhost:3000${asset}'" 2>/dev/null || echo "000")
+  if [ "$ASSET_CODE" = "200" ]; then
+    pass "OpenChamber ${asset} served (200)"
+  else
+    fail "OpenChamber ${asset} returned ${ASSET_CODE} (expected 200)"
+  fi
+done
+
+sleep 1
+NOTFOUND_AFTER=$(docker exec "$CONTAINER" sh -c \
+  "grep -c 'NotFoundError' '$OPENCHAMBER_LOG' 2>/dev/null || true")
+if [ "${NOTFOUND_AFTER:-0}" -le "${NOTFOUND_BEFORE:-0}" ]; then
+  pass "No new OpenChamber NotFoundError entries"
+else
+  fail "OpenChamber NotFoundError increased (${NOTFOUND_BEFORE} -> ${NOTFOUND_AFTER})"
+fi
+
 # Check OPENCHAMBER_UI_PASSWORD env var is set
 UI_PASSWD_ENV=$(docker exec "$CONTAINER" sh -c 'echo $OPENCHAMBER_UI_PASSWORD' 2>/dev/null || echo "")
 if [ -n "$UI_PASSWD_ENV" ]; then

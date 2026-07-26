@@ -170,6 +170,39 @@ RUN rm -rf ~/.bun/install/cache && \
     ln -sf /home/${USERNAME}/.bun/bin/bun /home/${USERNAME}/.bun/bin/node && \
     rm -rf ~/.bun/install/cache
 
+# OpenChamber ships PNG/SVG favicons but browsers also request /favicon.ico.
+# Wrap the existing PNG in an ICO container so the request is served locally
+# without maintaining a separate binary asset in the repository.
+RUN python3 - <<'PY'
+from pathlib import Path
+import struct
+
+dist = Path.home() / ".bun/install/global/node_modules/@openchamber/web/dist"
+png_path = dist / "favicon.png"
+ico_path = dist / "favicon.ico"
+
+if png_path.is_file() and not ico_path.exists():
+    png = png_path.read_bytes()
+    if png[:8] != b"\x89PNG\r\n\x1a\n":
+        raise SystemExit("OpenChamber favicon.png is not a PNG")
+    width, height = struct.unpack(">II", png[16:24])
+    entry_width = 0 if width >= 256 else width
+    entry_height = 0 if height >= 256 else height
+    header = struct.pack("<HHH", 0, 1, 1)
+    entry = struct.pack(
+        "<BBBBHHII",
+        entry_width,
+        entry_height,
+        0,
+        0,
+        1,
+        32,
+        len(png),
+        22,
+    )
+    ico_path.write_bytes(header + entry + png)
+PY
+
 # ── Playwright browsers + MCP server (for browser automation & testing) ─────
 # Playwright browsers and @playwright/mcp are versioned independently upstream.
 # Pin both explicitly for reproducible builds.
