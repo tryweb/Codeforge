@@ -2,7 +2,7 @@
 # bootstrap.sh — Deterministic enable-finalize-maintenance bootstrap
 #
 # Creates docs/knowledge/maintenance/ directory, README index, _template,
-# and .opencode/skills/finalize-maintenance.md in the given project root.
+# and .opencode/skills/finalize-maintenance/SKILL.md in the given project root.
 #
 # Usage: bootstrap.sh <project-root>
 #
@@ -121,7 +121,7 @@ put "$ROOT/docs/knowledge/maintenance/_template.md" <<'TEMPLATE'
 {{appendix}}
 TEMPLATE
 
-put "$ROOT/.opencode/skills/finalize-maintenance.md" <<'SKILL'
+put "$ROOT/.opencode/skills/finalize-maintenance/SKILL.md" <<'SKILL'
 ---
 name: finalize-maintenance
 description: 維護完成後標準作業：撰寫維護報告、提煉經驗至知識庫、提交至 GitLab。
