@@ -117,6 +117,9 @@ jobs:
           # === 1. Main dev container — basic functionality ===
           ./test/run-tests.sh ci-test
 
+          # === 1.1 Docker socket GID conflict handling ===
+          bash ./test/test-docker-gid.sh ai-engkit:ci
+
           # === 2. Admin container — dashboard integration ===
           ./test/test-admin.sh ai-engkit-admin-dev
 
