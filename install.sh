@@ -26,7 +26,7 @@ unset_env_value() {
 
 check_system() {
     echo "========================================"
-    echo "1. 檢查系統硬體規格"
+    echo "1. Checking System Hardware Specifications"
     echo "========================================"
 
     CPU_CORES=$(nproc 2>/dev/null || echo 0)
@@ -40,30 +40,30 @@ check_system() {
     echo "  Disk available: ${DISK_GB} GB"
 
     if [ "$CPU_CORES" -lt 2 ]; then
-        echo "  ❌ CPU 核心數不足 (需要至少 2 core)"
+        echo "  ❌ Insufficient CPU cores (at least 2 required)"
         exit 1
     elif [ "$CPU_CORES" -lt 4 ]; then
-        echo "  ⚠️  警告: CPU 低於建議規格 (4 core 為佳)"
+        echo "  ⚠️  Warning: CPU below recommended specs (4 cores preferred)"
     else
-        echo "  ✅ CPU 符合建議規格"
+        echo "  ✅ CPU meets recommended specifications"
     fi
 
     if [ "$RAM_GB" -lt 4 ]; then
-        echo "  ❌ RAM 不足 (需要至少 4 GB)"
+        echo "  ❌ Insufficient RAM (at least 4 GB required)"
         exit 1
     elif [ "$RAM_GB" -lt 8 ]; then
-        echo "  ⚠️  警告: RAM 低於建議規格 (8 GB 為佳)"
+        echo "  ⚠️  Warning: RAM below recommended specs (8 GB preferred)"
     else
-        echo "  ✅ RAM 符合建議規格"
+        echo "  ✅ RAM meets recommended specifications"
     fi
 
     if [ "$DISK_GB" -lt 30 ]; then
-        echo "  ❌ 磁碟空間不足 (需要至少 30 GB)"
+        echo "  ❌ Insufficient disk space (at least 30 GB required)"
         exit 1
     elif [ "$DISK_GB" -lt 100 ]; then
-        echo "  ⚠️  警告: 磁碟空間低於建議規格 (100 GB 為佳)"
+        echo "  ⚠️  Warning: Disk space below recommended specs (100 GB preferred)"
     else
-        echo "  ✅ 磁碟空間符合建議規格"
+        echo "  ✅ Disk space meets recommended specifications"
     fi
 
     CPU_FLAGS=$(grep -m1 '^flags' /proc/cpuinfo 2>/dev/null || echo "")
@@ -77,20 +77,20 @@ check_system() {
     fi
 
     if [ "$HAS_AVX" = "true" ] && [ "$HAS_AVX2" = "true" ]; then
-        echo "  ✅ CPU 指令集: AVX + AVX2 支援"
+        echo "  ✅ CPU instruction set: AVX + AVX2 supported"
     else
         echo ""
-        echo "  ❌ CPU 缺少必要的 SIMD 指令集:"
+        echo "  ❌ CPU missing required SIMD instruction sets:"
         if [ "$HAS_AVX" = "false" ]; then
-            echo "     - AVX  未支援 (opencode 標準版需要)"
+            echo "     - AVX not supported (required by opencode standard)"
         fi
         if [ "$HAS_AVX2" = "false" ]; then
-            echo "     - AVX2 未支援 (lancedb prebuilt binary 需要)"
+            echo "     - AVX2 not supported (required by lancedb prebuilt binary)"
         fi
         echo ""
-        echo "  這些指令集為 opencode 的必要條件。"
-        echo "  常見不支援的環境: 舊型 CPU、部分雲端 VM (t2.micro 等)、QEMU 預設模式"
-        echo "  建議: 使用支援 AVX2 的機器 (Intel Haswell 2013+ / AMD Excavator 2015+)"
+        echo "  These instruction sets are required for opencode."
+        echo "  Common unsupported environments: older CPUs, some cloud VMs (t2.micro, etc.), QEMU default mode"
+        echo "  Recommendation: Use machines with AVX2 support (Intel Haswell 2013+ / AMD Excavator 2015+)"
         exit 1
     fi
 }
@@ -98,136 +98,60 @@ check_system() {
 check_docker() {
     echo
     echo "========================================"
-    echo "2. 檢查 Docker 環境"
+    echo "2. Checking Docker Environment"
     echo "========================================"
 
     if ! command -v docker &> /dev/null; then
-        echo "  ❌ Docker 未安裝"
-        echo "    請參考: https://docs.docker.com/get-docker/"
+        echo "  ❌ Docker not installed"
+        echo "    Please refer to: https://docs.docker.com/get-docker/"
         exit 1
     fi
-    echo "  ✅ Docker 已安裝: $(docker --version | head -1)"
+    echo "  ✅ Docker installed: $(docker --version | head -1)"
 
     if command -v docker compose &> /dev/null; then
-        echo "  ✅ Docker Compose V2 已安裝"
+        echo "  ✅ Docker Compose V2 installed"
     elif command -v docker-compose &> /dev/null; then
-        echo "  ⚠️  偵測到 docker-compose (V1)"
+        echo "  ⚠️  Detected docker-compose (V1)"
     else
-        echo "  ❌ Docker Compose 未安裝"
+        echo "  ❌ Docker Compose not installed"
         exit 1
     fi
 
     SOCK="/var/run/docker.sock"
     if [ ! -S "$SOCK" ]; then
-        echo "  ❌ Docker socket 不存在"
+        echo "  ❌ Docker socket does not exist"
         exit 1
     fi
-    echo "  ✅ Docker socket 存在: $(ls -la "$SOCK" | awk '{print $1}')"
+    echo "  ✅ Docker socket exists: $(ls -la "$SOCK" | awk '{print $1}')"
 
     if ! docker info &> /dev/null; then
-        echo "  ❌ 無法連接 Docker daemon"
+        echo "  ❌ Cannot connect to Docker daemon"
         exit 1
     fi
-    echo "  ✅ Docker daemon 運作正常"
+    echo "  ✅ Docker daemon running normally"
 
     if ! command -v curl &> /dev/null && ! command -v wget &> /dev/null; then
-        echo "  ❌ 缺少 curl 或 wget"
+        echo "  ❌ Missing curl or wget"
         exit 1
     fi
-    echo "  ✅ 網路工具已安裝"
+    echo "  ✅ Network tools installed"
 }
 
 check_and_prepare_volumes() {
     echo
     echo "========================================"
-    echo "3. 檢查並準備 Volumes (選用)"
+    echo "3. Checking and Preparing Volumes (Optional)"
     echo "========================================"
 
-    # v0.5.0+ 使用 named volumes，entrypoint 會自動建立預設檔案
-    # 這裡只檢查是否有可選的 host 端設定需要同步
-
-    DOWNLOAD_TOOL="curl -fsSL"
-    if ! command -v curl &> /dev/null; then
-        DOWNLOAD_TOOL="wget -qO-"
-    fi
-
-    echo "  使用 named volumes (由容器自動管理)"
+    # v0.5.0+ uses named volumes, entrypoint will auto-create default files
+    echo "  Using named volumes (managed automatically by containers)"
     echo ""
-
-    check_gh_cli
-    check_glab_cli
-}
-
-check_gh_cli() {
-    echo
-    if command -v gh &> /dev/null; then
-        echo "  ✅ GitHub CLI (gh) 已安裝: $(gh --version | head -1)"
-        if ! gh auth status &> /dev/null; then
-            echo "  ⚠️  gh 尚未登入（本機 gh CLI）"
-            echo "     本機登入: gh auth login"
-            echo "     註：容器內的認證是獨立的（用 credential.helper = store），"
-            echo "         首次 git push/pull 會提示輸入帳密並自動儲存。"
-            echo "         如需在容器內使用 gh CLI，請在容器內另行執行 gh auth login。"
-        fi
-        return
-    fi
-
-    echo "  ⚠️  未偵測到 GitHub CLI (gh)"
-    echo "     gh 可讓容器內直接操作 GitHub PR / Issue / Repo"
-    echo
-    read -p "  是否立即安裝 gh？(y/N): " INSTALL_GH
-    case "$INSTALL_GH" in
-        y|Y)
-            echo "  正在安裝 GitHub CLI..."
-            if command -v apt-get &> /dev/null; then
-                curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
-                    | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg 2>/dev/null
-                sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
-                echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
-                    | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
-                sudo apt-get update -qq && sudo apt-get install -y gh
-                echo "  ✅ gh 安裝完成，請執行 gh auth login 登入"
-            elif command -v apk &> /dev/null; then
-                apk add gh
-                echo "  ✅ gh 安裝完成，請執行 gh auth login 登入"
-            elif command -v brew &> /dev/null; then
-                brew install gh
-                echo "  ✅ gh 安裝完成，請執行 gh auth login 登入"
-            else
-                echo "  ❌ 無法自動安裝，請手動安裝: https://cli.github.com/"
-            fi
-            ;;
-        *)
-            echo "  跳過 gh 安裝。若日後需要，請參考: https://cli.github.com/"
-            ;;
-    esac
-}
-
-check_glab_cli() {
-    if command -v glab &> /dev/null; then
-        echo "  ✅ GitLab CLI (glab) 已安裝: $(glab --version | head -1)"
-        if ! glab auth status &> /dev/null; then
-            echo "  ⚠️  glab 尚未登入（本機 glab CLI）"
-            echo "     本機登入: glab auth login"
-            echo "     註：容器內的認證是獨立的，"
-            echo "         進入容器後需另行設定（gh/glab auth login 或 git push 觸發帳密輸入）。"
-        fi
-        return
-    fi
-
-    echo "  ℹ️  未偵測到 GitLab CLI (glab)"
-    echo "     glab 可讓容器內直接操作 GitLab MR / Issue / Repo"
-    if command -v apk &> /dev/null; then
-        echo "     如有需要，可在容器內執行: apk add glab"
-    else
-        echo "     如有需要，可在容器內執行: sudo apt-get install -y glab"
-    fi
 }
 
 download_files() {
     echo
     echo "========================================"
-    echo "4. 下載設定檔案"
+    echo "4. Downloading Configuration Files"
     echo "========================================"
 
     DOWNLOAD_TOOL="curl -fsSL"
@@ -236,36 +160,36 @@ download_files() {
     fi
 
     if [ ! -f "docker-compose.yml" ]; then
-        echo "  下載 docker-compose.yml..."
+        echo "  Downloading docker-compose.yml..."
         $DOWNLOAD_TOOL "$REPO_URL/docker-compose.yml" -o docker-compose.yml
-        echo "  ✅ docker-compose.yml 已下載"
+        echo "  ✅ docker-compose.yml downloaded"
     else
-        echo "  ✅ docker-compose.yml 已存在"
+        echo "  ✅ docker-compose.yml already exists"
     fi
 
     if [ ! -f ".env" ]; then
         if [ -f ".env.example" ]; then
-            echo "  複製 .env.example -> .env"
+            echo "  Copying .env.example -> .env"
             cp .env.example .env
         else
-            echo "  下載 .env.example..."
+            echo "  Downloading .env.example..."
             $DOWNLOAD_TOOL "$REPO_URL/.env.example" -o .env
         fi
-        echo "  ✅ .env 已建立，請編輯設定"
+        echo "  ✅ .env created, please edit settings"
     else
-        echo "  ✅ .env 已存在"
+        echo "  ✅ .env already exists"
     fi
 
-    echo "  下載最新 upgrade.sh..."
+    echo "  Downloading latest upgrade.sh..."
     $DOWNLOAD_TOOL "$REPO_URL/upgrade.sh" -o upgrade.sh
     chmod +x upgrade.sh
-    echo "  ✅ upgrade.sh 已就緒（後續執行 ./upgrade.sh 即可升級）"
+    echo "  ✅ upgrade.sh ready (run ./upgrade.sh later to upgrade)"
 }
 
 setup_env() {
     echo
     echo "========================================"
-    echo "5. 環境設定"
+    echo "5. Environment Setup"
     echo "========================================"
 
     if [ -f ".env" ]; then
@@ -273,62 +197,62 @@ setup_env() {
     fi
 
     if [ -z "${OPENCHAMBER_UI_PASSWORD:-}" ]; then
-        echo "  請設定 Web UI 密碼 (必填):"
+        echo "  Please set the Web UI password (required):"
         read -s -p "  UI_PASSWORD: " UI_PASS
         echo
         if [ -z "$UI_PASS" ]; then
-            echo "  ❌ 密碼不能為空"
+            echo "  ❌ Password cannot be empty"
             exit 1
         fi
         sed -i "s/^OPENCHAMBER_UI_PASSWORD=.*/OPENCHAMBER_UI_PASSWORD=$UI_PASS/" .env 2>/dev/null || true
-        echo "  ✅ UI 密碼已設定"
+        echo "  ✅ UI password set"
     else
-        echo "  ✅ UI 密碼已設定"
+        echo "  ✅ UI password already set"
     fi
 
     if [ -z "${ADMIN_PASSWORD:-}" ]; then
-        echo "  請設定 Admin Dashboard 密碼 (必填):"
+        echo "  Please set the Admin Dashboard password (required):"
         read -s -p "  ADMIN_PASSWORD: " ADMIN_PASS
         echo
         if [ -z "$ADMIN_PASS" ]; then
-            echo "  ❌ 密碼不能為空"
+            echo "  ❌ Password cannot be empty"
             exit 1
         fi
         set_env_value "ADMIN_PASSWORD" "$ADMIN_PASS"
-        echo "  ✅ Admin 密碼已設定"
+        echo "  ✅ Admin password set"
     else
-        echo "  ✅ Admin 密碼已設定"
+        echo "  ✅ Admin password already set"
     fi
 
-    echo "  請選擇 Workspace 類型:"
-    echo "    1) Named Volume (預設，完全 Docker 管理)"
-    echo "    2) Bind Mount ./workspace (可直接用本地 IDE 編輯)"
-    echo "    3) 自訂路徑"
-    read -p "  選擇 [1/2/3]: " WS_CHOICE
+    echo "  Please select Workspace type:"
+    echo "    1) Named Volume (default, fully Docker managed)"
+    echo "    2) Bind Mount ./workspace (can edit directly with local IDE)"
+    echo "    3) Custom path"
+    read -p "  Select [1/2/3]: " WS_CHOICE
 
     case "$WS_CHOICE" in
         2)
             if [ ! -d "./workspace" ]; then
-                echo "  📁 建立目錄: ./workspace"
+                echo "  📁 Creating directory: ./workspace"
                 mkdir -p "./workspace"
             fi
             set_env_value "WORKSPACE_PATH" "./workspace"
-            echo "  ✅ 使用 bind mount: ./workspace"
+            echo "  ✅ Using bind mount: ./workspace"
             ;;
         3)
-            echo "  請輸入主機上的 workspace 路徑:"
+            echo "  Please enter the workspace path on the host:"
             read -p "  WORKSPACE_PATH: " WS_PATH
             WS_PATH="${WS_PATH:-./workspace}"
             if [ ! -d "$WS_PATH" ]; then
-                echo "  📁 建立目錄: $WS_PATH"
+                echo "  📁 Creating directory: $WS_PATH"
                 mkdir -p "$WS_PATH"
             fi
             set_env_value "WORKSPACE_PATH" "$WS_PATH"
-            echo "  ✅ WORKSPACE_PATH 已設定為: $WS_PATH"
+            echo "  ✅ WORKSPACE_PATH set to: $WS_PATH"
             ;;
         *)
             unset_env_value "WORKSPACE_PATH"
-            echo "  ✅ 使用 named volume (預設)"
+            echo "  ✅ Using named volume (default)"
             ;;
     esac
 }
@@ -336,15 +260,15 @@ setup_env() {
 prepare_volumes() {
     echo
     echo "========================================"
-    echo "6. 準備 Volume 目錄"
+    echo "6. Preparing Volume Directories"
     echo "========================================"
 
-    echo "  建立 ./backups （供 admin 容器備份使用）..."
+    echo "  Creating ./backups (for admin container backups)..."
     mkdir -p ./backups
     chmod 777 ./backups
-    echo "  ✅ ./backups 已就緒"
+    echo "  ✅ ./backups ready"
 
-    echo "  建立 ./workspace （供 code 編輯使用）..."
+    echo "  Creating ./workspace (for code editing)..."
     WS_PATH=$(grep -E "^WORKSPACE_PATH=" .env 2>/dev/null | cut -d= -f2- || echo "")
     if [ -n "$WS_PATH" ]; then
         WS_PATH=$(eval echo "$WS_PATH" 2>/dev/null || true)
@@ -352,19 +276,19 @@ prepare_volumes() {
             mkdir -p "$WS_PATH"
         fi
     fi
-    echo "  ✅ workspace 目錄已確認"
+    echo "  ✅ workspace directory confirmed"
 }
 
 start_services() {
     echo
     echo "========================================"
-    echo "7. 啟動服務"
+    echo "7. Starting Services"
     echo "========================================"
 
-    echo "  執行 docker compose up -d..."
+    echo "  Running docker compose up -d..."
     docker compose up -d
 
-    echo "  等待服務啟動..."
+    echo "  Waiting for services to start..."
     echo -n "  "
     for i in {1..30}; do
         if docker compose ps --format json 2>/dev/null | grep -q "running"; then
@@ -375,14 +299,14 @@ start_services() {
     done
     echo
 
-    echo "  檢查服務狀態..."
+    echo "  Checking service status..."
     docker compose ps
 }
 
 show_info() {
     echo
     echo "========================================"
-    echo "8. 連線資訊"
+    echo "8. Connection Information"
     echo "========================================"
 
     HOST_IP=""
@@ -392,36 +316,38 @@ show_info() {
         HOST_IP=$(hostname -I 2>/dev/null | awk '{print $1}' | grep -v '^fe80\|^::' | head -1)
     fi
 
+    local chamber_port
+    chamber_port=$(grep -E "^CHAMBER_PORT=" .env 2>/dev/null | cut -d= -f2 || true)
+    chamber_port="${chamber_port:-8000}"
+
     if [ -n "$HOST_IP" ] && [[ ! "$HOST_IP" =~ ^127\. ]] && [[ ! "$HOST_IP" =~ ^:: ]]; then
-        echo "  🌐 請使用以下網址存取 OpenChamber:"
-        echo "     http://${HOST_IP}:8000"
+        echo "  🌐 Access OpenChamber using the following URL:"
+        echo "     http://${HOST_IP}:${chamber_port}"
         echo
-        echo "  登入資訊:"
-        echo "    - UI Password: (請查看 .env 中的 OPENCHAMBER_UI_PASSWORD)"
+        echo "  Login credentials:"
+        echo "    - UI Password: (check OPENCHAMBER_UI_PASSWORD in .env)"
         echo "    - OpenCode Password: devonly"
     else
-        echo "  ⚠️  無法自動偵測主機 IP"
+        echo "  ⚠️  Unable to auto-detect host IP"
         echo
-        echo "  請查詢主機 IP 後使用以下網址:"
-        echo "    http://{YOUR_IP}:8000"
+        echo "  Please find your host IP and use the following URL:"
+        echo "    http://{YOUR_IP}:${chamber_port}"
         echo
-        echo "  查詢方式:"
+        echo "  How to find your IP:"
         echo "    - Linux: ip route get 1.1.1.1 | awk '{print \$6}'"
         echo "    - macOS: ipconfig getifaddr en0"
         echo "    - Windows: ipconfig | findstr /i IPv4"
     fi
 
     echo
-    echo "  其他服務:"
-    echo "    - Ollama API: http://${HOST_IP:-localhost}:11434"
-    echo "    - Admin Dashboard: http://${HOST_IP:-localhost}:${ADMIN_PORT:-8080}"
-    echo "      (使用 install 時設定的 ADMIN_PASSWORD 登入)"
+    echo "  Admin Dashboard: http://${HOST_IP:-localhost}:${ADMIN_PORT:-8080}"
+    echo "    (login with ADMIN_PASSWORD set during install)"
     echo
-    echo "  升級指令: ./upgrade.sh"
-    echo "    (從 upstream 拉新 compose / image，自動備份並合併 .env)"
+    echo "  Upgrade command: ./upgrade.sh"
+    echo "    (pulls new compose/image from upstream, auto-backup and merge .env)"
     echo
     echo "========================================"
-    echo "  安裝完成!"
+    echo "  Installation complete!"
     echo "========================================"
 }
 
@@ -432,25 +358,25 @@ delegate_to_upgrade_if_installed() {
 
     echo
     echo "========================================"
-    echo "  偵測到已安裝環境"
+    echo "  Detected Existing Installation"
     echo "========================================"
-    echo "  - docker-compose.yml 已存在於 $(pwd)"
-    echo "  - install.sh 僅供首次安裝；改執行 ./upgrade.sh"
+    echo "  - docker-compose.yml exists at $(pwd)"
+    echo "  - install.sh is for first-time install only; run ./upgrade.sh instead"
     echo
 
     DOWNLOAD_TOOL="curl -fsSL"
     if ! command -v curl &> /dev/null; then
         DOWNLOAD_TOOL="wget -qO-"
     fi
-    echo "  下載最新 upgrade.sh..."
+    echo "  Downloading latest upgrade.sh..."
     if ! $DOWNLOAD_TOOL "$REPO_URL/upgrade.sh" -o upgrade.sh; then
-        echo "  ❌ 無法下載 upgrade.sh，請檢查網路連線"
+        echo "  ❌ Failed to download upgrade.sh, please check network connection"
         exit 1
     fi
     chmod +x upgrade.sh
-    echo "  ✅ upgrade.sh 已更新至最新版"
+    echo "  ✅ upgrade.sh updated to latest version"
 
-    echo "  委派給 ./upgrade.sh ..."
+    echo "  Delegating to ./upgrade.sh ..."
     echo
     exec ./upgrade.sh "$@"
 }

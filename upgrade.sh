@@ -33,7 +33,7 @@ header() {
 # System requirement checks (shared with install.sh)
 # ──────────────────────────────────────────────────────────
 check_system() {
-    header "1. 檢查系統硬體規格"
+    header "1. Checking System Hardware Specifications"
 
     CPU_CORES=$(nproc 2>/dev/null || echo 0)
     RAM_KB=$(grep MemTotal /proc/meminfo 2>/dev/null | awk '{print $2}')
@@ -44,13 +44,13 @@ check_system() {
     echo "  CPU cores: $CPU_CORES  |  RAM: ${RAM_GB} GB  |  Disk: ${DISK_GB} GB"
 
     if [ "$CPU_CORES" -lt 2 ]; then
-        fail "CPU 核心數不足 (需要至少 2 core)"
+        fail "Insufficient CPU cores (requires at least 2 cores)"
     fi
     if [ "$RAM_GB" -lt 4 ]; then
-        fail "RAM 不足 (需要至少 4 GB)"
+        fail "Insufficient RAM (requires at least 4 GB)"
     fi
     if [ "$DISK_GB" -lt 5 ]; then
-        fail "磁碟空間不足 (至少需要 5 GB 以進行升級)"
+        fail "Insufficient disk space (requires at least 5 GB for upgrade)"
     fi
 
     CPU_FLAGS=$(grep -m1 '^flags' /proc/cpuinfo 2>/dev/null || echo "")
@@ -59,40 +59,40 @@ check_system() {
     echo "$CPU_FLAGS" | grep -qw 'avx2' && HAS_AVX2=true
 
     if [ "$HAS_AVX" = "false" ] || [ "$HAS_AVX2" = "false" ]; then
-        echo "  ❌ CPU 缺少必要的 SIMD 指令集:"
-        [ "$HAS_AVX"  = "false" ] && echo "     - AVX  未支援"
-        [ "$HAS_AVX2" = "false" ] && echo "     - AVX2 未支援"
-        fail "不支援的 CPU，請參閱 install.sh 的完整說明"
+        echo "  ❌ CPU lacks required SIMD instruction sets:"
+        [ "$HAS_AVX"  = "false" ] && echo "     - AVX not supported"
+        [ "$HAS_AVX2" = "false" ] && echo "     - AVX2 not supported"
+        fail "Unsupported CPU, please refer to install.sh for full details"
     fi
 
-    ok "系統規格符合要求"
+    ok "System specifications meet requirements"
 }
 
 check_docker() {
-    header "2. 檢查 Docker 環境"
+    header "2. Checking Docker Environment"
 
-    command -v docker &>/dev/null || fail "Docker 未安裝"
+    command -v docker &>/dev/null || fail "Docker not installed"
     ok "Docker: $(docker --version | head -1)"
 
     if command -v docker compose &>/dev/null; then
-        ok "Docker Compose V2 已安裝"
+        ok "Docker Compose V2 installed"
     else
-        fail "Docker Compose V2 未安裝"
+        fail "Docker Compose V2 not installed"
     fi
 
-    [ -S /var/run/docker.sock ] || fail "Docker socket 不存在"
-    docker info &>/dev/null || fail "無法連接 Docker daemon"
-    ok "Docker daemon 運作正常"
+    [ -S /var/run/docker.sock ] || fail "Docker socket does not exist"
+    docker info &>/dev/null || fail "Cannot connect to Docker daemon"
+    ok "Docker daemon running normally"
 
-    command -v curl &>/dev/null || command -v wget &>/dev/null || fail "缺少 curl 或 wget"
-    ok "網路工具已安裝"
+    command -v curl &>/dev/null || command -v wget &>/dev/null || fail "Missing curl or wget"
+    ok "Network tools installed"
 }
 
 # ──────────────────────────────────────────────────────────
 # Backup existing files
 # ──────────────────────────────────────────────────────────
 backup_files() {
-    header "3. 備份既有設定檔"
+    header "3. Backing Up Existing Configuration Files"
 
     local backup_dir="backup_${TIMESTAMP}"
     mkdir -p "$backup_dir"
@@ -102,7 +102,7 @@ backup_files() {
             cp "$f" "${backup_dir}/${f}"
             ok "${f} → ${backup_dir}/${f}"
         else
-            info "${f} 不存在，跳過備份"
+            info "${f} does not exist, skipping backup"
         fi
     done
 
@@ -122,10 +122,10 @@ backup_files() {
 
     if [ "${#backups[@]}" -gt "$retention" ]; then
         local to_remove=$(( ${#backups[@]} - retention ))
-        info "保留最近 ${retention} 份備份，將刪除 ${to_remove} 份舊備份"
+        info "Keeping the most recent ${retention} backups, will delete ${to_remove} old backups"
         for ((i=0; i<to_remove; i++)); do
             rm -rf "${backups[$i]}"
-            ok "已刪除舊備份: ${backups[$i]}"
+            ok "Old backup deleted: ${backups[$i]}"
         done
     fi
 }
@@ -134,37 +134,37 @@ backup_files() {
 # Update docker-compose.yml from upstream
 # ──────────────────────────────────────────────────────────
 update_compose() {
-    header "4. 更新 docker-compose.yml"
+    header "4. Updating docker-compose.yml"
 
     DOWNLOAD_TOOL="curl -fsSL"
     command -v curl &>/dev/null || DOWNLOAD_TOOL="wget -qO-"
 
-    echo "  下載最新 docker-compose.yml..."
+    echo "  Downloading latest docker-compose.yml..."
     $DOWNLOAD_TOOL "$REPO_URL/docker-compose.yml" -o docker-compose.yml.new
 
     if [ ! -s docker-compose.yml.new ]; then
         rm -f docker-compose.yml.new
-        fail "下載 docker-compose.yml 失敗，請檢查網路連線"
+        fail "Failed to download docker-compose.yml, please check network connection"
     fi
 
     mv docker-compose.yml.new docker-compose.yml
-    ok "docker-compose.yml 已更新"
+    ok "docker-compose.yml updated"
 }
 
 # ──────────────────────────────────────────────────────────
 # Merge new env vars into .env
 # ──────────────────────────────────────────────────────────
 merge_env() {
-    header "5. 合併 .env 設定"
+    header "5. Merging .env Settings"
 
     DOWNLOAD_TOOL="curl -fsSL"
     command -v curl &>/dev/null || DOWNLOAD_TOOL="wget -qO-"
 
     if [ ! -f ".env" ]; then
-        warn ".env 不存在，從 upstream 下載"
+        warn ".env does not exist, downloading from upstream"
         $DOWNLOAD_TOOL "$REPO_URL/.env.example" -o .env
-        ok ".env 已建立（使用預設值）"
-        info "請編輯 .env 設定密碼等自訂值"
+        ok ".env created (using default values)"
+        info "Please edit .env to set passwords and other custom values"
         return
     fi
 
@@ -172,7 +172,7 @@ merge_env() {
     tmp_example=$(mktemp)
     $DOWNLOAD_TOOL "$REPO_URL/.env.example" -o "$tmp_example" || {
         rm -f "$tmp_example"
-        warn "無法下載 .env.example，跳過 env 合併"
+        warn "Failed to download .env.example, skipping env merge"
         return
     }
 
@@ -188,16 +188,16 @@ merge_env() {
         else
             echo "$line" >> .env
             added=$((added + 1))
-            echo -e "  ${GREEN}➕${NC} ${key} 已新增至 .env"
+            echo -e "  ${GREEN}➕${NC} ${key} added to .env"
         fi
     done < "$tmp_example"
 
     rm -f "$tmp_example"
 
     if [ "$added" -gt 0 ]; then
-        ok "已合併 ${added} 個新設定值到 .env"
+        ok "Merged ${added} new settings into .env"
     else
-        ok ".env 已包含所有最新設定，無需變更"
+        ok ".env already contains all latest settings, no changes needed"
     fi
 }
 
@@ -205,27 +205,27 @@ merge_env() {
 # Pull latest container image
 # ──────────────────────────────────────────────────────────
 pull_image() {
-    header "6. 拉取最新 Docker 映像"
+    header "6. Pulling Latest Docker Image"
 
     local old_id
     old_id=$(docker images ghcr.io/tryweb/ai-engkit:latest -q 2>/dev/null || true)
     if [ -n "$old_id" ]; then
-        echo "  當前映像 ID: ${old_id:0:12}"
+        echo "  Current image ID: ${old_id:0:12}"
     else
-        info "本地尚無 AI-EngKit 映像"
+        info "No AI-EngKit image found locally"
     fi
 
-    echo "  正在拉取 ghcr.io/tryweb/ai-engkit:latest..."
+    echo "  Pulling ghcr.io/tryweb/ai-engkit:latest..."
     if docker compose pull 2>&1; then
-        ok "映像已更新至最新版"
+        ok "Image updated to latest version"
     else
-        ok "映像已檢查完畢"
+        ok "Image check completed"
     fi
 
     local new_id
     new_id=$(docker images ghcr.io/tryweb/ai-engkit:latest -q 2>/dev/null || true)
     if [ -n "$new_id" ] && [ "$new_id" != "$old_id" ] && [ -n "$old_id" ]; then
-        echo "  新映像 ID: ${new_id:0:12}"
+        echo "  New image ID: ${new_id:0:12}"
     fi
 }
 
@@ -233,11 +233,11 @@ pull_image() {
 # Prepare host volumes for admin container
 # ──────────────────────────────────────────────────────────
 prepare_volumes() {
-    header "7. 準備 Volume 目錄"
+    header "7. Preparing Volume Directories"
 
     mkdir -p ./backups
     chmod 777 ./backups
-    ok "./backups 已就緒"
+    ok "./backups ready"
 
     local ws_path
     ws_path=$(grep -E "^WORKSPACE_PATH=" .env 2>/dev/null | cut -d= -f2- || true)
@@ -245,7 +245,7 @@ prepare_volumes() {
         ws_path=$(eval echo "$ws_path" 2>/dev/null || true)
         if [ ! -d "$ws_path" ]; then
             mkdir -p "$ws_path"
-            ok "workspace 目錄已建立: ${ws_path}"
+            ok "workspace directory created: ${ws_path}"
         fi
     fi
 }
@@ -254,7 +254,7 @@ prepare_volumes() {
 # Recreate containers
 # ──────────────────────────────────────────────────────────
 recreate_containers() {
-    header "8. 重建容器"
+    header "8. Recreating Containers"
 
     if [ -f ".env" ]; then
         local ws_path
@@ -262,18 +262,18 @@ recreate_containers() {
         if [ -n "$ws_path" ]; then
             ws_path=$(eval echo "$ws_path" 2>/dev/null || true)
             if [ ! -d "$ws_path" ]; then
-                warn "WORKSPACE_PATH=${ws_path} 目錄不存在，將自動建立"
+                warn "WORKSPACE_PATH=${ws_path} directory does not exist, will create automatically"
                 mkdir -p "$ws_path"
             fi
         fi
     fi
 
-    echo "  執行 docker compose up -d --force-recreate..."
+    echo "  Executing docker compose up -d --force-recreate..."
     docker compose up -d --force-recreate 2>&1 || {
-        fail "容器啟動失敗，請檢查 docker compose ps"
+        fail "Container startup failed, please check docker compose ps"
     }
 
-    echo -n "  等待服務啟動"
+    echo -n "  Waiting for service startup"
     for _ in {1..15}; do
         if docker compose ps --format json 2>/dev/null | grep -q '"Status":"running"' 2>/dev/null || \
            docker compose ps 2>/dev/null | grep -q "Up"; then
@@ -285,21 +285,21 @@ recreate_containers() {
     echo
 
     docker compose ps
-    ok "容器已重新啟動"
+    ok "Containers restarted"
 }
 
 # ──────────────────────────────────────────────────────────
 # Clean up dangling images
 # ──────────────────────────────────────────────────────────
 cleanup_images() {
-    header "9. 清理舊映像"
+    header "9. Cleaning Up Old Images"
 
     local pruned
     pruned=$(docker image prune -f 2>&1 | grep -oE 'Total reclaimed space: .*' | sed 's/^Total reclaimed space: //' || true)
     if [ -n "$pruned" ]; then
-        ok "已釋放磁碟空間: ${pruned}"
+        ok "Disk space freed: ${pruned}"
     else
-        info "無需清理"
+        info "No cleanup needed"
     fi
 }
 
@@ -328,12 +328,11 @@ show_info() {
     else
         echo -e "  ${CYAN}🌐${NC} Web UI: http://localhost:${chamber_port}"
     fi
-    echo "  Ollama API: http://localhost:11434"
     echo
-    echo -e "  ${YELLOW}ℹ${NC}  備份目錄: backup_${TIMESTAMP}/"
-    echo "     (包含升級前的 docker-compose.yml 與 .env)"
+    echo -e "  ${YELLOW}ℹ${NC}  Backup directory: backup_${TIMESTAMP}/"
+    echo "     (contains pre-upgrade docker-compose.yml and .env)"
     echo
-    echo -e "  ${YELLOW}ℹ${NC}  若需回滾:"
+    echo -e "  ${YELLOW}ℹ${NC}  To rollback:"
     echo "     docker compose down"
     echo "     cp backup_${TIMESTAMP}/docker-compose.yml docker-compose.yml"
     echo "     cp backup_${TIMESTAMP}/.env .env"
@@ -360,10 +359,10 @@ self_update() {
     if $DOWNLOAD_TOOL "$REPO_URL/upgrade.sh" -o "$tmp_file" 2>/dev/null && [ -s "$tmp_file" ]; then
         if bash -n "$tmp_file" 2>/dev/null; then
             if ! cmp -s "$0" "$tmp_file"; then
-                info "發現新版 upgrade.sh，正在更新..."
+                info "New version of upgrade.sh found, updating..."
                 chmod +x "$tmp_file"
                 mv "$tmp_file" "$0"
-                ok "upgrade.sh 已更新至最新版"
+                ok "upgrade.sh updated to latest version"
                 export UPGRADE_SELF_UPDATED=1
                 exec bash "$0" "$@"
             fi
@@ -380,13 +379,13 @@ verify_installed_environment() {
         return 0
     fi
 
-    fail "找不到 AI-EngKit 安裝環境（缺少 docker-compose.yml 或 .env）。
+    fail "AI-EngKit installation environment not found (missing docker-compose.yml or .env).
 
-upgrade.sh 僅供已安裝環境使用。首次安裝請改執行 install.sh：
+upgrade.sh is for existing installations only. For first-time installation, run install.sh instead:
 
   curl -fsSL https://raw.githubusercontent.com/tryweb/ai-engkit/main/install.sh | bash
 
-若已透過 install.sh 安裝過，請確認你在正確的安裝目錄下執行此腳本。"
+If you have already installed via install.sh, please make sure you are running this script in the correct installation directory."
 }
 
 main() {
@@ -399,7 +398,7 @@ main() {
 
     echo
     echo -e "${BOLD}╔══════════════════════════════════════╗${NC}"
-    echo -e "${BOLD}║   AI-EngKit 升級腳本                ║${NC}"
+    echo -e "${BOLD}║   AI-EngKit Upgrade Script           ║${NC}"
     echo -e "${BOLD}╚══════════════════════════════════════╝${NC}"
 
     check_system
