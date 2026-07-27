@@ -198,7 +198,7 @@ setup_env() {
 
     if [ -z "${OPENCHAMBER_UI_PASSWORD:-}" ]; then
         echo "  Please set the Web UI password (required):"
-        read -s -p "  UI_PASSWORD: " UI_PASS
+        read -s -p "  UI_PASSWORD: " UI_PASS < /dev/tty
         echo
         if [ -z "$UI_PASS" ]; then
             echo "  ❌ Password cannot be empty"
@@ -212,7 +212,7 @@ setup_env() {
 
     if [ -z "${ADMIN_PASSWORD:-}" ]; then
         echo "  Please set the Admin Dashboard password (required):"
-        read -s -p "  ADMIN_PASSWORD: " ADMIN_PASS
+        read -s -p "  ADMIN_PASSWORD: " ADMIN_PASS < /dev/tty
         echo
         if [ -z "$ADMIN_PASS" ]; then
             echo "  ❌ Password cannot be empty"
@@ -228,7 +228,7 @@ setup_env() {
     echo "    1) Named Volume (default, fully Docker managed)"
     echo "    2) Bind Mount ./workspace (can edit directly with local IDE)"
     echo "    3) Custom path"
-    read -p "  Select [1/2/3]: " WS_CHOICE
+    read -p "  Select [1/2/3]: " WS_CHOICE < /dev/tty
 
     case "$WS_CHOICE" in
         2)
@@ -241,7 +241,7 @@ setup_env() {
             ;;
         3)
             echo "  Please enter the workspace path on the host:"
-            read -p "  WORKSPACE_PATH: " WS_PATH
+            read -p "  WORKSPACE_PATH: " WS_PATH < /dev/tty
             WS_PATH="${WS_PATH:-./workspace}"
             if [ ! -d "$WS_PATH" ]; then
                 echo "  📁 Creating directory: $WS_PATH"
@@ -385,14 +385,6 @@ main() {
     cd "$(dirname "$0")"
 
     delegate_to_upgrade_if_installed "$@"
-
-    # When piped via curl, stdin is not a terminal.
-    # Redirect to /dev/tty for interactive prompts, but restore on exit.
-    if ! [ -t 0 ]; then
-        exec 6<&0        # save original stdin
-        exec < /dev/tty  # redirect to terminal for read prompts
-        trap 'exec 0<&6 6<&-' EXIT  # restore on exit
-    fi
 
     check_system
     check_docker
