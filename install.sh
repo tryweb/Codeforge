@@ -386,6 +386,17 @@ main() {
 
     delegate_to_upgrade_if_installed "$@"
 
+    # Check /dev/tty availability before any side effects.
+    # Without a controlling terminal, interactive reads fail with a cryptic error.
+    if ! [ -t 0 ] && ! (: < /dev/tty) 2>/dev/null; then
+        echo "  ❌ Interactive prompts require a controlling terminal."
+        echo "     Run via: ssh -t root@HOST or use a local terminal."
+        echo "     For non-interactive installs, pre-configure .env with:"
+        echo "       OPENCHAMBER_UI_PASSWORD=your_password"
+        echo "       ADMIN_PASSWORD=your_password"
+        exit 1
+    fi
+
     check_system
     check_docker
     check_and_prepare_volumes
