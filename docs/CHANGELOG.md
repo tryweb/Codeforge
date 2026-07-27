@@ -3,6 +3,9 @@
 
 ## [1.6.3] - 2026-07-27
 
+### Added
+- Bump OpenCode 1.18.5 → 1.18.6
+
 ### Fixed
 - Read from /dev/tty directly instead of redirecting stdin
 - Restore stdin after curl pipe on Alpine Linux
@@ -10,6 +13,7 @@
 - Make install.sh and upgrade.sh compatible with Alpine Linux (BusyBox)
 
 ### Documentation
+- Update CHANGELOG for v1.6.3 release
 - Update version management references
 - Restructure README for onboarding
 - Add Projects screenshot to README
@@ -20,6 +24,9 @@
 ### Changed
 - Internationalize install/upgrade scripts and remove host-side CLI tools
 - Remove retired README badge synchronization
+
+### Changed
+- Upgrade OpenCode from 1.18.5 to 1.18.6.
 
 ## [1.6.2] - 2026-07-26
 
