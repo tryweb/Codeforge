@@ -20,6 +20,27 @@ export async function getSelfContainerRef(): Promise<string> {
 }
 
 /**
+ * Get the host-side source for one of this container's bind mounts.
+ * Docker daemon paths must be used when a helper container controls DooD.
+ */
+export async function getSelfBindSource(destination: string): Promise<string | null> {
+  const ref = await getSelfContainerRef();
+  const result = await dockerCommand(
+    `inspect --format='{{json .Mounts}}' ${ref}`,
+    5_000,
+  );
+  if (result.exitCode !== 0 || !result.stdout) return null;
+
+  try {
+    const mounts = JSON.parse(result.stdout) as Array<{ Type?: string; Source?: string; Destination?: string }>;
+    const mount = mounts.find((item) => item.Type === "bind" && item.Destination === destination);
+    return mount?.Source || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Get this container's own name (e.g. "ai-engkit-admin" or "ai-engkit-admin-dev").
  * Used to derive the sibling dev container name.
  */
