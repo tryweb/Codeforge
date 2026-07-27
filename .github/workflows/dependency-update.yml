@@ -460,6 +460,11 @@ jobs:
           path: /tmp/updated-image.tar
           retention-days: 7
 
+      - name: Create .env for CI
+        run: |
+          cp .env.example .env
+          sed -i 's/^ADMIN_PASSWORD=.*/ADMIN_PASSWORD=testadmin123/' .env
+
       - name: Start services
         run: |
           set -euo pipefail
