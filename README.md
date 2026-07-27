@@ -1,98 +1,90 @@
 # AI-EngKit
 
-> **Your Self-hosted AI Engineering Kit for Dev & Ops**
+> **A reproducible, self-hosted AI engineering workspace for developers and small teams.**
 
-AI-EngKit is a self-hosted AI development environment that packages [OpenCode](https://opencode.ai), [OpenChamber](https://openchamber.dev/), browser automation, code navigation, and everyday developer tooling into a single Ubuntu 24.04 container.
+AI-EngKit packages [OpenCode](https://opencode.ai), [OpenChamber](https://openchamber.dev/), MCP tooling, browser automation, Git workflows, and common build tools into a persistent Ubuntu 24.04 Docker environment.
 
-It is designed for teams and individuals who want a reproducible AI coding workspace without rebuilding their toolchain from scratch.
+It is for people who want a ready-to-run AI coding workspace without assembling and maintaining the toolchain by hand. It is **not** a hosted AI service and is designed for trusted development environments.
 
-![Ubuntu](https://img.shields.io/badge/Ubuntu-24.04-orange?style=for-the-badge&logo=ubuntu&logoColor=white)
-![OpenCode](https://img.shields.io/badge/OpenCode-1.18.5-blue?style=for-the-badge&logoColor=white)
-![OpenChamber](https://img.shields.io/badge/OpenChamber-1.16.3-blue?style=for-the-badge&logoColor=white)
-![Docker](https://img.shields.io/badge/Docker-29.6.2-2496ED?style=for-the-badge&logo=docker&logoColor=white)
-![Playwright](https://img.shields.io/badge/Playwright-1.62.0-45ba4b?style=for-the-badge&logo=playwright&logoColor=white)
-![lean-ctx](https://img.shields.io/badge/lean--ctx-3.9.12-7C3AED?style=for-the-badge&logoColor=white)
- 
-## Features
+[![CI](https://github.com/tryweb/ai-engkit/actions/workflows/ci.yml/badge.svg)](https://github.com/tryweb/ai-engkit/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
+[![Ubuntu](https://img.shields.io/badge/Ubuntu-24.04-orange?logo=ubuntu&logoColor=white)](https://ubuntu.com/)
 
-- **OpenCode + OpenChamber** — Terminal agent and browser UI in one container
-- **Preconfigured MCP stack** — Built-in CodeGraph, lean-ctx, and Playwright integrations
-- **Agent plugins and skills** — OpenSpec, Superpowers, baked skills, and OpenCode plugin support
-- **Docker-ready development** — Docker CLI, `docker compose`, and Buildx with Docker socket passthrough
-- **Complete CLI toolchain** — git, `gh`, `glab`, Homebrew, bun, python3, ripgrep, jq, tmux, ssh, rsync, comment-checker, and common build tools
-- **Browser automation** — Playwright + bundled Chromium (resolved at runtime via `pw-mcp` wrapper) for testing and web workflows
-- **Extensible package install** — Add extra apt, brew, or bun packages at runtime
-- **Persistent volumes** — Config, caches, workspace, and knowledge data survive container restarts
-- **Isolated credentials** — Separate git / SSH / `gh` / `glab` volumes inside the container
-- **Zero-config bootstrap** — Default config and baked skills are initialized automatically on first run
-- **Admin Dashboard** — Web-based admin UI at port 8080 for config editing, upgrades, project init, and auth management
+## Why AI-EngKit?
 
-## Admin Dashboard
+- **One workspace, two interfaces** — use OpenCode from the terminal or OpenChamber from a browser.
+- **Pre-wired engineering tools** — CodeGraph, lean-ctx, Playwright, GitHub/GitLab CLI, Docker, and everyday build utilities are included.
+- **Persistent by default** — configuration, sessions, caches, credentials, workspace files, and knowledge data live in separate Docker volumes.
+- **Operationally manageable** — the Admin Dashboard handles environment settings, authentication, project initialization, version inspection, and upgrades.
+- **Extensible without rebuilding** — add apt, Homebrew, or bun packages through environment variables at startup.
 
-AI-EngKit includes a web-based admin dashboard (`ai-admin`) running as a Docker sidecar alongside the main container. It provides a browser UI for operational tasks:
+## Requirements and security boundary
 
-- **Version Dashboard** — CLI and runtime version overview
-- **Env Config Editor** — Edit `.env` variables with masked secret fields
-- **Upgrade Engine** — One-click image upgrade with backup, health poll, and rollback
-- **Project Init** — Scaffold new workspace projects
-- **GitHub / GitLab Auth** — Device-code OAuth flow for `gh` and `glab` CLI auth
-- **Git Config** — Git identity and credential management
-- **SSH Keys** — Generate and view SSH public keys
+Before installing, have:
 
-Open [http://localhost:8080](http://localhost:8080) after installation to access the dashboard.
+- Docker Engine with Compose support
+- At least 2 CPU cores, 4 GB RAM, and 30 GB free disk space (8 GB RAM and 100 GB disk recommended)
+- An AVX2-capable CPU, required by the OpenCode runtime
 
-### Screenshots
+> **Security warning:** AI-EngKit mounts the Docker socket so agents and the Admin Dashboard can manage sibling containers. This is a high-trust capability, not a security sandbox. Keep the dashboard and services on a trusted network, change all passwords, and read [SECURITY.md](./SECURITY.md) before exposing anything beyond localhost.
 
-<p align="center">
-  <img src="./docs/images/admin-dashboard.png" width="900" alt="AI-EngKit Admin Dashboard showing container status, authentication status, project count, and component versions">
-</p>
-<p align="center"><em>Dashboard overview</em></p>
+## Quick start
 
-<p align="center">
-  <img src="./docs/images/admin-versions.png" width="900" alt="AI-EngKit Admin component versions page showing image metadata and Core, CLI, MCP, and Plugin versions">
-</p>
-<p align="center"><em>Component and runtime versions</em></p>
-
-<p align="center">
-  <img src="./docs/images/admin-environment.png" width="900" alt="AI-EngKit Admin environment editor showing masked secrets and configurable runtime variables">
-</p>
-<p align="center"><em>Environment configuration with masked secrets</em></p>
-
-<p align="center">
-  <img src="./docs/images/admin-projects.png" width="900" alt="AI-EngKit Admin projects page showing workspace projects with knowledge, maintenance, and OpenSpec status indicators">
-</p>
-<p align="center"><em>Workspace project management</em></p>
-
-*The admin dashboard runs on the existing Bun runtime — zero additional image layers.*
-
-## Quick Start
+Install the current production channel from `main`:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/tryweb/ai-engkit/refs/heads/main/install.sh | bash
 ```
 
-Open [http://localhost:8000](http://localhost:8000) in your browser.
+The installer checks system requirements, asks for the OpenChamber and Admin passwords, creates the persistent volumes, and starts the services.
 
-## Upgrade
+After installation:
 
-> **Tip:** Re-running `install.sh` on an existing installation (when `docker-compose.yml` is already present) automatically downloads `upgrade.sh` and delegates to it — so both commands reach the same upgrade flow. Use `upgrade.sh` for scripted/cron-driven upgrades and `install.sh` for first-time setup.
+- OpenChamber: [http://localhost:8000](http://localhost:8000)
+- Admin Dashboard: [http://localhost:8080](http://localhost:8080)
 
-To update an existing installation to the latest version:
+The installer-generated `.env` is the source of truth for your ports and credentials. Do not use the example passwords in a network-accessible deployment; `OPENCODE_SERVER_PASSWORD` is `devonly` in the example configuration and should also be replaced.
+
+## What is included?
+
+### Core workspace
+
+- OpenCode terminal agent and OpenChamber browser UI
+- CodeGraph, lean-ctx, and Playwright MCP integrations
+- OpenSpec, Superpowers, baked skills, and OpenCode plugin support
+- `git`, `gh`, `glab`, Docker Compose, Buildx, Homebrew, bun, Python, ripgrep, jq, tmux, SSH, rsync, and common build tools
+- Bundled Playwright Chromium, resolved at runtime through the `pw-mcp` wrapper
+
+### Admin Dashboard
+
+The `ai-admin` service runs as a separate service from the main `ai-dev` container, using the same image and shared operational volumes. No separate Admin image is required.
+
+It provides:
+
+- Version and container health overview
+- Masked environment-variable editing
+- Backup-aware image upgrades with health polling
+- Workspace project initialization
+- GitHub and GitLab device-code authentication
+- Git identity, credentials, and SSH public-key management
+
+<p align="center">
+  <img src="./docs/images/admin-dashboard.png" width="900" alt="AI-EngKit Admin Dashboard overview">
+</p>
+
+See the [architecture guide](./docs/ARCHITECTURE.md) for the service and storage model.
+
+## Upgrade and rollback
+
+Upgrade an existing installation with the same supported release flow:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/tryweb/ai-engkit/refs/heads/main/upgrade.sh | bash
 ```
 
-The upgrade script will:
+The upgrade script backs up the compose file and `.env`, downloads the latest compose configuration, merges newly introduced variables without overwriting custom values, pulls the image, recreates the service, waits for the container to be running, and removes dangling images. Re-running `install.sh` on an existing installation delegates to this upgrade flow.
 
-1. **Back up** your current `docker-compose.yml` and `.env` to a timestamped directory (`backup_<timestamp>/`), keeping only the most recent backup copies (default: 5, configurable via `BACKUP_RETENTION` in `.env`)
-2. **Download** the latest `docker-compose.yml` from upstream
-3. **Merge** any new environment variables into your `.env` (preserving your custom values)
-4. **Pull** the latest container image
-5. **Recreate** the container with `docker compose up -d --force-recreate`
-6. **Clean up** dangling images to free disk space
-
-If you need to roll back, the backup directory contains your previous configuration:
+To restore a backup:
 
 ```bash
 docker compose down
@@ -101,259 +93,87 @@ cp backup_<timestamp>/.env .env
 docker compose up -d
 ```
 
-## Documentation Map
+## Configuration
 
-- [CONTRIBUTING.md](./CONTRIBUTING.md) — contributor guide (English)
-- [docs/CONTRIBUTING_zh-TW.md](./docs/CONTRIBUTING_zh-TW.md) — contributor guide (繁體中文)
-- [docs/CHANGELOG.md](./docs/CHANGELOG.md) — changelog
-- [SECURITY.md](./SECURITY.md) — security policy (English)
-- [docs/SECURITY_zh-TW.md](./docs/SECURITY_zh-TW.md) — security policy (繁體中文)
-- [docs/TOOLING.md](./docs/TOOLING.md) — built-in MCP servers, CLI tools, package managers, and extension points
-- [docs/GIT_AUTHENTICATION.md](./docs/GIT_AUTHENTICATION.md) — HTTPS / SSH / `gh` / `glab` setup inside the container
-- [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) — runtime architecture, data flow, storage, and startup behavior
-- [docs/TROUBLESHOOTING.md](./docs/TROUBLESHOOTING.md) — known issues and fixes
+Copy `.env.example` to `.env` when configuring a checkout manually. The installer normally creates it for you. The optional package variables below can be added to `.env` even when they are not present in the example file.
 
-## Development
+| Variable | Default / behavior | Purpose |
+|----------|--------------------|---------|
+| `CHAMBER_PORT` | `8000` | Host port for OpenChamber |
+| `ADMIN_PORT` | `8080` | Host port for the Admin Dashboard |
+| `OPENCODE_SERVER_PASSWORD` | `devonly` in example | OpenCode API password; replace it |
+| `OPENCHAMBER_UI_PASSWORD` | `chamber` in example | OpenChamber password; installer prompts for it |
+| `ADMIN_PASSWORD` | **required** | Admin Dashboard password; installer prompts for it |
+| `OPENCODE_PLUGINS` | bundled plugin list | Comma-separated OpenCode plugins |
+| `OPENCODE_PROVIDER` | unset | Custom provider JSON injected into `opencode.json` |
+| `WORKSPACE_PATH` | named volume | Set a host path for a bind-mounted workspace |
+| `BACKUP_RETENTION` | `5` | Number of upgrade backups to retain |
+| `APT_PACKAGES` | unset | Extra apt packages installed at startup |
+| `BREW_PACKAGES` | unset | Extra Homebrew packages installed at startup |
+| `BUN_PACKAGES` | unset | Extra global bun packages installed at startup |
 
-Developers who want to build locally should use `docker-compose.dev.yml`:
+### Workspace and persistent data
+
+By default, the workspace uses the named `workspace` volume. To edit files directly with a host IDE:
+
+```bash
+echo "WORKSPACE_PATH=./workspace" >> .env
+docker compose up -d --force-recreate
+```
+
+Important persistent volumes include:
+
+| Volume | Container path | Contents |
+|--------|----------------|----------|
+| `opencode-config` | `/home/devuser/.config/opencode` | OpenCode settings, plugins, agents |
+| `opencode-data` | `/home/devuser/.local/share/opencode` | Sessions and conversations |
+| `openchamber-data` | `/home/devuser/.config/openchamber` | OpenChamber settings and themes |
+| `git-config` / `ssh-keys` | Git and SSH config paths | Git identity, credentials, keys |
+| `gh-config` / `glab-config` | GitHub/GitLab CLI paths | CLI authentication state |
+| `workspace` | `/home/devuser/workspace` | Projects and source files |
+| `lean-ctx-data` / `lean-ctx-state` | lean-ctx data paths | Index, knowledge base, logs, and state |
+
+For HTTPS, SSH, multiple accounts, and credential isolation, see [Git authentication](./docs/GIT_AUTHENTICATION.md).
+
+## Ports
+
+| Container port | Default host mapping | Purpose |
+|----------------|----------------------|---------|
+| `3000` | `${CHAMBER_PORT:-8000}` | OpenChamber Web UI |
+| `4095` | internal | OpenCode service |
+| `8080` | `${ADMIN_PORT:-8080}` | Admin Dashboard |
+| `8081` | development only | Admin Dashboard watch mode |
+
+## Documentation
+
+- [Architecture](./docs/ARCHITECTURE.md) — services, data flow, storage, and startup behavior
+- [Tooling](./docs/TOOLING.md) — MCP servers, CLI tools, package managers, and extension points
+- [Security policy](./SECURITY.md) — threat model, trust assumptions, and reporting
+- [Troubleshooting](./docs/TROUBLESHOOTING.md) — known issues and fixes
+- [Git authentication](./docs/GIT_AUTHENTICATION.md) — HTTPS, SSH, `gh`, and `glab`
+- [Changelog](./docs/CHANGELOG.md) — release history
+
+Traditional Chinese guides are available for [contributing](./docs/CONTRIBUTING_zh-TW.md) and [security](./docs/SECURITY_zh-TW.md).
+
+## Development and testing
+
+Build and run the development stack:
 
 ```bash
 docker compose -f docker-compose.dev.yml build --no-cache
 docker compose -f docker-compose.dev.yml up -d
 ```
 
-## Configuration
-
-### Environment Variables
-
-Copy `.env.example` to `.env` and customize:
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `CHAMBER_PORT` | `8000` | Host port for Web UI |
-| `OPENCODE_SERVER_PASSWORD` | `devonly` | OpenCode API password |
-| `OPENCHAMBER_UI_PASSWORD` | `chamber` | Web UI password |
-| `OPENCODE_PLUGINS` | `oh-my-openagent,superpowers@git+https://github.com/obra/superpowers.git` | Comma-separated plugin list |
-| `OPENCODE_PROVIDER` | *(empty)* | Custom OpenCode provider(s) JSON (injected into `provider` key of `opencode.json`). See `.env.example` for usage |
-| `WORKSPACE_PATH` | *(unset → named volume `workspace`)* | Host path for workspace bind mount |
-| `BACKUP_RETENTION` | `5` | Number of backup copies to retain during `./upgrade.sh` |
-| `APT_PACKAGES` | *(empty)* | Extra apt packages installed at container startup |
-| `BREW_PACKAGES` | *(empty)* | Extra Homebrew packages installed at container startup |
-| `BUN_PACKAGES` | *(empty)* | Extra global bun packages installed at container startup |
-| `ADMIN_PORT` | `8080` | Admin dashboard port (production) |
-| `ADMIN_PASSWORD` | `admin` | Admin dashboard password |
- 
-### Plugin Version Management (Development)
-
-When building from source (via `docker-compose.dev.yml`), you can specify plugin versions:
+Run the available checks:
 
 ```bash
-# Use latest versions (default)
-docker compose -f docker-compose.dev.yml build
-
-# Specify specific versions
-OH_MY_OPENAGENT_VERSION=3.15.0 \
-  docker compose -f docker-compose.dev.yml build
+./test/run-tests.sh          # tests against a running container
+./test/test-admin.sh         # Admin Dashboard integration tests
+./test/test-full.sh          # full build, test, and cleanup cycle
 ```
 
-Available arguments:
-- `OH_MY_OPENAGENT_VERSION` - oh-my-openagent plugin version (default: `latest`)
-
-### Workspace
-
-By default, the workspace uses a Docker named volume. To use a host directory for direct file editing:
-
-```bash
-# Use a bind mount to a local directory
-echo "WORKSPACE_PATH=./workspace" >> .env
-docker compose up -d --force-recreate
-```
-
-Leave `WORKSPACE_PATH` commented or unset to keep using the default named volume.
-
-This allows you to edit files with your local IDE while the container runs.
-
-| Volume | Container Path | Description |
-|--------|---------------|-------------|
-| `opencode-config` | `/home/devuser/.config/opencode` | OpenCode settings, plugins, agents |
-| `opencode-data` | `/home/devuser/.local/share/opencode` | Database (sessions, conversations) |
-| `opencode-cache` | `/home/devuser/.cache/opencode` | Model metadata, plugin cache |
-| `openchamber-data` | `/home/devuser/.config/openchamber` | OpenChamber settings, themes |
-| `git-config` | `/home/devuser/.config/git` | Git config and stored HTTPS credentials |
-| `ssh-keys` | `/home/devuser/.ssh` | SSH keys and known_hosts |
-| `gh-config` | `/home/devuser/.config/gh` | GitHub CLI auth state |
-| `glab-config` | `/home/devuser/.config/glab-cli` | GitLab CLI auth state |
-| `workspace` | `/home/devuser/workspace` | Project workspace |
-| `ohmyopencode-cache` | `/home/devuser/.cache/oh-my-opencode` | Plugin cache |
-| `lean-ctx-data` | `/home/devuser/.local/share/lean-ctx` | Vector index, knowledge base, sessions |
-| `lean-ctx-state` | `/home/devuser/.local/state/lean-ctx` | Event logs, journal, agent keys |
-
-## MCP and Knowledge Tooling
-
-AI-EngKit ships with a preconfigured MCP stack for code navigation and browser automation:
-
-- **CodeGraph** — code graph and dependency analysis
-- **lean-ctx** — context-aware read/search/shell workflow helpers
-- **Playwright** — browser automation with Playwright-bundled Chromium (resolved via `pw-mcp` wrapper)
-
-For deeper details, see:
-
-- [docs/TOOLING.md](./docs/TOOLING.md)
-- [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md)
-- [docs/knowledge/README.md](./docs/knowledge/README.md)
-- [docs/knowledge/tooling/lean-ctx-xdg-layout.md](./docs/knowledge/tooling/lean-ctx-xdg-layout.md)
-
-## Git Authentication
-
-Git credentials are stored inside dedicated container volumes and do not reuse host-side auth automatically.
-
-For HTTPS, SSH, `gh`, `glab`, multiple accounts, and security notes, see:
-
-- [docs/GIT_AUTHENTICATION.md](./docs/GIT_AUTHENTICATION.md)
-- [SECURITY.md](./SECURITY.md)
-- [docs/TROUBLESHOOTING.md](./docs/TROUBLESHOOTING.md#glab-as-a-git-credential-helper-with-a-versioned-path)
-
-## Ports
-
-| Container Port | Default Host Mapping | Purpose |
-|----------------|----------------------|---------|
-| `3000` | `${CHAMBER_PORT:-8000}` | OpenChamber Web UI |
-| `4095` | *(internal)* | OpenCode service port used inside the container stack |
-| `8080` | `${ADMIN_PORT:-8080}` | Admin Dashboard Web UI |
-| `8081` | *(dev)* | Admin Dashboard (dev mode with `--watch`) |
-
-## When to Use AI-EngKit
-
-- You want a ready-to-run AI coding environment with persistent state
-- You need browser automation, code graph tooling, and agent plugins in one place
-- You want Docker-based isolation without losing Git, SSH, or CLI workflows
-- You want to extend the image at runtime with extra apt, brew, or bun packages
-
-## Testing
-
-### Run Tests Against Running Container
-
-```bash
-./test/run-tests.sh
-```
-
-### Admin Dashboard Tests
-
-```bash
-# Requires ai-admin container running
-./test/test-admin.sh
-```
-
-### Full Build + Test Cycle
-
-```bash
-./test/test-full.sh
-```
-
-This builds the image from scratch, starts all services, runs verification tests, and cleans up.
-
-## Release Process
-
-```bash
-/release
-```
-
-This runs the automated release skill which:
-1. Runs local tests (including memory plugin E2E verification)
-2. Calculates version bump (MAJOR/MINOR/PATCH)
-3. Generates release notes
-4. Prompts for confirmation
-5. Tags and pushes to GitHub
-
-GitHub Actions will automatically:
-- Build and test the image
-- Push to `ghcr.io/{owner}/ai-engkit:{version}`
-- Create a GitHub Release with notes
-
-## Project Structure
-
-```
-├── .env.example                # Environment template
-├── .github/workflows/ci.yml    # CI/CD pipeline
-├── src/
-│   └── admin/                  # Admin dashboard server (Hono + Bun)
-│       ├── server.ts           # Entry point
-│       ├── lib/                # Core modules (auth, env, upgrade, docker)
-│       ├── routes/             # API route handlers
-│       ├── views/              # JSX page components
-│       ├── static/             # CSS and client JS
-│       └── package.json        # Dependencies (hono)
-├── .opencode/
-│   ├── baked-skills/           # Pre-installed skills shipped in Docker image
-│   │   ├── karpathy-guidelines/
-│   │   ├── knowledge-capture/
-│   │   ├── enable-project-knowledge/
-│   │   └── enable-finalize-maintenance/
-│   └── skills/                 # User-visible skill definitions (symlinks to baked-skills/)
-│       ├── knowledge-capture.md
-│       ├── release.md
-│       └── vuln-scan.md
-├── docker-compose.yml          # User-facing (uses pre-built image)
-├── docker-compose.dev.yml      # Developer (builds from Dockerfile)
-├── upgrade.sh                  # One-liner upgrade from existing installation
-├── Dockerfile                  # Ubuntu 24.04 based image
-├── entrypoint.sh               # Main entrypoint
-├── entrypoint.d/               # Initialization scripts
-│   ├── 00-fix-perms.sh         # Fix volume permissions
-│   ├── 01-install-packages.sh  # Dynamic package installation
-│   ├── 02-init-config.sh       # Auto-generate + baked-skills symlinks
-│   ├── 03-fix-docker-gid.sh
-│   ├── 04-init-git-ssh.sh
-│   ├── 05-init-gh-cli.sh
-│   ├── 06-init-glab-cli.sh
-│   └── 06-setup-opencode-path.sh
-├── docs/
-│   ├── ARCHITECTURE.md
-│   ├── CHANGELOG.md
-│   ├── CONTRIBUTING_zh-TW.md
-│   ├── GIT_AUTHENTICATION.md
-│   ├── SECURITY_zh-TW.md
-│   ├── TOOLING.md
-│   ├── TROUBLESHOOTING.md
-│   └── knowledge/               # Git-backed knowledge base (manual, human-readable)
-│       ├── README.md
-│       ├── _template.md
-│       ├── architecture/
-│       ├── patterns/
-│       │   └── baked-skills-mechanism.md
-│       ├── tooling/
-│       └── troubleshooting/
-└── test/
-    ├── run-tests.sh             # Integration test suite
-    ├── test-full.sh             # Full build-test pipeline
-    ├── test-admin.sh            # Admin dashboard integration tests
-    └── test-memory-e2e.sh       # Memory plugin E2E test
-```
-
-## Contributing
-
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for the English contributor guide, or [docs/CONTRIBUTING_zh-TW.md](./docs/CONTRIBUTING_zh-TW.md) for the Traditional Chinese version.
+See [CONTRIBUTING.md](./CONTRIBUTING.md) before submitting changes.
 
 ## License
 
-MIT License
-
-Copyright (c) 2026 Jonathan Tsai <tryweb@ichiayi.com>
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+MIT License. See [LICENSE](./LICENSE).
