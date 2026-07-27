@@ -1,6 +1,26 @@
 ## [Unreleased]
 
 
+## [1.6.3] - 2026-07-27
+
+### Fixed
+- Read from /dev/tty directly instead of redirecting stdin
+- Restore stdin after curl pipe on Alpine Linux
+- Create .env in dependency-update workflow before docker compose up
+- Make install.sh and upgrade.sh compatible with Alpine Linux (BusyBox)
+
+### Documentation
+- Update version management references
+- Restructure README for onboarding
+- Add Projects screenshot to README
+- Add Projects page screenshot
+- Document Admin Dashboard screenshots
+- Add Admin Dashboard screenshots
+
+### Changed
+- Internationalize install/upgrade scripts and remove host-side CLI tools
+- Remove retired README badge synchronization
+
 ## [1.6.2] - 2026-07-26
 
 ### Fixed
@@ -904,7 +924,7 @@
 
 ## Format
 
-[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.6.2...HEAD
+[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.6.3...HEAD
 [0.3.0]: https://github.com/tryweb/ai-engkit/releases/tag/v0.3.0
 [0.3.3]: https://github.com/tryweb/ai-engkit/compare/v0.3.0...v0.3.3
 [0.5.0]: https://github.com/tryweb/ai-engkit/compare/v0.3.3...v0.5.0
@@ -1005,3 +1025,4 @@
 [1.6.0]: https://github.com/tryweb/ai-engkit/compare/v1.5.2...v1.6.0
 [1.6.1]: https://github.com/tryweb/ai-engkit/compare/v1.6.0...v1.6.1
 [1.6.2]: https://github.com/tryweb/ai-engkit/compare/v1.6.1...v1.6.2
+[1.6.3]: https://github.com/tryweb/ai-engkit/compare/v1.6.2...v1.6.3
