@@ -14,8 +14,8 @@ validating version changes before release.
   making manual edits non-permanent — needed `OPENCODE_PROVIDER` env var.
 - `check-versions.sh` had drifted from the CI workflow: missing
   `LEANCTX_VERSION` and "latest-tracked" packages.
-- The `release` skill only updated OpenCode + OpenChamber badges and couldn't
-  detect what actually changed in Dockerfile.
+- The `release` skill needed to detect what actually changed in Dockerfile
+  instead of relying on presentation-only README metadata.
 - No local skill existed to go from "check upstream" → "update Dockerfile" →
   "build and test" in one shot.
 
@@ -28,7 +28,7 @@ check-versions.sh (script)    version inspection + diff + snapshot
   ↓
 check-updates (skill)          apply updates → build → test → commit
   ↓
-release (skill)               badges → CHANGELOG → tag → push
+release (skill)               CHANGELOG → tag → push
 ```
 
 ### 1. check-versions.sh — Unified version inspection
@@ -67,14 +67,11 @@ custom OpenCode providers (e.g., Ollama) without modifying the image.
 
 ### 4. Release skill enhancements
 
-Three gaps closed:
+Two gaps closed:
 
-- **Badge sync** (5.1): Reads all 5 pinned versions from Dockerfile ARGs
-  directly instead of from the running container. Now updates OpenCode,
-  OpenChamber, Docker, Playwright, and lean-ctx badges.
-- **Version detection** (5.2 NEW): Compares each Dockerfile ARG against the
+- **Version detection** (5.1): Compares each Dockerfile ARG against the
   last git tag's Dockerfile. Generates "Upgrade X from Y to Z" lines.
-- **CHANGELOG generation** (5.5): Python script that inserts a `### Changed`
+- **CHANGELOG generation** (5.4): Python script that inserts a `### Changed`
   section with auto-generated bump entries into the new version section.
   Handles idempotency (no duplicate version blocks), version link rebuilding,
   and footer preservation.
@@ -82,10 +79,10 @@ Three gaps closed:
 ## Why It Works
 
 - **Single source of truth**: All version data comes from `Dockerfile` ARGs.
-  Badges, CHANGELOG, and snapshots all read from the same ARG values.
-- **No container dependency**: Badge/CHANGELOG updates work without a running
+  CHANGELOG entries and snapshots read from the same ARG values.
+- **No container dependency**: CHANGELOG updates work without a running
   container (unlike the old `docker exec` approach).
-- **Git-based diff**: Step 5.2 uses `git show <tag>:Dockerfile` for accurate
+- **Git-based diff**: Step 5.1 uses `git show <tag>:Dockerfile` for accurate
   before/after comparison, not guesswork.
 - **Decoupled skills**: Each skill has one job. Users can run any subset.
 
