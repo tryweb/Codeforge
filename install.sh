@@ -386,7 +386,13 @@ main() {
 
     delegate_to_upgrade_if_installed "$@"
 
-    [ -t 0 ] || exec < /dev/tty
+    # When piped via curl, stdin is not a terminal.
+    # Redirect to /dev/tty for interactive prompts, but restore on exit.
+    if ! [ -t 0 ]; then
+        exec 6<&0        # save original stdin
+        exec < /dev/tty  # redirect to terminal for read prompts
+        trap 'exec 0<&6 6<&-' EXIT  # restore on exit
+    fi
 
     check_system
     check_docker
