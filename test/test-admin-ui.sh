@@ -109,7 +109,21 @@ assert_contains "Versions page lists MCP tools" "MCP" "$VERSIONS_HTML"
 assert_contains "Versions page lists Plugin tools" "Plugin" "$VERSIONS_HTML"
 assert_contains "Versions page has Image Metadata card" "Image Metadata" "$VERSIONS_HTML"
 
-# 8. Static assets served
+# 8. Mobile navigation elements present in Layout-wrapped pages
+assert_contains "Layout has #nav-toggle button" "nav-toggle" "$VERSIONS_HTML"
+assert_contains "Layout has #nav-backdrop" "nav-backdrop" "$VERSIONS_HTML"
+
+# 9. CSS stylesheet contains mobile responsive rules
+CSS_CONTENT=$(curl -s "$BASE/static/style.css" 2>/dev/null || echo "")
+NAV_OPEN_RULE=$(echo "$CSS_CONTENT" | grep -c "nav-open" || echo "0")
+if [ "$NAV_OPEN_RULE" -gt 0 ]; then pass "CSS has .nav-open rule for mobile nav"; else fail "CSS missing .nav-open rule"; fi
+TOUCH_TARGET=$(echo "$CSS_CONTENT" | grep -c "min-height: 44px" || echo "0")
+if [ "$TOUCH_TARGET" -gt 0 ]; then pass "CSS has min-height:44px touch targets"; else fail "CSS missing min-height:44px"; fi
+
+# 10. Dashboard contains restart ai-dev button
+assert_contains "Dashboard has restart ai-dev button" "btn-dash-restart" "$DASH_HTML"
+
+# 11. Static assets served
 CSS_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$BASE/static/style.css" 2>/dev/null || echo "000")
 if [ "$CSS_CODE" = "200" ]; then
   pass "Static CSS served (200)"

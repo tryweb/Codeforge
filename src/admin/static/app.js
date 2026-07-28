@@ -65,4 +65,20 @@
       window.location.href = "/login";
     });
   });
+
+  // Nav toggle — idempotent on repeated script loads (regression guard)
+  if (!window.__navUiInit) {
+    window.__navUiInit = true;
+    var navToggle = document.getElementById("nav-toggle");
+    var navBackdrop = document.getElementById("nav-backdrop");
+    var appLayout = document.querySelector(".app-layout");
+    if (navToggle && navBackdrop && appLayout) {
+      navToggle.addEventListener("click", function () {
+        appLayout.classList.toggle("nav-open");
+      });
+      navBackdrop.addEventListener("click", function () {
+        appLayout.classList.remove("nav-open");
+      });
+    }
+  }
 })();

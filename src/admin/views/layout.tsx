@@ -34,10 +34,32 @@ export const Layout: FC<LayoutProps> = ({ title, children, currentPath }) => {
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-        <link rel="stylesheet" href="/static/style.css" />
+        <script>{html`
+          (function() {
+            function checkMobile() {
+              var isMobile = window.innerWidth <= 768 ||
+                (navigator.maxTouchPoints > 0 && window.innerWidth <= 1024);
+              if (isMobile) {
+                document.documentElement.classList.add("mobile");
+              } else {
+                document.documentElement.classList.remove("mobile");
+              }
+            }
+            checkMobile();
+            window.addEventListener("resize", checkMobile);
+          })();
+        `}</script>
+        <link rel="stylesheet" href="/static/style.css?v=20260728b" />
       </head>
       <body>
         <div class="app-layout">
+          <div class="topbar">
+            <button id="nav-toggle" aria-label="Toggle navigation menu">☰</button>
+            <div class="flex items-center gap-2" style="font-size:1.1rem;font-weight:700;">
+              <img src="/static/favicon.svg" alt="AI-EngKit" style="width:28px;height:28px;" />
+              <span>AI-EngKit</span>
+            </div>
+          </div>
           <aside class="sidebar">
             <div class="logo" style="display:flex;align-items:center;gap:10px;">
               <img src="/static/favicon.svg" alt="AI-EngKit" style="width:36px;height:36px;" />
@@ -67,6 +89,7 @@ export const Layout: FC<LayoutProps> = ({ title, children, currentPath }) => {
               </a>
             </nav>
           </aside>
+          <div class="nav-backdrop" id="nav-backdrop"></div>
           <main class="main-content">
             <div id="global-banner" />
             {children}
@@ -91,8 +114,7 @@ export const Layout: FC<LayoutProps> = ({ title, children, currentPath }) => {
             <button class="btn-outline" onclick="document.getElementById('about-modal').style.display='none';">Close</button>
           </div>
         </div>
-        <script src="/static/app.js" />
-        <script src="/static/app.js" />
+        <script src="/static/app.js?v=20260728b" />
       </body>
     </html>
   );
