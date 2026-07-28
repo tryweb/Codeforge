@@ -1,6 +1,26 @@
 ## [Unreleased]
 
 
+## [1.7.0] - 2026-07-28
+
+### Added
+- Bump OpenCode 1.18.6 → 1.18.7
+- Add Restart ai-dev shortcut to dashboard
+- Add mobile hamburger navigation with touch targets
+
+### Fixed
+- Make sidecar recreate DooD-aware
+
+### Documentation
+- Knowledge entries for mobile admin CSS/JS pitfalls
+- Document DooD-aware sidecar recreation
+
+### Other
+- Archive admin-mobile-support change
+
+### Changed
+- Upgrade OpenCode from 1.18.6 to 1.18.7.
+
 ## [1.6.3] - 2026-07-27
 
 ### Added
@@ -931,7 +951,7 @@
 
 ## Format
 
-[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.6.3...HEAD
+[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.7.0...HEAD
 [0.3.0]: https://github.com/tryweb/ai-engkit/releases/tag/v0.3.0
 [0.3.3]: https://github.com/tryweb/ai-engkit/compare/v0.3.0...v0.3.3
 [0.5.0]: https://github.com/tryweb/ai-engkit/compare/v0.3.3...v0.5.0
@@ -1033,3 +1053,4 @@
 [1.6.1]: https://github.com/tryweb/ai-engkit/compare/v1.6.0...v1.6.1
 [1.6.2]: https://github.com/tryweb/ai-engkit/compare/v1.6.1...v1.6.2
 [1.6.3]: https://github.com/tryweb/ai-engkit/compare/v1.6.2...v1.6.3
+[1.7.0]: https://github.com/tryweb/ai-engkit/compare/v1.6.3...v1.7.0
