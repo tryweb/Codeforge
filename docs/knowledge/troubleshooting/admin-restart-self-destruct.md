@@ -6,7 +6,7 @@ The AI-EngKit admin container (`ai-engkit-admin`) has a "↻ Restart" button tha
 
 ## Problem
 
-Three bugs were discovered in the admin restart / update check mechanism:
+Four bugs were discovered in the admin restart / update check mechanism:
 
 ### Bug 1: inFlightCheck never resets (update check cache stuck)
 
@@ -72,12 +72,71 @@ The admin container mounts the host's `docker-compose.yml` as `/opt/ai-engkit/co
 
 Using `-v /opt/ai-engkit:/opt/ai-engkit` (whole directory) fails because the host's directory has `docker-compose.yml`, not `compose.yml`.
 
+### Bug 4: Nested shell quoting in Bun `dockerCommand` causes silent failure on non-default host paths
+
+`src/admin/routes/admin.ts` sends the restart command through three levels of shell nesting:
+
+```
+Bun.sh -c → "docker run --rm ... sh -c 'docker compose ...'"
+```
+
+The `dockerCommand` helper (`src/admin/lib/docker.ts`) runs all subcommands via `sh -c`:
+
+```typescript
+const args = ["sh", "-c", `docker ${subcommand}`];
+```
+
+When `getSelfBindSource()` correctly resolves host paths (e.g. `/root/.env` → `/root/.env`), the `shellQuote()` wrapping and the triple-nested `sh -c` processing can still cause the temporary container to exit with code 1. The error surfaces in admin logs as:
+
+```
+/opt/ai-engkit/.env is a directory
+```
+
+This is misleading — the host path is correct and the file exists. The quoting chain (`'"'"'` escape sequences passing through two `sh -c` layers) desynchronizes the shell parser, causing the temporary container's inner `docker compose` command to use fallback paths that resolve to host directories instead of files.
+
+**Fix**: Avoid triple-nested `sh -c` by one of:
+- Use `Bun.spawn` with direct args array instead of `dockerCommand` for the restart call, eliminating the outer `sh -c` layer
+- Write the compose command to a temp file and execute it inside the container via `--entrypoint` with a script
+- Use `docker run` with `--entrypoint docker` and pass compose args as positional arguments after the image name
+
+```typescript
+// Alternative: bypass dockerCommand's sh -c by calling runCommand directly
+const args = [
+  "docker", "run", "--rm", "--user", "0", "--entrypoint", "docker",
+  "-v", `${envSource}:${envSource}:ro`,
+  "-v", `${composeSource}:${composeSource}:ro`,
+  "-v", "/var/run/docker.sock:/var/run/docker.sock",
+  "ghcr.io/tryweb/ai-engkit:latest",
+  "compose", "-p", project,
+  "--env-file", envSource,
+  "-f", composeSource,
+  "up", "-d", "--force-recreate", "ai-admin",
+];
+// Use runCommand directly to avoid shell quoting
+const { runCommand } = await import("../lib/docker");
+runCommand(args, 120_000).catch(() => {});
+```
+
+**Detection**: Docker events show a `container die` with `exitCode=1` on an auto-named temporary container (e.g. `inspiring_ellis`). The same `docker run` command succeeds when pasted directly into a host shell or SSH session.
+
+**Status in v1.7.0**: ❌ **Not fixed.** Commit `1d609c6 fix(admin): make sidecar recreate DooD-aware` added `getSelfBindSource()` and `shellQuote()` but still uses `dockerCommand()` with the triple-nested `sh -c` pattern. The `dockerCommand()` function in `src/admin/lib/docker.ts` was not changed in v1.7.0.
+
+**Confirmed on 3 machines**:
+| Machine | Host Paths | Compose Project | Temp Container | exitCode |
+|---------|-----------|----------------|----------------|----------|
+| 192.168.11.195 | `/root/.env` | `root` | `inspiring_ellis` | 1 |
+| 192.168.11.194 | `/home/jonathan/.env` | `jonathan` | `intelligent_cannon` | 1 |
+| (knowledge base original) | `/opt/ai-engkit/.env` | `ai-engkit` | N/A | N/A (Bug 3, different cause) |
+
+All three share the same error signature: admin log shows `/opt/ai-engkit/.env is a directory` after restart attempt, but the host file exists and the identical `docker run` command succeeds via direct SSH execution.
+
 ## Solution
 
 1. **inFlightCheck fix**: `try/finally { inFlightCheck = null; }` in the async update check
 2. **Self-destruct fix**: Run compose in a `docker run --rm` temporary container
 3. **File mount fix**: Mount specific file paths with the correct container-side name
 4. **Version display fix**: Separate `aiEngkitVer` (read from ai-dev via `execInAiDev`) from `adminVer` (read from admin's own filesystem via `readFileSync`) — the versions table shows dev version, the mismatch badge shows admin version
+5. **Shell quoting fix** (Bug 4): Use `runCommand` with direct args array instead of `dockerCommand` for the restart call to eliminate triple-nested `sh -c` quoting issues.
 
 ## Why It Works
 
@@ -97,16 +156,22 @@ Using `-v /opt/ai-engkit:/opt/ai-engkit` (whole directory) fails because the hos
 - **Bug 1**: Dashboard showed "✓ Latest" even after remote `ghcr.io` digest changed. SSH verification confirmed `localDigest ≠ remoteDigest` but API returned cached "up-to-date".
 - **Bug 2**: `docker ps -a` showed a `Created` container `09bf67e8876b_ai-engkit-admin` after restart attempt. Old admin container still running on old image.
 - **Bug 3**: `open /opt/ai-engkit/compose.yml: no such file or directory` error in temporary container logs.
+- **Bug 4**: `/opt/ai-engkit/.env is a directory` error in admin logs after restart attempt on 3 separate deployments. `docker events` shows temporary container created and died with `exitCode=1`:
+  - `192.168.11.195` (root): `inspiring_ellis` — host paths `/root/.env`, project `root`
+  - `192.168.11.194` (jonathan): `intelligent_cannon` — host paths `/home/jonathan/.env`, project `jonathan`
+  - Original evidence deployment: `/opt/ai-engkit/.env` (Bug 3 era, same error signature)
+  Same `docker run` command succeeds when executed directly via SSH on all machines. v1.7.0 still uses `dockerCommand()` with `sh -c` wrapping (commit `1d609c6` only added `getSelfBindSource()` + `shellQuote()`, did not fix the triple-nested shell quoting).
 - **Final fix**: After applying all fixes, `↻ Restart` successfully recreated admin from `15332b7a83b7 (v1.6.0)` to `44b863f386c8 (v1.6.1)`. `⚠` badge disappeared, `✓ Latest` displayed.
 
 ## Related Files
 
 - `src/admin/routes/versions.ts` — inFlightCheck bug + getAiEngkitVersion / getLocalDigest fixes
 - `src/admin/routes/admin.ts` — restart endpoint with docker run workaround
+- `src/admin/lib/docker.ts` — `dockerCommand()` / `runCommand()` helpers with `sh -c` wrapping (Bug 4 root cause)
 - `src/admin/server.ts` — version reading split (dev vs admin)
 - `src/admin/views/dashboard.tsx` — `vv1.6.0` double-v prefix fix
 - `src/admin/lib/upgrade.ts` — upgrade pipeline (only recreates ai-dev, not ai-admin)
 
 ## Tags
 
-`#admin` `#docker` `#compose` `#self-destruct` `#restart` `#bug` `#update-check`
+`#admin` `#docker` `#compose` `#self-destruct` `#restart` `#bug` `#update-check` `#shell-quoting` `#bun`

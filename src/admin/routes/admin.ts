@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { dockerCommand, getComposeProject, getSelfBindSource, getSelfContainerRef } from "../lib/docker";
+import { dockerCommand, runCommand, getComposeProject, getSelfBindSource, getSelfContainerRef } from "../lib/docker";
 import { readFileSync } from "node:fs";
 
 const admin = new Hono();
@@ -61,24 +61,22 @@ admin.post("/api/admin/restart", async (c) => {
     const composeSource = await getSelfBindSource("/opt/ai-engkit/compose.yml");
     if (!envSource || !composeSource) return;
 
-    const shellQuote = (value: string): string => `'${value.replace(/'/g, `'"'"'`)}'`;
-    const composeCommand = [
-      "docker compose",
-      `-p ${shellQuote(project)}`,
-      `--env-file ${shellQuote(envSource)}`,
-      `-f ${shellQuote(composeSource)}`,
-      "up -d --force-recreate ai-admin",
-    ].join(" ");
-
-    // Run compose in a separate container so it survives admin being killed
-    await dockerCommand(
-      `run --rm --user 0 --entrypoint sh ` +
-      `-v ${shellQuote(envSource)}:${shellQuote(envSource)}:ro ` +
-      `-v ${shellQuote(composeSource)}:${shellQuote(composeSource)}:ro ` +
-      `-v /var/run/docker.sock:/var/run/docker.sock ` +
-      `ghcr.io/tryweb/ai-engkit:latest -c ${shellQuote(composeCommand)}`,
-      120_000,
-    ).catch(() => {});
+    // Run compose in a separate container so it survives admin being killed.
+    // Use --entrypoint /usr/local/bin/docker with direct args to avoid triple-nested
+    // sh -c quoting issues (Bug 4). No shell quoting needed — runCommand passes argv directly.
+    const dockerArgs = [
+      "docker", "run", "--rm", "--user", "0",
+      "--entrypoint", "/usr/local/bin/docker",
+      "-v", `${envSource}:${envSource}:ro`,
+      "-v", `${composeSource}:${composeSource}:ro`,
+      "-v", "/var/run/docker.sock:/var/run/docker.sock",
+      "ghcr.io/tryweb/ai-engkit:latest",
+      "compose", "-p", project,
+      "--env-file", envSource,
+      "-f", composeSource,
+      "up", "-d", "--force-recreate", "ai-admin",
+    ];
+    runCommand(dockerArgs, 120_000);
   }, 2000);
   
   return responsePromise;
