@@ -64,6 +64,14 @@ const DashboardContent: FC<{ data: DashboardData }> = ({ data }) => {
             <span class={`badge ${isRunning ? "badge-success" : "badge-danger"}`}>{data.container_status}</span>
             {data.uptime_seconds != null && <span class="text-sm text-muted">Uptime: {Math.floor(data.uptime_seconds / 60)}m</span>}
           </div>
+          {isRunning && (
+            <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
+              <div class="flex items-center gap-2">
+                <span id="dash-restart-status" class="text-sm text-muted"></span>
+                <button id="btn-dash-restart" onclick="dashRestartAiDev()" class="btn-outline" style="color:var(--danger);border-color:var(--danger);">↻ Restart ai-dev</button>
+              </div>
+            </div>
+          )}
           {data.admin_version_mismatch && (
             <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);">
               <div class="flex items-center gap-2">
@@ -170,6 +178,28 @@ const DashboardContent: FC<{ data: DashboardData }> = ({ data }) => {
             alert("Error: " + e.message);
             btn.disabled = false;
             btn.textContent = "↻ Restart";
+          }
+        }
+        async function dashRestartAiDev() {
+          if (!confirm("Restart ai-dev container? This will briefly interrupt OpenCode and OpenChamber.")) return;
+          var btn = document.getElementById("btn-dash-restart");
+          var status = document.getElementById("dash-restart-status");
+          if (!btn || !status) return;
+          btn.disabled = true;
+          status.textContent = "Restarting...";
+          try {
+            var res = await fetch("/api/env/restart", { method: "POST" });
+            if (res.ok) {
+              status.textContent = "Restarted ✔";
+              setTimeout(function () { status.textContent = ""; btn.disabled = false; }, 3000);
+            } else {
+              var d = await res.json();
+              status.textContent = "Error: " + (d.error || "unknown");
+              btn.disabled = false;
+            }
+          } catch (e) {
+            status.textContent = "Error: " + e.message;
+            btn.disabled = false;
           }
         }
         function ensureProgressElements() {
