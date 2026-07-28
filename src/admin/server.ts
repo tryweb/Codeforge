@@ -16,6 +16,7 @@ import glabAuthRoutes from "./routes/glab-auth";
 import gitConfigRoutes from "./routes/git-config";
 import sshKeyRoutes from "./routes/ssh-keys";
 import adminRoutes from "./routes/admin";
+import secretsRoutes from "./routes/secrets";
 import statusRoutes from "./routes/status";
 import { getUpdateCheck } from "./routes/versions";
 import { getStatus as getUpgradeStatus } from "./lib/upgrade";
@@ -111,6 +112,7 @@ app.route("/", glabAuthRoutes);
 app.route("/", gitConfigRoutes);
 app.route("/", sshKeyRoutes);
 app.route("/", adminRoutes);
+app.route("/", secretsRoutes);
 
 // Dashboard main page — gathers data directly instead of HTTP loopback
 app.get("/", async (c) => {

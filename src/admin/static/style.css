@@ -168,6 +168,38 @@ pre { background: rgba(0,0,0,0.3); padding: 16px; border-radius: var(--radius); 
 .masked-value.show .masked { display: none; }
 .masked-value.show .revealed { display: inline; }
 
+/* Secrets page */
+.secret-card .secret-actions {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  flex-wrap: wrap;
+}
+.secret-card .secret-buttons {
+  display: flex; gap: 8px; flex-wrap: wrap;
+}
+.secret-card .secret-value-row {
+  display: flex; align-items: center;
+}
+.secret-card .btn-secret-show,
+.secret-card .btn-secret-edit {
+  min-height: 44px;
+  padding: 8px 20px;
+}
+.secret-card .btn-note-toggle {
+  min-height: 44px;
+}
+@media (max-width: 768px) {
+  .secret-card .secret-actions {
+    flex-direction: column; align-items: flex-start;
+  }
+  .secret-card .secret-buttons {
+    width: 100%;
+  }
+  .secret-card .btn-secret-show,
+  .secret-card .btn-secret-edit {
+    flex: 1; text-align: center; justify-content: center;
+  }
+}
+
 .topbar { display: none; }
 
 /* Responsive */

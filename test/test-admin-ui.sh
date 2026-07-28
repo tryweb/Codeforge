@@ -123,7 +123,51 @@ if [ "$TOUCH_TARGET" -gt 0 ]; then pass "CSS has min-height:44px touch targets";
 # 10. Dashboard contains restart ai-dev button
 assert_contains "Dashboard has restart ai-dev button" "btn-dash-restart" "$DASH_HTML"
 
-# 11. Static assets served
+# 11. Secrets page API tests
+SECRETS_API=$(curl -s -b "$COOKIE_JAR" "$BASE/api/secrets" 2>/dev/null || echo "")
+SECRETS_COUNT=$(echo "$SECRETS_API" | python3 -c "import sys,json; print(len(json.load(sys.stdin)))" 2>/dev/null || echo "0")
+if [ "$SECRETS_COUNT" = "3" ]; then
+  pass "GET /api/secrets returns 3 secrets"
+else
+  fail "GET /api/secrets returned $SECRETS_COUNT secrets (expected 3)"
+fi
+
+SECRETS_VAL=$(curl -s -b "$COOKIE_JAR" "$BASE/api/secrets/ADMIN_PASSWORD/value" 2>/dev/null || echo "")
+SECRET_VAL_KEY=$(echo "$SECRETS_VAL" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('key',''))" 2>/dev/null || echo "")
+SECRET_VAL_HAS=$(echo "$SECRETS_VAL" | python3 -c "import sys,json; d=json.load(sys.stdin); print('yes' if d.get('value') else 'no')" 2>/dev/null || echo "")
+if [ "$SECRET_VAL_KEY" = "ADMIN_PASSWORD" ] && [ "$SECRET_VAL_HAS" = "yes" ]; then
+  pass "GET /api/secrets/ADMIN_PASSWORD/value returns value"
+else
+  fail "GET /api/secrets/ADMIN_PASSWORD/value failed"
+fi
+
+SECRETS_PUT=$(curl -s -o /dev/null -w "%{http_code}" -b "$COOKIE_JAR" \
+  -X PUT -H "Content-Type: application/json" \
+  -d '{"value":"test123"}' \
+  "$BASE/api/secrets/OPENCHAMBER_UI_PASSWORD" 2>/dev/null || echo "000")
+if [ "$SECRETS_PUT" = "200" ]; then
+  pass "PUT /api/secrets/OPENCHAMBER_UI_PASSWORD returns 200"
+else
+  fail "PUT /api/secrets/OPENCHAMBER_UI_PASSWORD returned $SECRETS_PUT (expected 200)"
+fi
+
+SECRETS_404=$(curl -s -o /dev/null -w "%{http_code}" -b "$COOKIE_JAR" \
+  -X PUT -H "Content-Type: application/json" \
+  -d '{"value":"x"}' \
+  "$BASE/api/secrets/NONEXISTENT_KEY" 2>/dev/null || echo "000")
+if [ "$SECRETS_404" = "404" ]; then
+  pass "PUT /api/secrets/NONEXISTENT_KEY returns 404"
+else
+  fail "PUT /api/secrets/NONEXISTENT_KEY returned $SECRETS_404 (expected 404)"
+fi
+
+SECRETS_PAGE=$(curl -s -b "$COOKIE_JAR" "$BASE/secrets" 2>/dev/null || echo "")
+assert_contains "Secrets nav link present" "Secrets" "$SECRETS_PAGE"
+assert_contains "Secrets page renders 3 cards" "secret-card" "$SECRETS_PAGE"
+assert_contains "ADMIN_PASSWORD shows immediate badge" "Takes effect immediately" "$SECRETS_PAGE"
+assert_contains "OPENCHAMBER shows restart badge" "Restart container required" "$SECRETS_PAGE"
+
+# 12. Static assets served
 CSS_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$BASE/static/style.css" 2>/dev/null || echo "000")
 if [ "$CSS_CODE" = "200" ]; then
   pass "Static CSS served (200)"

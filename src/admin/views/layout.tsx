@@ -12,6 +12,7 @@ const NAV_ITEMS = [
   { href: "/ssh-keys", label: "SSH Keys", icon: "🔑" },
   { href: "/separator3", label: "", icon: "" },
   { href: "/versions", label: "Versions", icon: "↻" },
+  { href: "/secrets", label: "Secrets", icon: "🔐" },
   { href: "/env", label: "Environment", icon: "⚙" },
   { href: "/upgrade", label: "Upgrade", icon: "▲" },
 ];
