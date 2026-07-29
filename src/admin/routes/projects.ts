@@ -77,7 +77,7 @@ projects.post("/api/projects", async (c) => {
   // If a remote URL is provided, clone instead of mkdir + init
   if (body.git_init && remote) {
     const cloneResult = await execInAiDev(
-      `GIT_TERMINAL_PROMPT=0 git clone --depth 1 ${JSON.stringify(remote)} ~/workspace/${JSON.stringify(name)} 2>&1`,
+      `git clone --depth 1 ${JSON.stringify(remote)} ~/workspace/${JSON.stringify(name)} 2>&1`,
       120_000,
     );
     if (cloneResult.exitCode !== 0 && cloneResult.exitCode !== -1) {
@@ -190,7 +190,7 @@ projects.put("/api/projects/:name/git-remote", async (c) => {
   );
   if (hasCommits.stdout.trim() !== "commit") {
     const fetch = await execInAiDev(
-      `GIT_TERMINAL_PROMPT=0 ${base} && git fetch origin --depth 1 2>&1`, 120_000,
+      `${base} && git fetch origin --depth 1 2>&1`, 120_000,
     );
     if (fetch.exitCode !== 0 && fetch.exitCode !== -1) {
       return c.json({ error: `Remote set, but fetch failed: ${fetch.stderr || fetch.stdout || "unknown"}`, partial: true }, 500);

@@ -30,17 +30,8 @@ gitConfig.put("/api/git/config", async (c) => {
   return c.json({ ok: true });
 });
 
-gitConfig.get("/api/git/credentials", async (c) => {
-  const result = await execInAiDev("cat ~/.git-credentials 2>/dev/null || true", 10_000);
-  const creds = result.stdout.split("\n").filter(Boolean);
-  return c.json(creds);
-});
-
 gitConfig.get("/git-config", async (c) => {
-  const [configResult, credsResult] = await Promise.all([
-    execInAiDev("git config --global --list 2>/dev/null || true", 15_000),
-    execInAiDev("cat ~/.git-credentials 2>/dev/null || true", 10_000),
-  ]);
+  const configResult = await execInAiDev("git config --global --list 2>/dev/null || true", 15_000);
 
   const config: Record<string, string> = {};
   for (const line of configResult.stdout.split("\n")) {
@@ -48,9 +39,8 @@ gitConfig.get("/git-config", async (c) => {
     if (eqIdx === -1) continue;
     config[line.slice(0, eqIdx)] = line.slice(eqIdx + 1);
   }
-  const creds = credsResult.stdout.split("\n").filter(Boolean);
 
-  return c.html(GitConfigPage(config, creds));
+  return c.html(GitConfigPage(config));
 });
 
 export default gitConfig;

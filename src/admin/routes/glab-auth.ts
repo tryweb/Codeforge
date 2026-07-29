@@ -10,6 +10,63 @@ interface GlabInstance {
   authenticated: boolean;
 }
 
+/**
+ * Deploy the git-credential-glab helper into the ai-dev container and
+ * configure git to use it for the given hostname.
+ *
+ * This replaces the insecure ~/.git-credentials plaintext approach with
+ * on-demand token reads from glab's own config.yml — the single source
+ * of truth for authentication.
+ */
+async function setupGlabCredentialHelper(hostname: string): Promise<void> {
+  // The helper script follows git's credential helper protocol:
+  //   stdin:  host=..., protocol=...
+  //   stdout: username=..., password=...
+  // It reads the token from glab's config.yml at runtime — never stored.
+  const script = [
+    '#!/bin/sh',
+    `GLAB_CONFIG="\${HOME}/.config/glab-cli/config.yml"`,
+    'HOST=""',
+    'while IFS="=" read -r key value; do',
+    '  case "$key" in',
+    '    host) HOST="$value" ;;',
+    '  esac',
+    'done',
+    '[ -z "$HOST" ] && exit 0',
+    '[ ! -f "$GLAB_CONFIG" ] && exit 0',
+    'python3 -c "',
+    "import yaml, sys, os",
+    "glab_cfg = os.path.expanduser('~/.config/glab-cli/config.yml')",
+    "with open(glab_cfg) as f:",
+    "    cfg = yaml.safe_load(f)",
+    "hosts = cfg.get('hosts', {})",
+    "hostname = sys.argv[1]",
+    "if hostname in hosts:",
+    "    h = hosts[hostname]",
+    "    token = h.get('token', '')",
+    "    if token:",
+    "        user = h.get('user', 'oauth2')",
+    "        print(f'username={user}')",
+    "        print(f'password={token}')",
+    '" "$HOST"',
+  ].join("\n");
+
+  const b64 = Buffer.from(script).toString("base64");
+
+  await execInAiDev(
+    `mkdir -p ~/.local/bin && echo ${JSON.stringify(b64)} | base64 -d > ~/.local/bin/git-credential-glab && chmod +x ~/.local/bin/git-credential-glab`,
+    10_000,
+  );
+
+  await execInAiDev("git config --global --unset credential.helper 2>/dev/null || true", 5_000);
+
+  const escHost = JSON.stringify(hostname);
+  await execInAiDev(`git config --global credential.https://${escHost}.helper glab 2>/dev/null || true`, 5_000);
+  await execInAiDev(`git config --global credential.http://${escHost}.helper glab 2>/dev/null || true`, 5_000);
+
+  await execInAiDev(": > ~/.config/git/.git-credentials 2>/dev/null || true", 5_000);
+}
+
 async function parseGlabInstances(): Promise<GlabInstance[]> {
   // Read token-bearing hosts from config.yml
   const configResult = await execInAiDev(
@@ -76,6 +133,9 @@ glabAuth.post("/api/auth/glab/start", async (c) => {
     if (result.exitCode !== 0) {
       return c.json({ error: result.stderr || "Authentication failed" }, 500);
     }
+    // Configure git credential helper so git operations (fetch, clone)
+    // authenticate via glab's token instead of insecure plaintext storage.
+    await setupGlabCredentialHelper(hostname);
     return c.json({ ok: true });
   }
 

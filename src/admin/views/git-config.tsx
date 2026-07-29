@@ -2,7 +2,7 @@ import type { FC } from "hono/jsx";
 import { html } from "hono/html";
 import { Layout } from "./layout";
 
-const GitConfigContent: FC<{ config: Record<string, string>; credentials: string[] }> = ({ config, credentials }) => (
+const GitConfigContent: FC<{ config: Record<string, string> }> = ({ config }) => (
   <div>
     <h2 style="margin-bottom:24px;">Git Configuration</h2>
     <div class="grid-2">
@@ -22,13 +22,6 @@ const GitConfigContent: FC<{ config: Record<string, string>; credentials: string
         <h3>Current Config</h3>
         <pre>{Object.entries(config).map(([k, v]) => `${k}=${v}`).join("\n") || "No config set"}</pre>
       </div>
-    </div>
-    <div class="card">
-      <h3>Stored Credentials</h3>
-      {credentials.length > 0
-        ? <ul>{credentials.map(c => <li><code>{c}</code></li>)}</ul>
-        : <p class="text-muted">No stored credentials found.</p>
-      }
     </div>
     <script>{html`
       async function saveConfig() {
@@ -53,10 +46,10 @@ const GitConfigContent: FC<{ config: Record<string, string>; credentials: string
   </div>
 );
 
-export function GitConfigPage(config: Record<string, string>, credentials: string[]) {
+export function GitConfigPage(config: Record<string, string>) {
   return (
     <Layout title="Git Config" currentPath="/git-config">
-      <GitConfigContent config={config} credentials={credentials} />
+      <GitConfigContent config={config} />
     </Layout>
   );
 }
