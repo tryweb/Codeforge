@@ -82,6 +82,11 @@ fi
 
 **Repeat for each outdated package** the user chose to update.
 
+`OH_MY_OPENAGENT_VERSION` is a Dockerfile pin and is included in the standard
+`outdated` and `json` output. Update it with the same `ARG` replacement flow;
+do not use `--latest` for OMO because that flag is only for packages without a
+Dockerfile pin.
+
 ### 4. Build the Dev Image
 
 ```bash
