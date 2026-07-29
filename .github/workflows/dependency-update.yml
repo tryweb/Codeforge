@@ -201,15 +201,15 @@ jobs:
           declare -a PINNED_VERSIONS=()
           while IFS='=' read -r name ver; do
             case "$name" in
-              DOCKER_VERSION|COMPOSE_VERSION|BUILDX_VERSION|OPENCODE_VERSION|OPENCHAMBER_VERSION|GLAB_VERSION|PLAYWRIGHT_VERSION|PLAYWRIGHT_MCP_VERSION|GH_VERSION|MARKSMAN_VERSION|LEANCTX_VERSION)
+              DOCKER_VERSION|COMPOSE_VERSION|BUILDX_VERSION|OPENCODE_VERSION|OPENCHAMBER_VERSION|GLAB_VERSION|PLAYWRIGHT_VERSION|PLAYWRIGHT_MCP_VERSION|GH_VERSION|MARKSMAN_VERSION|LEANCTX_VERSION|OH_MY_OPENAGENT_VERSION)
                 PINNED_NAMES+=("$name")
                 PINNED_VERSIONS+=("$ver")
                 ;;
             esac
           done < <(awk '/^ARG [A-Z0-9_]+=/{sub(/^ARG /, ""); print}' Dockerfile)
 
-          if [[ "${#PINNED_NAMES[@]}" -ne 11 ]]; then
-            echo "::error::Expected 11 pinned ARG versions in Dockerfile, found ${#PINNED_NAMES[@]}"
+          if [[ "${#PINNED_NAMES[@]}" -ne 12 ]]; then
+            echo "::error::Expected 12 pinned ARG versions in Dockerfile, found ${#PINNED_NAMES[@]}"
             exit 1
           fi
 
@@ -238,6 +238,7 @@ jobs:
               GLAB_VERSION)     source='gitlab-org/cli';   latest="$(get_gitlab_tag "$source")" ;;
               MARKSMAN_VERSION) source='artempyanykh/marksman'; latest="$(get_github_tag "$source")" ;;
               LEANCTX_VERSION)  source='yvgude/lean-ctx';  latest="$(get_github_tag "$source")"; if [[ "$latest" != "unknown" ]]; then _leanctx_latest="$latest"; fi ;;
+              OH_MY_OPENAGENT_VERSION) source='oh-my-openagent'; latest="$(get_npm_version "$source")" ;;
               # LEANCTX_SHA256 removed — SHA integrity check dropped for consistency
             esac
 
@@ -257,15 +258,12 @@ jobs:
           done
 
           # --- Check latest-tracked packages ---
-          for name in OH_MY_OPENAGENT_VERSION CODEGRAPH_VERSION OPENSPEC_VERSION; do
+          for name in CODEGRAPH_VERSION OPENSPEC_VERSION; do
             current="unknown"
             previous=""
             source=""
 
             case "$name" in
-              OH_MY_OPENAGENT_VERSION)
-                source='npm'; current="$(get_npm_version 'oh-my-openagent')"
-                previous="$(previous_latest_value "$name")" ;;
               CODEGRAPH_VERSION)
                 source='npm'; current="$(get_npm_version '@colbymchenry/codegraph')"
                 previous="$(previous_latest_value "$name")" ;;
@@ -343,7 +341,7 @@ jobs:
           fi
 
           # If ALL version checks failed, flag it
-          total_checks=$(( ${#PINNED_NAMES[@]} + 3 ))
+          total_checks=$(( ${#PINNED_NAMES[@]} + 2 ))
           if [[ "$check_failures" -ge "$total_checks" ]]; then
             echo "check-failed=true" >> "$GITHUB_OUTPUT"
             echo "::error::All version checks failed"
@@ -372,7 +370,6 @@ jobs:
             "timestamp": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
             "pinned": $pinned_snapshot_json,
             "latest": {
-              "OH_MY_OPENAGENT_VERSION": $(json_quote "$(get_npm_version 'oh-my-openagent')"),
               "CODEGRAPH_VERSION": $(json_quote "$(get_npm_version '@colbymchenry/codegraph')"),
               "OPENSPEC_VERSION": $(json_quote "$(get_npm_version '@fission-ai/openspec')")
             },

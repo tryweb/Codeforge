@@ -10,7 +10,7 @@
 #   json      machine-readable JSON output
 #
 # Flags (only affect check output):
-#   --latest    include latest-tracked npm packages (oh-my-openagent, codegraph, openspec)
+#   --latest    include latest-tracked npm packages (codegraph, openspec)
 #   --apt       check ubuntu:24.04 base image APT updates (requires docker)
 #   --snapshot  diff against version-snapshot.json (saved with --snapshot-save)
 #   --all       enable --latest + --apt + --snapshot
@@ -23,6 +23,7 @@
 #   GH_VERSION             → github:cli/cli
 #   MARKSMAN_VERSION       → github:artempyanykh/marksman
 #   LEANCTX_VERSION        → github:yvgude/lean-ctx
+#   OH_MY_OPENAGENT_VERSION → npm:oh-my-openagent
 #   OPENCODE_VERSION       → npm:opencode-ai
 #   OPENCHAMBER_VERSION    → npm:@openchamber/web
 #   PLAYWRIGHT_VERSION     → npm:playwright
@@ -109,6 +110,7 @@ lookup() {
         PLAYWRIGHT_MCP_VERSION) get_npm_latest "@playwright/mcp" ;;
         GLAB_VERSION)           get_gitlab_latest "gitlab-org/cli" ;;
         LEANCTX_VERSION)        get_github_latest "yvgude/lean-ctx" ;;
+        OH_MY_OPENAGENT_VERSION) get_npm_latest "oh-my-openagent" ;;
         *)                      echo "unknown" ;;
     esac
 }
@@ -126,6 +128,7 @@ source_label() {
         PLAYWRIGHT_MCP_VERSION) echo "npm:@playwright/mcp" ;;
         GLAB_VERSION)           echo "gitlab:gitlab-org/cli" ;;
         LEANCTX_VERSION)        echo "github:yvgude/lean-ctx" ;;
+        OH_MY_OPENAGENT_VERSION) echo "npm:oh-my-openagent" ;;
         *)                      echo "?" ;;
     esac
 }
@@ -135,7 +138,7 @@ source_label() {
 collect_rows() {
     while IFS=$'\t' read -r name pinned; do
         case "$name" in
-            DOCKER_VERSION|COMPOSE_VERSION|BUILDX_VERSION|GH_VERSION|MARKSMAN_VERSION|OPENCODE_VERSION|OPENCHAMBER_VERSION|PLAYWRIGHT_VERSION|PLAYWRIGHT_MCP_VERSION|GLAB_VERSION|LEANCTX_VERSION) ;;
+            DOCKER_VERSION|COMPOSE_VERSION|BUILDX_VERSION|GH_VERSION|MARKSMAN_VERSION|OPENCODE_VERSION|OPENCHAMBER_VERSION|PLAYWRIGHT_VERSION|PLAYWRIGHT_MCP_VERSION|GLAB_VERSION|LEANCTX_VERSION|OH_MY_OPENAGENT_VERSION) ;;
             *) continue ;;
         esac
         [[ -z "${pinned:-}" ]] && continue
@@ -222,10 +225,9 @@ read_snapshot() {
 check_latest_packages() {
     local snapshot prev status
     snapshot=$(read_snapshot)
-    for entry in OH_MY_OPENAGENT_VERSION CODEGRAPH_VERSION OPENSPEC_VERSION; do
+    for entry in CODEGRAPH_VERSION OPENSPEC_VERSION; do
         local pkg source_label
         case "$entry" in
-            OH_MY_OPENAGENT_VERSION) pkg="oh-my-openagent"; source_label="npm" ;;
             CODEGRAPH_VERSION)       pkg="@colbymchenry/codegraph"; source_label="npm" ;;
             OPENSPEC_VERSION)        pkg="@fission-ai/openspec"; source_label="npm" ;;
         esac
@@ -362,7 +364,6 @@ def npm_latest(pkg):
     except:
         return "unknown"
 latest = {
-    "OH_MY_OPENAGENT_VERSION": npm_latest("oh-my-openagent"),
     "CODEGRAPH_VERSION": npm_latest("@colbymchenry/codegraph"),
     "OPENSPEC_VERSION": npm_latest("@fission-ai/openspec"),
 }
