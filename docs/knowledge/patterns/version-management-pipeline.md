@@ -14,6 +14,9 @@ validating version changes before release.
   making manual edits non-permanent — needed `OPENCODE_PROVIDER` env var.
 - `check-versions.sh` had drifted from the CI workflow: missing
   `LEANCTX_VERSION` and "latest-tracked" packages.
+- `OH_MY_OPENAGENT_VERSION` was a Dockerfile pin but was only recorded in the
+  `--latest` snapshot path, so normal `outdated` checks and CI could not
+  propose a Dockerfile update for it.
 - The `release` skill needed to detect what actually changed in Dockerfile
   instead of relying on presentation-only README metadata.
 - No local skill existed to go from "check upstream" → "update Dockerfile" →
@@ -37,13 +40,29 @@ Extended with 4 flags:
 
 | Flag | Function |
 |------|----------|
-| `--latest` | Check npm-tracked packages (oh-my-openagent, codegraph, openspec) |
+| `--latest` | Check npm-tracked packages without Dockerfile pins (codegraph, openspec) |
 | `--apt` | Query ubuntu:24.04 base image for available APT updates (requires docker) |
 | `--snapshot` | Diff current versions against `version-snapshot.json` |
 | `--snapshot-save` | Write a new snapshot after checking |
 | `--all` | Enable all three above |
 
 `LEANCTX_VERSION` was also added to close the drift with the CI workflow.
+
+#### Dockerfile pin registration rule
+
+Every versioned `ARG` in `Dockerfile` must be registered in both:
+
+1. `.opencode/scripts/check-versions.sh`: `lookup`, `source_label`, and
+   `collect_rows`, so `check`, `outdated`, and `json` compare the pin with its
+   upstream source.
+2. `.github/workflows/dependency-update.yml`: `PINNED_NAMES`, its source
+   lookup, expected pin count, and snapshot generation, so scheduled CI can
+   build, test, and propose the Dockerfile update.
+
+Do not put a Dockerfile pin in `--latest`; that path only snapshots packages
+without a Dockerfile pin. `OH_MY_OPENAGENT_VERSION` is the reference example:
+it moved from latest-tracked npm monitoring to the normal pinned dependency
+path, where `oh-my-openagent` is compared through npm.
 
 ### 2. check-updates skill — One-shot update workflow
 
@@ -85,6 +104,9 @@ Two gaps closed:
 - **Git-based diff**: Step 5.1 uses `git show <tag>:Dockerfile` for accurate
   before/after comparison, not guesswork.
 - **Decoupled skills**: Each skill has one job. Users can run any subset.
+- **Complete update path**: Registering a pin in both local and CI checkers
+  prevents an upstream update from being observed but never proposed as a
+  Dockerfile change.
 
 ## Side Effects / Tradeoffs
 
@@ -97,12 +119,21 @@ Two gaps closed:
 - **CHANGELOG Python script** is embedded inline in the skill markdown.
   This makes the skill self-contained but harder to debug than a standalone
   script.
+- **Registration duplication is deliberate**: The local script and CI workflow
+  have separate execution environments, so each needs its own source mapping
+  and pin list. Keep their behavior aligned when adding or removing a pin.
 
 ## Evidence
 
 - `check-versions.sh` syntax and integration verified: `bash -n` passes,
   `json` → `sed` pipeline produces correct commands, `outdated` exits 1 with
   proper output.
+- OMO pin registration verified: `check-versions.sh json` reports
+  `OH_MY_OPENAGENT_VERSION` with `pinned`, `latest`, `source`, and `status`;
+  for the verified image it reported `4.19.3 → 4.19.3` from
+  `npm:oh-my-openagent`.
+- `.github/workflows/dependency-update.yml` parsed successfully after its pin
+  count changed from 11 to 12.
 - Release CHANGELOG script tested: creates version section, inserts
   `### Changed` block, rebuilds links correctly.
 - OPENCODE_PROVIDER verified end-to-end: image build, container start,
@@ -113,6 +144,8 @@ Two gaps closed:
 
 - `.opencode/scripts/check-versions.sh` — Core version inspection script
 - `.opencode/skills/check-updates/SKILL.md` — New update workflow skill
+- `.github/workflows/dependency-update.yml` — Scheduled pinned-version updates
+- `test/run-tests.sh` — Verifies generated OMO plugin pin matches runtime env
 - `.opencode/skills/release/SKILL.md` — Enhanced release skill (3 sections updated)
 - `.opencode/skills/vuln-scan/SKILL.md` — Quick reference updated for new flags
 - `entrypoint.d/02-init-config.sh` — OPENCODE_PROVIDER merge logic
@@ -122,5 +155,5 @@ Two gaps closed:
 
 ## Tags
 
-`version-management` `dockerfile` `opencode` `release` `changelog`
-`provider-injection` `pipeline`
+`version-management` `dockerfile` `opencode` `oh-my-openagent` `release`
+`changelog` `provider-injection` `pipeline` `dependency-update`
