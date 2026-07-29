@@ -67,6 +67,23 @@ expected_plugin_names() {
   done | sort | tr '\n' ','
 }
 
+normalize_omo_plugin_versions() {
+  local plugins="$1"
+  local plugin
+  local normalized=()
+
+  IFS=',' read -ra plugin_list <<< "$plugins"
+  for plugin in "${plugin_list[@]}"; do
+    plugin="${plugin//[[:space:]]/}"
+    if [ "$plugin" = "oh-my-openagent" ]; then
+      plugin="oh-my-openagent@${OH_MY_OPENAGENT_VERSION}"
+    fi
+    [ -n "$plugin" ] && normalized+=("$plugin")
+  done
+
+  (IFS=,; printf '%s\n' "${normalized[*]}")
+}
+
 link_superpowers_skills() {
   local cache_dir="$1"
   local skills_root="$2"
@@ -123,7 +140,7 @@ mkdir -p "$OPCODE_CONFIG_DIR"
 OPCODE_CONFIG_FILE="$OPCODE_CONFIG_DIR/opencode.json"
 
 # Always regenerate opencode.json from OPENCODE_PLUGINS to ensure consistency
-PLUGINS="${OPENCODE_PLUGINS:-oh-my-openagent}"
+PLUGINS="$(normalize_omo_plugin_versions "${OPENCODE_PLUGINS:-oh-my-openagent}")"
 PLUGIN_JSON=$(echo "$PLUGINS" | tr ',' '\n' | jq -R . | jq -s .)
 OPCODE_CONFIG=$(jq -n \
   --argjson plugins "$PLUGIN_JSON" \
@@ -173,21 +190,38 @@ if [ -n "${OPENCODE_PROVIDER:-}" ]; then
   fi
 fi
 
-# --- OMO agent permission defaults ---
-# 遵循 AGENTS.md.default 模式：build 時寫入 /etc/opencode/，runtime 合併至使用者目錄。
-DEFAULT_OMO_AGENT_PERMS="/etc/opencode/oh-my-openagent.json.default"
-OMO_AGENT_PERMS_FILE="$OPCODE_CONFIG_DIR/oh-my-openagent.json"
+# --- OMO unified configuration ---
+DEFAULT_OMO_CONFIG="/etc/opencode/omo.jsonc.default"
+OMO_CONFIG_DIR="$HOME/.omo"
+OMO_CONFIG_FILE="$OMO_CONFIG_DIR/omo.jsonc"
 
-if [ -f "$DEFAULT_OMO_AGENT_PERMS" ]; then
-  if [ -f "$OMO_AGENT_PERMS_FILE" ]; then
-    if ! jq -e '.agents' "$OMO_AGENT_PERMS_FILE" >/dev/null 2>&1; then
-      echo "Merging default OMO agent permissions into oh-my-openagent.json"
-      jq -s '.[0] * .[1]' "$DEFAULT_OMO_AGENT_PERMS" "$OMO_AGENT_PERMS_FILE" > "${OMO_AGENT_PERMS_FILE}.tmp" \
-        && mv "${OMO_AGENT_PERMS_FILE}.tmp" "$OMO_AGENT_PERMS_FILE"
+archive_legacy_omo_configs() {
+  local legacy_name legacy_file backup_file
+  for legacy_name in oh-my-openagent.json oh-my-openagent.jsonc oh-my-opencode.json oh-my-opencode.jsonc; do
+    legacy_file="$OPCODE_CONFIG_DIR/$legacy_name"
+    [ -f "$legacy_file" ] || continue
+    backup_file="${legacy_file}.ai-engkit-legacy-backup"
+    if [ -e "$backup_file" ]; then
+      backup_file="${backup_file}.$(date -u +%Y%m%dT%H%M%SZ)"
+    fi
+    mv "$legacy_file" "$backup_file"
+    echo "Archived legacy OMO config: $legacy_file -> $backup_file"
+  done
+}
+
+archive_legacy_omo_configs
+mkdir -p "$OMO_CONFIG_DIR"
+
+if [ -f "$DEFAULT_OMO_CONFIG" ]; then
+  if [ -f "$OMO_CONFIG_FILE" ]; then
+    if ! grep -q '"agents"' "$OMO_CONFIG_FILE"; then
+      echo "Merging default OMO agent permissions into omo.jsonc"
+      jq -s '.[0] * .[1]' "$DEFAULT_OMO_CONFIG" "$OMO_CONFIG_FILE" > "${OMO_CONFIG_FILE}.tmp" \
+        && mv "${OMO_CONFIG_FILE}.tmp" "$OMO_CONFIG_FILE"
     fi
   else
-    echo "Creating oh-my-openagent.json with default agent permissions"
-    cp "$DEFAULT_OMO_AGENT_PERMS" "$OMO_AGENT_PERMS_FILE"
+    echo "Creating omo.jsonc with default agent permissions"
+    cp "$DEFAULT_OMO_CONFIG" "$OMO_CONFIG_FILE"
   fi
 fi
 

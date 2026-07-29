@@ -13,7 +13,7 @@ ARG PLAYWRIGHT_MCP_VERSION=0.0.78
 ARG GH_VERSION=2.96.0
 ARG MARKSMAN_VERSION=2026-02-08
 ARG LEANCTX_VERSION=3.9.12
-ARG OH_MY_OPENAGENT_VERSION=latest
+ARG OH_MY_OPENAGENT_VERSION=4.19.3
 ARG AI_ENGKIT_VERSION=dev
 ARG USERNAME=devuser
 ARG USER_UID=1000
@@ -213,6 +213,7 @@ PY
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 ENV PLAYWRIGHT_VERSION=${PLAYWRIGHT_VERSION}
 ENV PLAYWRIGHT_MCP_VERSION=${PLAYWRIGHT_MCP_VERSION}
+ENV OH_MY_OPENAGENT_VERSION=${OH_MY_OPENAGENT_VERSION}
 RUN sudo mkdir -p /ms-playwright && sudo chmod 777 /ms-playwright && \
     bunx -y playwright@${PLAYWRIGHT_VERSION} install --with-deps chromium && \
     rm -rf ~/.bun/install/cache
@@ -267,9 +268,9 @@ EOF
 # at container startup (appends to user's ~/.config/opencode/AGENTS.md).
 COPY .opencode/AGENTS.md.default /etc/opencode/AGENTS.md.default
 
-# oh-my-openagent.json default — consumed by entrypoint.d/02-init-config.sh
-# at container startup (merges into user's ~/.config/opencode/oh-my-openagent.json).
-COPY .opencode/oh-my-openagent.json.default /etc/opencode/oh-my-openagent.json.default
+# omo.jsonc default — consumed by entrypoint.d/02-init-config.sh
+# at container startup (merges into user's ~/.omo/omo.jsonc).
+COPY .opencode/omo.jsonc.default /etc/opencode/omo.jsonc.default
 
 # 複製設定檔（插件預下載改於 runtime entrypoint 執行，避免 build 超時）
 RUN mkdir -p /home/${USERNAME}/.config/opencode && \
