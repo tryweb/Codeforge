@@ -1,6 +1,16 @@
 ## [Unreleased]
 
 
+## [1.7.3] - 2026-07-29
+
+### Changed
+- Bump OpenCode 1.18.8->1.18.9, OpenChamber 1.16.3->1.17.0
+- Replace insecure ~/.git-credentials with git-credential-glab helper
+
+### Changed
+- Upgrade OpenCode from 1.18.8 to 1.18.9.
+- Upgrade OpenChamber from 1.16.3 to 1.17.0.
+
 ## [1.7.2] - 2026-07-28
 
 ### Added
@@ -966,7 +976,7 @@
 
 ## Format
 
-[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.7.2...HEAD
+[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.7.3...HEAD
 [0.3.0]: https://github.com/tryweb/ai-engkit/releases/tag/v0.3.0
 [0.3.3]: https://github.com/tryweb/ai-engkit/compare/v0.3.0...v0.3.3
 [0.5.0]: https://github.com/tryweb/ai-engkit/compare/v0.3.3...v0.5.0
@@ -1071,3 +1081,4 @@
 [1.7.0]: https://github.com/tryweb/ai-engkit/compare/v1.6.3...v1.7.0
 [1.7.1]: https://github.com/tryweb/ai-engkit/compare/v1.7.0...v1.7.1
 [1.7.2]: https://github.com/tryweb/ai-engkit/compare/v1.7.1...v1.7.2
+[1.7.3]: https://github.com/tryweb/ai-engkit/compare/v1.7.2...v1.7.3
