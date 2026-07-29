@@ -10,6 +10,7 @@ services:
       - lean-ctx-data:/home/devuser/.local/share/lean-ctx
       - lean-ctx-state:/home/devuser/.local/state/lean-ctx
       - opencode-config:/home/devuser/.config/opencode
+      - omo-config:/home/devuser/.omo
       - opencode-cache:/home/devuser/.cache/opencode
       - ohmyopencode-cache:/home/devuser/.cache/oh-my-opencode
       - openchamber-data:/home/devuser/.config/openchamber
@@ -21,6 +22,8 @@ services:
     env_file:
       - path: .env
         required: false
+    environment:
+      OPENCHAMBER_HOST: ${OPENCHAMBER_HOST:-0.0.0.0}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     restart: unless-stopped
@@ -54,6 +57,7 @@ volumes:
   lean-ctx-data:
   lean-ctx-state:
   opencode-config:
+  omo-config:
   opencode-cache:
   ohmyopencode-cache:
   openchamber-data:

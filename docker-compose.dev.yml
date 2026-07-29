@@ -4,7 +4,7 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        - OH_MY_OPENAGENT_VERSION=${OH_MY_OPENAGENT_VERSION:-latest}
+        - OH_MY_OPENAGENT_VERSION=${OH_MY_OPENAGENT_VERSION:-4.19.3}
         - AI_ENGKIT_VERSION=dev
     container_name: ai-engkit-dev
     ports:
@@ -15,6 +15,7 @@ services:
       - lean-ctx-data-dev:/home/devuser/.local/share/lean-ctx
       - lean-ctx-state-dev:/home/devuser/.local/state/lean-ctx
       - opencode-config-dev:/home/devuser/.config/opencode
+      - omo-config-dev:/home/devuser/.omo
       - opencode-cache-dev:/home/devuser/.cache/opencode
       - ohmyopencode-cache-dev:/home/devuser/.cache/oh-my-opencode
       - openchamber-data-dev:/home/devuser/.config/openchamber
@@ -26,6 +27,8 @@ services:
     env_file:
       - path: .env
         required: false
+    environment:
+      OPENCHAMBER_HOST: ${OPENCHAMBER_HOST:-0.0.0.0}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     restart: unless-stopped
@@ -53,6 +56,7 @@ volumes:
   lean-ctx-data-dev:
   lean-ctx-state-dev:
   opencode-config-dev:
+  omo-config-dev:
   opencode-cache-dev:
   ohmyopencode-cache-dev:
   openchamber-data-dev:
