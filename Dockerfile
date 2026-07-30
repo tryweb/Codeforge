@@ -271,6 +271,7 @@ COPY .opencode/AGENTS.md.default /etc/opencode/AGENTS.md.default
 # omo.jsonc default — consumed by entrypoint.d/02-init-config.sh
 # at container startup (merges into user's ~/.omo/omo.jsonc).
 COPY .opencode/omo.jsonc.default /etc/opencode/omo.jsonc.default
+COPY .opencode/omo-model-defaults.json /etc/opencode/omo-model-defaults.json
 
 # 複製設定檔（插件預下載改於 runtime entrypoint 執行，避免 build 超時）
 RUN mkdir -p /home/${USERNAME}/.config/opencode && \

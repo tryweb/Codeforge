@@ -192,8 +192,13 @@ fi
 
 # --- OMO unified configuration ---
 DEFAULT_OMO_CONFIG="/etc/opencode/omo.jsonc.default"
+OMO_MODEL_DEFAULTS_FILE="/etc/opencode/omo-model-defaults.json"
 OMO_CONFIG_DIR="$HOME/.omo"
 OMO_CONFIG_FILE="$OMO_CONFIG_DIR/omo.jsonc"
+OMO_MODEL_DEFAULTS_MARKER="$OMO_CONFIG_DIR/.ai-engkit-omo-model-defaults-v1"
+
+# Kept in a non-.sh file so the entrypoint runner does not execute it separately.
+source "$(dirname "$0")/lib-omo-model-defaults.bash"
 
 archive_legacy_omo_configs() {
   local legacy_name legacy_file backup_file
@@ -212,17 +217,10 @@ archive_legacy_omo_configs() {
 archive_legacy_omo_configs
 mkdir -p "$OMO_CONFIG_DIR"
 
-if [ -f "$DEFAULT_OMO_CONFIG" ]; then
-  if [ -f "$OMO_CONFIG_FILE" ]; then
-    if ! grep -q '"agents"' "$OMO_CONFIG_FILE"; then
-      echo "Merging default OMO agent permissions into omo.jsonc"
-      jq -s '.[0] * .[1]' "$DEFAULT_OMO_CONFIG" "$OMO_CONFIG_FILE" > "${OMO_CONFIG_FILE}.tmp" \
-        && mv "${OMO_CONFIG_FILE}.tmp" "$OMO_CONFIG_FILE"
-    fi
-  else
-    echo "Creating omo.jsonc with default agent permissions"
-    cp "$DEFAULT_OMO_CONFIG" "$OMO_CONFIG_FILE"
-  fi
+initialize_omo_permissions "$OMO_CONFIG_FILE" "$DEFAULT_OMO_CONFIG"
+
+if [ "${AI_ENGKIT_APPLY_OMO_MODEL_DEFAULTS:-}" = "1" ]; then
+  apply_omo_model_defaults "$OMO_CONFIG_FILE" "$OMO_MODEL_DEFAULTS_FILE" "$OMO_MODEL_DEFAULTS_MARKER"
 fi
 
 if command -v lean-ctx &>/dev/null; then
