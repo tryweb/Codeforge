@@ -1,5 +1,8 @@
 ## [Unreleased]
 
+### Added
+- Add a one-time `AI_ENGKIT_APPLY_OMO_MODEL_DEFAULTS=1` migration that fills only missing low-cost OMO model leaves and preserves existing user settings.
+
 
 ## [1.8.0] - 2026-07-30
 
