@@ -8,7 +8,7 @@ const FEATURES = ["knowledge", "maintenance", "openspec"] as const;
 type Feature = (typeof FEATURES)[number];
 
 async function listProjects(): Promise<string[]> {
-  const result = await execInAiDev("ls ~/workspace/ 2>/dev/null || echo ''", 10_000);
+  const result = await execInAiDev("find ~/workspace/ -maxdepth 1 -type d ! -path ~/workspace/ ! -name '.*' -exec basename {} \\; 2>/dev/null || true", 10_000);
   if (result.exitCode !== 0 || !result.stdout) return [];
   return result.stdout.split("\n").filter(Boolean);
 }
@@ -74,7 +74,7 @@ projects.post("/api/projects", async (c) => {
 
   const remote = body.git_remote?.trim();
 
-  // If a remote URL is provided, clone instead of mkdir + init
+  // Git setup: clone remote or init local (always writes .gitignore)
   if (body.git_init && remote) {
     const cloneResult = await execInAiDev(
       `git clone --depth 1 ${JSON.stringify(remote)} ~/workspace/${JSON.stringify(name)} 2>&1`,
@@ -84,24 +84,39 @@ projects.post("/api/projects", async (c) => {
       const msg = cloneResult.stderr || cloneResult.stdout || "clone failed";
       return c.json({ error: `Clone failed. Make sure the URL is correct and git auth is configured (see GitHub/GitLab Auth page). Details: ${msg}` }, 500);
     }
-  } else {
-    // Local-only project: mkdir + optional git init
+    // Append AI-EngKit entries to cloned repo's existing .gitignore
+    await execInAiDev(
+      `cd ~/workspace/${JSON.stringify(name)} && ` +
+      `grep -qs '^\\.omo/' .gitignore 2>/dev/null || ` +
+      `printf '\\n# AI-EngKit system directories\\n.omo/\\n.playwright-mcp/\\n.codegraph/\\n.sisyphus/\\n.tmp/\\n.env\\nnode_modules/\\nbackups/\\n' >> .gitignore`,
+      10_000,
+    );
+  } else if (body.git_init) {
+    // New local project with git init
     const createResult = await execInAiDev(`mkdir -p ~/workspace/${JSON.stringify(name)}`, 15_000);
     if (createResult.exitCode !== 0) {
       return c.json({ error: createResult.stderr || "Failed to create directory" }, 500);
     }
-    if (body.git_init) {
-      const initResult = await execInAiDev(
-        `cd ~/workspace/${JSON.stringify(name)} && git init 2>&1`, 10_000,
-      );
-      if (initResult.exitCode !== 0 && initResult.exitCode !== -1) {
-        return c.json({ error: `git init failed: ${initResult.stderr || initResult.stdout}` }, 500);
-      }
-      // Try an initial commit; fine if it fails (empty directory)
-      await execInAiDev(
-        `cd ~/workspace/${JSON.stringify(name)} && git add -A && git commit -m "Initial commit" 2>/dev/null || true`,
-        10_000,
-      );
+    const initResult = await execInAiDev(
+      `cd ~/workspace/${JSON.stringify(name)} && git init 2>&1`, 10_000,
+    );
+    if (initResult.exitCode !== 0 && initResult.exitCode !== -1) {
+      return c.json({ error: `git init failed: ${initResult.stderr || initResult.stdout}` }, 500);
+    }
+    // Write .gitignore BEFORE initial commit so it gets tracked
+    await execInAiDev(
+      `cd ~/workspace/${JSON.stringify(name)} && ` +
+      `printf '%s\\n' '' '# AI-EngKit system directories' '.omo/' '.playwright-mcp/' '.codegraph/' '.sisyphus/' '.tmp/' '.env' 'node_modules/' 'backups/' > .gitignore`,
+      10_000,
+    );
+    await execInAiDev(
+      `cd ~/workspace/${JSON.stringify(name)} && git add -A && git commit -m "Initial commit" 2>/dev/null || true`,
+      10_000,
+    );
+  } else {
+    const createResult = await execInAiDev(`mkdir -p ~/workspace/${JSON.stringify(name)}`, 15_000);
+    if (createResult.exitCode !== 0) {
+      return c.json({ error: createResult.stderr || "Failed to create directory" }, 500);
     }
   }
 
@@ -238,7 +253,7 @@ projects.post("/api/projects/sync", async (c) => {
 
   for (const name of add) {
     const fullPath = `/home/devuser/workspace/${name}`;
-    const id = `path_$(printf '%s' "$fullPath" | base64 -w0)`;
+    const id = "path_" + Buffer.from(fullPath).toString("base64");
     const r = await execInAiDev(
       `jq --arg path "${fullPath}" --arg id "${id}" ` +
       `'.projects += [{"id": $id, "path": $path}]' ${OPENCHAMBER_SETTINGS} > /tmp/oc.json && mv /tmp/oc.json ${OPENCHAMBER_SETTINGS}`,
