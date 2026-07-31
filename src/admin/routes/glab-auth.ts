@@ -11,53 +11,20 @@ interface GlabInstance {
 }
 
 /**
- * Deploy the git-credential-glab helper into the ai-dev container and
- * configure git to use it for the given hostname.
+ * Configure git to use the git-credential-glab helper for the given hostname.
+ *
+ * The helper script is baked into the image at build time
+ * (~/.local/bin/git-credential-glab — see scripts/git-credential-glab and the
+ * Dockerfile), so it survives container recreation. Only the git config
+ * needs to be (re)applied after a successful glab auth login.
  *
  * This replaces the insecure ~/.git-credentials plaintext approach with
  * on-demand token reads from glab's own config.yml — the single source
  * of truth for authentication.
  */
 async function setupGlabCredentialHelper(hostname: string): Promise<void> {
-  // The helper script follows git's credential helper protocol:
-  //   stdin:  host=..., protocol=...
-  //   stdout: username=..., password=...
-  // It reads the token from glab's config.yml at runtime — never stored.
-  const script = [
-    '#!/bin/sh',
-    `GLAB_CONFIG="\${HOME}/.config/glab-cli/config.yml"`,
-    'HOST=""',
-    'while IFS="=" read -r key value; do',
-    '  case "$key" in',
-    '    host) HOST="$value" ;;',
-    '  esac',
-    'done',
-    '[ -z "$HOST" ] && exit 0',
-    '[ ! -f "$GLAB_CONFIG" ] && exit 0',
-    'python3 -c "',
-    "import yaml, sys, os",
-    "glab_cfg = os.path.expanduser('~/.config/glab-cli/config.yml')",
-    "with open(glab_cfg) as f:",
-    "    cfg = yaml.safe_load(f)",
-    "hosts = cfg.get('hosts', {})",
-    "hostname = sys.argv[1]",
-    "if hostname in hosts:",
-    "    h = hosts[hostname]",
-    "    token = h.get('token', '')",
-    "    if token:",
-    "        user = h.get('user', 'oauth2')",
-    "        print(f'username={user}')",
-    "        print(f'password={token}')",
-    '" "$HOST"',
-  ].join("\n");
-
-  const b64 = Buffer.from(script).toString("base64");
-
-  await execInAiDev(
-    `mkdir -p ~/.local/bin && echo ${JSON.stringify(b64)} | base64 -d > ~/.local/bin/git-credential-glab && chmod +x ~/.local/bin/git-credential-glab`,
-    10_000,
-  );
-
+  // Remove the global store helper (older entrypoints re-added it on every
+  // start) so git never caches the token back to plaintext on disk.
   await execInAiDev("git config --global --unset credential.helper 2>/dev/null || true", 5_000);
 
   const escHost = JSON.stringify(hostname);

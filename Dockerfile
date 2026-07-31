@@ -307,6 +307,11 @@ RUN mkdir -p \
     chmod 700 /home/${USERNAME}/.ssh && \
     chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}/.local
 
+# git-credential-glab — git 經由 glab 的 config.yml 認證（取代明文 ~/.git-credentials）。
+# 寫入 image 層（~/.local/bin 非 VOLUME 路徑），container recreate 後依然存在，
+# 只有 git config 的 per-host helper 設定需要由 glab auth login 流程套用。
+COPY --chmod=0755 scripts/git-credential-glab /home/${USERNAME}/.local/bin/git-credential-glab
+
 # ── entrypoint 腳本注入（需 root 寫入）──────────────────
 USER root
 COPY --chown=${USERNAME}:${USERNAME} entrypoint.d/ /entrypoint.d/

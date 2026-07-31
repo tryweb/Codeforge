@@ -61,9 +61,10 @@ init_file "$GIT_CONFIG_DIR/config"
 create_symlink "$GIT_CONFIG_DIR/.gitconfig" "$DEVUSER_HOME/.gitconfig"
 create_symlink "$GIT_CONFIG_DIR/.git-credentials" "$DEVUSER_HOME/.git-credentials"
 
-# 設定 git credential helper（需指定 HOME，否則 sudo 會寫到 /root）
-sudo -u devuser HOME=/home/devuser git config --global credential.helper store
-echo "Configured: credential.helper store"
+# 不設定 credential.helper store：git 認證由 glab auth login 流程設定的
+# per-host git-credential-glab helper 負責（helper 已 baked 進 image，
+# 見 scripts/git-credential-glab）。store 會把 token 以明文寫入
+# ~/.git-credentials，且無條件寫入會覆蓋掉 f49b21a 移除它的設計。
 
 # --- Start SSH agent (persistent across sessions) ---
 AGENT_ENV="$SSH_DIR/agent.env"
