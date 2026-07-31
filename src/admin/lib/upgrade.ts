@@ -7,6 +7,7 @@ const BACKUP_DIR = "/opt/ai-engkit/backups";
 const COMPOSE_FILE = "/opt/ai-engkit/compose.yml";
 const ENV_FILE = "/opt/ai-engkit/.env";
 const IMAGE = "ghcr.io/tryweb/ai-engkit:latest";
+const UPSTREAM_BASE = "https://raw.githubusercontent.com/tryweb/ai-engkit/main";
 
 export type UpgradeStep =
   | "digest_compare"
@@ -82,6 +83,20 @@ async function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+async function fetchLatestCompose(): Promise<string | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 30_000);
+  try {
+    const res = await fetch(`${UPSTREAM_BASE}/docker-compose.yml`, { signal: controller.signal });
+    if (!res.ok) return null;
+    return await res.text();
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function runUpgrade(): Promise<boolean> {
   if (currentState === "running") {
     throw new Error("Upgrade already in progress");
@@ -143,7 +158,14 @@ export async function runUpgrade(): Promise<boolean> {
     emit("merge_env", "success", "Environment variables merged");
 
     // Step 4: Recreate ai-dev
-    emit("recreate", "running", "Recreating ai-dev container with new image...");
+    emit("recreate", "running", "Fetching latest docker-compose.yml, then recreating ai-dev with new image...");
+    // Apply the latest compose file from upstream so services/volumes/ports added
+    // since the last deploy take effect. The previous file is already saved by the
+    // backup step; on fetch failure, fall back to the existing compose file.
+    const latestCompose = await fetchLatestCompose();
+    if (latestCompose !== null) {
+      writeFileSync(COMPOSE_FILE, latestCompose);
+    }
     const project = await getComposeProject();
     const recreateResult = await composeCommand(
       `-p ${project} --env-file ${ENV_FILE} -f ${COMPOSE_FILE} up -d --force-recreate ai-dev`,
@@ -189,7 +211,7 @@ async function mergeEnvFromUpstream(): Promise<void> {
   const currentEnv = readEnvFile();
   // Fetch .env.example from upstream
   const result = await execInAiDev(
-    `curl -sS https://raw.githubusercontent.com/trywe-io/ai-engkit/main/.env.example 2>/dev/null || true`,
+    `curl -sS ${UPSTREAM_BASE}/.env.example 2>/dev/null || true`,
     30_000,
   );
   if (result.exitCode !== 0 || !result.stdout) return;
