@@ -279,6 +279,26 @@ pull_image() {
 }
 
 # ──────────────────────────────────────────────────────────
+# Prepare the provider API key registry on the host
+# A missing bind source is auto-created by Docker as a directory,
+# which makes the admin container fail to write the registry
+# (EISDIR). The registry must exist as a regular file owned by the
+# admin user (devuser, UID 1000).
+# ──────────────────────────────────────────────────────────
+ensure_provider_keys() {
+    if [ -d provider-keys.json ]; then
+        # Replace the directory Docker auto-created for the bind mount
+        rm -rf provider-keys.json
+    fi
+    if [ ! -f provider-keys.json ]; then
+        printf '{"providers":{}}\n' > provider-keys.json
+        ok "provider-keys.json registry initialized"
+    fi
+    chown 1000:1000 provider-keys.json 2>/dev/null || true
+    chmod 600 provider-keys.json
+}
+
+# ──────────────────────────────────────────────────────────
 # Prepare host volumes for admin container
 # ──────────────────────────────────────────────────────────
 prepare_volumes() {
@@ -287,6 +307,8 @@ prepare_volumes() {
     mkdir -p ./backups
     chmod 777 ./backups
     ok "./backups ready"
+
+    ensure_provider_keys
 
     local ws_path
     ws_path=$(grep -E "^WORKSPACE_PATH=" .env 2>/dev/null | cut -d= -f2- || true)

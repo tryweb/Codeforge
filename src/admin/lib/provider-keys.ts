@@ -1,10 +1,10 @@
 /**
  * Provider API key registry — per-provider key lists plus the active selection.
  * Stored in /opt/ai-engkit/provider-keys.json (bind-mounted in production,
- * container-local in dev), deliberately NOT in .env: keys must not leak via
- * `docker inspect` and env changes cannot apply in dev/DooD mode.
+ * the admin-data-dev named volume in dev), deliberately NOT in .env: keys must
+ * not leak via `docker inspect` and env changes cannot apply in dev/DooD mode.
  */
-import { readFileSync, writeFileSync, renameSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, renameSync, existsSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 export const KEYS_PATH = "/opt/ai-engkit/provider-keys.json";
@@ -41,6 +41,11 @@ export function readProviderKeys(): ProviderKeysFile {
 }
 
 export function writeProviderKeys(file: ProviderKeysFile): void {
+  // Docker auto-creates a missing bind source as a directory; writing to it
+  // would throw EISDIR. Fail with a clear message instead.
+  if (existsSync(KEYS_PATH) && !statSync(KEYS_PATH).isFile()) {
+    throw new Error(`provider-keys.json is not a regular file: ${KEYS_PATH}`);
+  }
   const tmp = join(dirname(KEYS_PATH), `.provider-keys.json.tmp`);
   writeFileSync(tmp, JSON.stringify(file, null, 2) + "\n", { mode: 0o600 });
   renameSync(tmp, KEYS_PATH);
