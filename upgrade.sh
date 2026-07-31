@@ -50,19 +50,54 @@ download() {
 check_system() {
     header "1. Checking System Hardware Specifications"
 
+    if [ "${SKIP_SYSTEM_CHECK:-0}" = "1" ]; then
+        warn "SKIP_SYSTEM_CHECK=1 set, skipping hardware checks"
+        return 0
+    fi
+
+    local RAM_KB cg_limit warnings=0
     CPU_CORES=$(nproc 2>/dev/null || echo 0)
-    RAM_KB=$(grep MemTotal /proc/meminfo 2>/dev/null | awk '{print $2}')
-    RAM_GB=$((RAM_KB / 1024 / 1024))
+
+    # Containers report host memory via /proc/meminfo — prefer cgroup limit when set
+    RAM_KB=""
+    if [ -r /sys/fs/cgroup/memory.max ]; then
+        cg_limit=$(cat /sys/fs/cgroup/memory.max 2>/dev/null || true)
+        if [ -n "$cg_limit" ] && [ "$cg_limit" != "max" ] && \
+           [[ "$cg_limit" =~ ^[0-9]+$ ]] && [ "$cg_limit" -lt $((1 << 40)) ]; then
+            RAM_KB=$((cg_limit / 1024))   # cgroup v2 limit is in bytes
+        fi
+    elif [ -r /sys/fs/cgroup/memory/memory.limit_in_bytes ]; then
+        cg_limit=$(cat /sys/fs/cgroup/memory/memory.limit_in_bytes 2>/dev/null || true)
+        if [ -n "$cg_limit" ] && [[ "$cg_limit" =~ ^[0-9]+$ ]] && [ "$cg_limit" -lt $((1 << 40)) ]; then
+            RAM_KB=$((cg_limit / 1024))   # cgroup v1 limit is in bytes
+        fi
+    fi
+    if [ -z "$RAM_KB" ] || [ "$RAM_KB" -le 0 ] 2>/dev/null; then
+        RAM_KB=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo 2>/dev/null || true)
+    fi
+    if [ -z "$RAM_KB" ] || [ "$RAM_KB" -le 0 ] 2>/dev/null; then
+        RAM_KB=$(free -k 2>/dev/null | awk '/^Mem:/ {print $2}' || true)
+    fi
+    RAM_KB="${RAM_KB:-0}"
+
     DISK_KB=$(df -Pk / 2>/dev/null | tail -1 | awk '{print $4}')
     DISK_GB=$((DISK_KB / 1024 / 1024))
+
+    # One decimal place so e.g. 3.9 GB is not truncated into a failing 3 GB
+    RAM_GB=$(awk -v kb="$RAM_KB" 'BEGIN{printf "%.1f", kb/1048576}')
+    RAM_GB_INT=$((RAM_KB / 1024 / 1024))
 
     echo "  CPU cores: $CPU_CORES  |  RAM: ${RAM_GB} GB  |  Disk: ${DISK_GB} GB"
 
     if [ "$CPU_CORES" -lt 2 ]; then
         fail "Insufficient CPU cores (requires at least 2 cores)"
     fi
-    if [ "$RAM_GB" -lt 4 ]; then
-        fail "Insufficient RAM (requires at least 4 GB)"
+    # Warn and continue below the recommended 4 GB; hard-fail only far below it
+    if [ "$RAM_GB_INT" -lt 2 ]; then
+        fail "Insufficient RAM (requires at least 2 GB; 4 GB recommended)"
+    elif [ "$RAM_GB_INT" -lt 4 ]; then
+        warn "RAM below recommended 4 GB — continuing, but performance may be limited"
+        warnings=1
     fi
     if [ "$DISK_GB" -lt 5 ]; then
         fail "Insufficient disk space (requires at least 5 GB for upgrade)"
@@ -80,7 +115,11 @@ check_system() {
         fail "Unsupported CPU, please refer to install.sh for full details"
     fi
 
-    ok "System specifications meet requirements"
+    if [ "$warnings" -eq 1 ]; then
+        warn "System meets minimum requirements, but some specs are below recommendation"
+    else
+        ok "System specifications meet requirements"
+    fi
 }
 
 check_docker() {
