@@ -365,4 +365,15 @@ if [ -f "$AI_ENGKIT_AGENTS_DEFAULT" ]; then
   fi
 fi
 
+# --- OpenChamber default settings ---
+OPENCHAMBER_SETTINGS_FILE="$OPENCHAMBER_DATA_DIR/settings.json"
+if [ ! -f "$OPENCHAMBER_SETTINGS_FILE" ]; then
+  mkdir -p "$OPENCHAMBER_DATA_DIR"
+  jq -n '{
+    defaultModel: "opencode/big-pickle",
+    showOpenCodeUpdateNotifications: false
+  }' > "$OPENCHAMBER_SETTINGS_FILE"
+  echo "Created default OpenChamber settings: $OPENCHAMBER_SETTINGS_FILE"
+fi
+
 echo "Default configs initialized"
