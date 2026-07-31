@@ -156,8 +156,40 @@ function getPassword(): string | null {
 }
 ```
 
+### 方案 D：named volume + seed（2026-08 實作，持久化資料的可靠替代）
+
+方案 C 移除 file-level bind mount 後，dev 的 registry（`/opt/ai-engkit/provider-keys.json`）與 `.env` 變成 container-local——**每次 recreate admin 容器即清空**（image 未包含這些檔案）。需要持久化時，不能用 host file bind mount（host 端路徑不存在，見下方實驗），改用 **named volume + command seed**：
+
+```yaml
+# docker-compose.dev.yml
+ai-admin:
+  command:
+    - sh
+    - -c
+    - |
+      set -e
+      sudo chown -R devuser:devuser /opt/ai-engkit   # volume 首次掛載為 root:root → 先 chown 才能寫
+      mkdir -p /opt/ai-engkit/backups
+      [ -f /opt/ai-engkit/VERSION ] || echo dev > /opt/ai-engkit/VERSION
+      [ -f /opt/ai-engkit/.env ] || env | grep -v -E '^(HOME|PATH|BUN_|NODE_|npm_|HOSTNAME|PWD|SHLVL|TERM|TZ|LS_COLORS|LESS[ _]|PAGER|EDITOR|LC_|LANG|SHELL|USER|SUDO_|TMPDIR|OLDPWD|_|LOGNAME|PLAYWRIGHT_|DEBIAN_|CLAUDE_)' > /opt/ai-engkit/.env
+      [ -f /opt/ai-engkit/provider-keys.json ] || printf '%s\n' '{"providers":{}}' > /opt/ai-engkit/provider-keys.json
+      bun run /opt/admin/server.ts
+  volumes:
+    - admin-data-dev:/opt/ai-engkit
+    - /var/run/docker.sock:/var/run/docker.sock:ro
+# 頂層 volumes 區加入 admin-data-dev:
+```
+
+關鍵細節：
+- **chown 必須在 seed 之前**：首次掛載的 named volume 由 host daemon 建立、owner 為 root；`env | grep ... > .env` 的 shell redirect 以 devuser 執行 → 不先 chown 會 `Permission denied`
+- **volume 首次掛載會 copy-up image 內容**：image 的 `/opt/ai-engkit/VERSION`（Dockerfile L281）自動保留，seed 的 `[ -f ] ||` 判斷使其冪等
+- **不掛 compose.yml**：dev 的 restart 刻意走 `docker restart`（避免 `build: .` 觸發 2-5 min 重建），見 `dev-verification-limitations.md`——env apply 在 dev 不可驗證是既有決策，不要用掛 compose.yml 的方式「修」
+
 ## 副作用 / 取捨
 
+- **方案 D**：admin 的 `.env`/registry 內容存在 named volume（`/var/lib/docker/volumes/admin-data-dev/_data`），host 端看不到，需 `docker exec` 查看
+- **方案 D**：image 的 `/opt/ai-engkit` 若未來新增檔案會被 volume shadow，需同步加到 seed
+- **驗證陷阱**：admin server 有 rate limit（`RATE_LIMIT=120` req/min、in-memory Map，server.ts:39）——連續跑完整 test（每次上百 curl）會 429 鎖住所有 API，造成大規模假 FAIL；`--force-recreate`（重置 in-memory map）後即恢復
 - **方案 A** 的容器不是由 docker compose 管理，`docker compose logs` / `docker compose down` 無法控制它
   - 清理需手動：`docker rm -f ai-engkit-admin-dev`
 - **方案 A** 的 bun process 以 root 身分執行（非 devuser），可能與正式環境行為略有差異
@@ -171,7 +203,26 @@ function getPassword(): string | null {
 ## Evidence
 
 ```bash
-# host 端 mount source 不存在或內容錯誤的證明
+# 方案 D 驗證（2026-08，DooD dev 環境）：
+# 1) host 視角確認 file bind mount 不可行（host 無此檔 → Docker 自動建「目錄」）
+$ docker run --rm -v /home/devuser/workspace/ai-engkit/provider-keys.json:/check.json alpine sh -c 'ls -ld /check.json; cat /check.json 2>&1'
+drwxr-xr-x    2 root     root    4096 Jul 31 23:18 /check.json
+cat: read error: Is a directory
+
+# 2) seed 結果：三檔建立、owner devuser
+$ docker exec ai-engkit-admin-dev ls -la /opt/ai-engkit/
+-rw-rw-r-- 1 devuser devuser 1101 Aug  1 07:23 .env
+-rw-r--r-- 1 devuser devuser    4 Jul 31 23:08 VERSION   # copy-up 保留 image 內容
+-rw-rw-r-- 1 devuser devuser   17 Aug  1 07:23 provider-keys.json  # {"providers":{}}
+
+# 3) 核心驗證：import → force-recreate → registry 保留
+$ docker compose -f docker-compose.dev.yml up -d --force-recreate ai-admin
+$ docker exec ai-engkit-admin-dev jq -r '.providers["opencode-go"].activeKeyId' /opt/ai-engkit/provider-keys.json
+k-ms9kjmmw   # 保留，未清空
+
+# 4) 完整回歸：RUN_APPLY_TESTS=1 ./test/test-admin-ui.sh → 64 passed, 0 failed
+
+# host 端 mount source 不存在或內容錯誤的證明（方案 A/B/C 時期）
 $ docker run --rm -v /home/devuser/workspace/ai-engkit/src/admin:/check alpine ls -la /check/server.ts
 total 8
 drwxr-xr-x    2 root     root          4096 Jul 24 07:39 .
@@ -188,8 +239,9 @@ $ docker inspect ai-engkit-admin-dev --format '{{json .Mounts}}' | jq '.[] | sel
 
 ## Related Files
 
-- `docker-compose.dev.yml` — ai-admin volumes 定義
+- `docker-compose.dev.yml` — ai-admin volumes 定義（方案 D：`admin-data-dev` named volume + seed command）
 - `Dockerfile` line 258 — `COPY src/admin/ /opt/admin/`
+- `Dockerfile` line 281 — `mkdir -p /opt/ai-engkit && echo "$AI_ENGKIT_VERSION" > /opt/ai-engkit/VERSION`（image 內唯一的 /opt/ai-engkit 內容，volume copy-up 保留）
 - `entrypoint.d/03-fix-docker-gid.sh` — Docker socket GID 匹配腳本
 - `src/admin/lib/docker.ts` — `getAiDevContainerRef` / `execInAiDev` 改用 `docker exec` + `docker ps`
 - `src/admin/lib/auth.ts` — `getPassword` 加入 `process.env` fallback
