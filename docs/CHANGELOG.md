@@ -1,6 +1,20 @@
 ## [Unreleased]
 
 
+## [1.9.1] - 2026-07-31
+
+### Added
+- Backfill OpenChamber defaultModel on existing settings
+
+### Fixed
+- Use latest docker-compose.yml in admin upgrade and fix upstream URL
+
+### Documentation
+- Add knowledge entries for OpenChamber default model and OMO migration
+
+### Changed
+- Remove inert OMO model-default migration
+
 ## [1.9.0] - 2026-07-31
 
 ### Added
@@ -1022,7 +1036,7 @@
 
 ## Format
 
-[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.9.0...HEAD
+[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.9.1...HEAD
 [0.3.0]: https://github.com/tryweb/ai-engkit/releases/tag/v0.3.0
 [0.3.3]: https://github.com/tryweb/ai-engkit/compare/v0.3.0...v0.3.3
 [0.5.0]: https://github.com/tryweb/ai-engkit/compare/v0.3.3...v0.5.0
@@ -1131,3 +1145,4 @@
 [1.7.4]: https://github.com/tryweb/ai-engkit/compare/v1.7.3...v1.7.4
 [1.8.0]: https://github.com/tryweb/ai-engkit/compare/v1.7.4...v1.8.0
 [1.9.0]: https://github.com/tryweb/ai-engkit/compare/v1.8.0...v1.9.0
+[1.9.1]: https://github.com/tryweb/ai-engkit/compare/v1.9.0...v1.9.1
