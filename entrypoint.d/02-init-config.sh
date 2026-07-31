@@ -199,6 +199,7 @@ OMO_MODEL_DEFAULTS_MARKER="$OMO_CONFIG_DIR/.ai-engkit-omo-model-defaults-v1"
 
 # Kept in a non-.sh file so the entrypoint runner does not execute it separately.
 source "$(dirname "$0")/lib-omo-model-defaults.bash"
+source "$(dirname "$0")/lib-openchamber-settings.bash"
 
 archive_legacy_omo_configs() {
   local legacy_name legacy_file backup_file
@@ -365,15 +366,7 @@ if [ -f "$AI_ENGKIT_AGENTS_DEFAULT" ]; then
   fi
 fi
 
-# --- OpenChamber default settings ---
-OPENCHAMBER_SETTINGS_FILE="$OPENCHAMBER_DATA_DIR/settings.json"
-if [ ! -f "$OPENCHAMBER_SETTINGS_FILE" ]; then
-  mkdir -p "$OPENCHAMBER_DATA_DIR"
-  jq -n '{
-    defaultModel: "opencode/big-pickle",
-    showOpenCodeUpdateNotifications: false
-  }' > "$OPENCHAMBER_SETTINGS_FILE"
-  echo "Created default OpenChamber settings: $OPENCHAMBER_SETTINGS_FILE"
-fi
+# --- OpenChamber default settings (seed + backfill defaultModel) ---
+ensure_openchamber_default_model "$OPENCHAMBER_DATA_DIR/settings.json" "opencode/big-pickle"
 
 echo "Default configs initialized"

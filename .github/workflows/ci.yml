@@ -120,6 +120,9 @@ jobs:
           # === 1.1 Docker socket GID conflict handling ===
           bash ./test/test-docker-gid.sh ai-engkit:ci
 
+          # === 1.2 OpenChamber defaultModel seed/backfill (unit) ===
+          bash ./test/test-openchamber-settings-seed.sh
+
           # === 2. Admin container — dashboard integration ===
           ./test/test-admin.sh ai-engkit-admin-dev
 
