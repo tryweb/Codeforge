@@ -4,6 +4,7 @@ import { html } from "hono/html";
 const NAV_ITEMS = [
   { href: "/", label: "Dashboard", icon: "⊞" },
   { href: "/projects", label: "Projects", icon: "◰" },
+  { href: "/openchamber", label: "OpenChamber", icon: "◉" },
   { href: "/separator", label: "", icon: "" },
   { href: "/auth/github", label: "GitHub Auth", icon: "◆" },
   { href: "/auth/gitlab", label: "GitLab Auth", icon: "◇" },

@@ -109,7 +109,7 @@ fi
 echo ""
 echo "--- Authentication Required ---"
 
-for endpoint in "/api/status" "/api/env" "/api/versions"; do
+for endpoint in "/api/status" "/api/env" "/api/versions" "/api/openchamber/settings"; do
   SC=$(get_code "${BASE}${endpoint}")
   if [ "$SC" = "401" ]; then
     pass "GET ${endpoint} without cookie returns 401"

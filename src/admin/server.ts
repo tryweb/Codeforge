@@ -18,12 +18,13 @@ import sshKeyRoutes from "./routes/ssh-keys";
 import adminRoutes from "./routes/admin";
 import secretsRoutes from "./routes/secrets";
 import statusRoutes from "./routes/status";
+import openChamberRoutes from "./routes/openchamber";
 import { getUpdateCheck } from "./routes/versions";
 import { getStatus as getUpgradeStatus } from "./lib/upgrade";
 import { DashboardPage } from "./views/dashboard";
 import { getSelfContainerRef, dockerCommand } from "./lib/docker";
 
-const app = new Hono();
+export const app = new Hono();
 
 // Global middleware
 app.use("*", logger());
@@ -113,6 +114,7 @@ app.route("/", gitConfigRoutes);
 app.route("/", sshKeyRoutes);
 app.route("/", adminRoutes);
 app.route("/", secretsRoutes);
+app.route("/", openChamberRoutes);
 
 // Dashboard main page — gathers data directly instead of HTTP loopback
 app.get("/", async (c) => {
