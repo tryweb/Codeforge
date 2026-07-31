@@ -11,6 +11,17 @@ interface GlabInstance {
 }
 
 /**
+ * Reduce a GitLab host input to its bare hostname.
+ * Strips scheme and path so "https://gitlab.example.com/" → "gitlab.example.com".
+ * A scheme-prefixed value here would create a malformed
+ * `credential.https://https://...` git config section that never matches
+ * any real remote, leaving git with no credential source.
+ */
+function normalizeHostname(input: string): string {
+  return input.trim().replace(/^https?:\/\//i, "").split("/")[0];
+}
+
+/**
  * Configure git to use the git-credential-glab helper for the given hostname.
  *
  * The helper script is baked into the image at build time
@@ -27,7 +38,8 @@ async function setupGlabCredentialHelper(hostname: string): Promise<void> {
   // start) so git never caches the token back to plaintext on disk.
   await execInAiDev("git config --global --unset credential.helper 2>/dev/null || true", 5_000);
 
-  const escHost = JSON.stringify(hostname);
+  // Defensive re-normalization: only a bare hostname may enter the git config key.
+  const escHost = JSON.stringify(normalizeHostname(hostname));
   await execInAiDev(`git config --global credential.https://${escHost}.helper glab 2>/dev/null || true`, 5_000);
   await execInAiDev(`git config --global credential.http://${escHost}.helper glab 2>/dev/null || true`, 5_000);
 
@@ -89,7 +101,7 @@ glabAuth.get("/api/auth/glab/status", async (c) => {
 
 glabAuth.post("/api/auth/glab/start", async (c) => {
   const body = await c.req.json().catch(() => ({ hostname: "gitlab.com" }));
-  const hostname = body.hostname || "gitlab.com";
+  const hostname = normalizeHostname(body.hostname || "gitlab.com");
   const token = body.token || "";
 
   if (token) {

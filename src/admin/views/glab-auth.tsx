@@ -37,7 +37,7 @@ const GlabAuthContent: FC<{ instances: GlabInstance[]; status: string }> = ({ in
       <div class="card">
         <h3>Add Instance</h3>
         <div class="form-group">
-          <label for="hostname">GitLab Host URL</label>
+          <label for="hostname">GitLab Hostname</label>
           <input type="text" id="hostname" placeholder="gitlab-238.ichiayi.com" />
         </div>
         <div class="form-group">
