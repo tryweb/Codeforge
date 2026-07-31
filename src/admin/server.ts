@@ -17,6 +17,7 @@ import gitConfigRoutes from "./routes/git-config";
 import sshKeyRoutes from "./routes/ssh-keys";
 import adminRoutes from "./routes/admin";
 import secretsRoutes from "./routes/secrets";
+import providersRoutes from "./routes/providers";
 import statusRoutes from "./routes/status";
 import openChamberRoutes from "./routes/openchamber";
 import { getUpdateCheck } from "./routes/versions";
@@ -114,6 +115,7 @@ app.route("/", gitConfigRoutes);
 app.route("/", sshKeyRoutes);
 app.route("/", adminRoutes);
 app.route("/", secretsRoutes);
+app.route("/", providersRoutes);
 app.route("/", openChamberRoutes);
 
 // Dashboard main page — gathers data directly instead of HTTP loopback

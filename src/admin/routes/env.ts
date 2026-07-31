@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { existsSync } from "node:fs";
 import { readEnvFile, upsertEnvVar, envFileExists } from "../lib/env";
+import { PROVIDER_ENV_KEY, parseProviders } from "../lib/providers";
 import { execInAiDev, getAiDevContainerRef, dockerCommand, getComposeProject } from "../lib/docker";
 import { EnvEditorPage } from "../views/env-editor";
 
@@ -36,6 +37,13 @@ env.put("/api/env/:key", async (c) => {
     return c.json({ error: "Value must be a string" }, 400);
   }
 
+  if (key === PROVIDER_ENV_KEY) {
+    const parsed = parseProviders(value);
+    if (!parsed.ok) {
+      return c.json({ error: `OPENCODE_PROVIDER must be valid JSON: ${parsed.error}` }, 400);
+    }
+  }
+
   upsertEnvVar(key, value);
   return c.json({ ok: true });
 });
@@ -55,10 +63,10 @@ env.post("/api/env/from-template", async (c) => {
   return c.json({ content: result.stdout });
 });
 
-env.post("/api/env/restart", async (c) => {
+/** Restart ai-dev: compose recreate in prod (re-reads .env), plain restart in dev/DooD. */
+export async function restartAiDev(): Promise<{ ok: boolean; error?: string }> {
   const ref = await getAiDevContainerRef();
 
-  // Prefer compose recreate (picks up new .env vars); fall back to docker restart
   const composePath = "/opt/ai-engkit/compose.yml";
   const envFilePath = "/opt/ai-engkit/.env";
   if (existsSync(composePath)) {
@@ -67,14 +75,20 @@ env.post("/api/env/restart", async (c) => {
       `compose -p ${project} --env-file ${envFilePath} -f ${composePath} up -d --force-recreate ai-dev 2>&1`,
       120_000,
     );
-    if (result.exitCode === 0) return c.json({ ok: true });
-    return c.json({ error: result.stderr || "Compose recreate failed" }, 500);
+    if (result.exitCode === 0) return { ok: true };
+    return { ok: false, error: result.stderr || "Compose recreate failed" };
   }
 
   const result = await dockerCommand(`restart ${ref}`, 30_000);
   if (result.exitCode !== 0) {
-    return c.json({ error: result.stderr || "Failed to restart ai-dev container" }, 500);
+    return { ok: false, error: result.stderr || "Failed to restart ai-dev container" };
   }
+  return { ok: true };
+}
+
+env.post("/api/env/restart", async (c) => {
+  const result = await restartAiDev();
+  if (!result.ok) return c.json({ error: result.error }, 500);
   return c.json({ ok: true });
 });
 

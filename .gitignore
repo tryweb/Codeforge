@@ -1,4 +1,5 @@
 .env
+provider-keys.json
 .omo/
 .opencode/package-lock.json
 .codegraph/

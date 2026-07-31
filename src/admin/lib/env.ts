@@ -49,6 +49,13 @@ export function upsertEnvVar(key: string, value: string): void {
   writeEnvFile(vars);
 }
 
+export function deleteEnvVar(key: string): void {
+  const vars = readEnvFile();
+  if (!(key in vars)) return;
+  delete vars[key];
+  writeEnvFile(vars);
+}
+
 export function readEnvAsString(): string {
   if (!existsSync(ENV_PATH)) return "";
   return readFileSync(ENV_PATH, "utf-8");

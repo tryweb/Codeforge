@@ -14,6 +14,7 @@ const NAV_ITEMS = [
   { href: "/separator3", label: "", icon: "" },
   { href: "/versions", label: "Versions", icon: "↻" },
   { href: "/secrets", label: "Secrets", icon: "🔐" },
+  { href: "/providers", label: "Providers", icon: "🔌" },
   { href: "/env", label: "Environment", icon: "⚙" },
   { href: "/upgrade", label: "Upgrade", icon: "▲" },
 ];
