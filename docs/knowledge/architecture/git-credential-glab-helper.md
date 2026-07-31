@@ -53,9 +53,13 @@ git fetch origin --depth 1
 
 ### Implementation
 
-The helper is a 30-line shell script deployed to `~/.local/bin/git-credential-glab`
-in the ai-engkit container. Git discovers it automatically because `~/.local/bin`
-is in `PATH` and git looks for `git-credential-<name>` executables.
+The helper is a 30-line shell script at `scripts/git-credential-glab` in the
+repo, baked into the image at build time (`~/.local/bin/git-credential-glab`
+via `COPY` in the Dockerfile). It survives container recreation because
+`~/.local/bin` is not a VOLUME — a runtime-deployed copy would be wiped on
+`docker compose up -d --force-recreate`, which `upgrade.sh` runs on every
+upgrade. Git discovers it automatically because `~/.local/bin` is in `PATH`
+and git looks for `git-credential-<name>` executables.
 
 ```sh
 #!/bin/sh
@@ -95,17 +99,17 @@ git config --global credential.http://gitlab.example.com.helper glab
 The global `credential.helper=store` is **removed** to prevent git from caching
 credentials back to plaintext after the helper returns them.
 
-### Auto-deployment on glab login
+### Git config applied on glab login
 
-In `src/admin/routes/glab-auth.ts`, the `setupGlabCredentialHelper(hostname)`
-function is called after a successful `glab auth login`:
+The helper script itself is baked into the image, so only the git config is
+applied after a successful `glab auth login` — see
+`setupGlabCredentialHelper(hostname)` in `src/admin/routes/glab-auth.ts`:
 
 ```typescript
 async function setupGlabCredentialHelper(hostname: string): Promise<void> {
-  // 1. Deploy helper script via base64-encoded heredoc
-  // 2. Remove global credential.helper=store
-  // 3. Set per-host credential helper for http:// and https://
-  // 4. Clear any residual ~/.git-credentials
+  // 1. Remove global credential.helper=store
+  // 2. Set per-host credential helper for http:// and https://
+  // 3. Clear any residual ~/.git-credentials
 }
 ```
 
@@ -125,10 +129,12 @@ async function setupGlabCredentialHelper(hostname: string): Promise<void> {
 
 - **Python dependency**: The helper requires `python3` with `yaml` module in
   the ai-engkit container (present by default).
-- **One-time deployment gap**: The credential helper is only deployed when
-  `glab auth login` runs. If glab was configured manually (editing config.yml),
-  the helper is not auto-deployed. Mitigation: add a startup health check to
-  auto-deploy on container restart.
+- **One-time git-config gap**: The git config (per-host helper) is only
+  applied when `glab auth login` runs. If glab was configured manually
+  (editing config.yml), the per-host helper is not set. The helper script
+  itself is always present (baked into the image), so re-running glab auth
+  login via the admin UI — or setting the two per-host config lines manually
+  — restores git access without redeploying any files.
 - **No `store` caching**: Without `credential.helper=store`, git re-queries
   the helper on every operation. For frequently accessed repos, this adds
   ~50ms per credential check. Acceptable for development workflows.
@@ -142,9 +148,13 @@ async function setupGlabCredentialHelper(hostname: string): Promise<void> {
 - Credential helper correctly returns token from glab config ✅
 - `git fetch origin --depth 1` exits 0 with `GIT_TERMINAL_PROMPT=0` ✅
 - Tested on ai-engkit-194 with remote repo auth ✅
+- Container recreation (`docker compose up -d --force-recreate`) no longer
+  breaks git auth — the helper survives in the image layer ✅
 
 ## Related Files
 
+- `scripts/git-credential-glab` — the credential helper script (single source,
+  baked into the image via Dockerfile COPY)
 - `src/admin/routes/glab-auth.ts` — `setupGlabCredentialHelper()` function,
   `parseGlabInstances()`
 - `src/admin/routes/projects.ts` — `PUT /api/projects/:name/git-remote` handler
