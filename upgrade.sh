@@ -30,6 +30,21 @@ header() {
 }
 
 # ──────────────────────────────────────────────────────────
+# Portable download helper (curl preferred, wget fallback)
+# NOTE: wget -O is the output file, -o is the log file
+# ──────────────────────────────────────────────────────────
+download() {
+    local url="$1" dest="$2"
+    if command -v curl &>/dev/null; then
+        curl -fsSL "$url" -o "$dest"
+    elif command -v wget &>/dev/null; then
+        wget -qO "$dest" "$url"
+    else
+        return 1
+    fi
+}
+
+# ──────────────────────────────────────────────────────────
 # System requirement checks (shared with install.sh)
 # ──────────────────────────────────────────────────────────
 check_system() {
@@ -136,19 +151,14 @@ backup_files() {
 update_compose() {
     header "4. Updating docker-compose.yml"
 
-    DOWNLOAD_TOOL="curl -fsSL"
-    command -v curl &>/dev/null || DOWNLOAD_TOOL="wget -qO-"
-
     echo "  Downloading latest docker-compose.yml..."
-    $DOWNLOAD_TOOL "$REPO_URL/docker-compose.yml" -o docker-compose.yml.new
-
-    if [ ! -s docker-compose.yml.new ]; then
+    if download "$REPO_URL/docker-compose.yml" docker-compose.yml.new && [ -s docker-compose.yml.new ]; then
+        mv docker-compose.yml.new docker-compose.yml
+        ok "docker-compose.yml updated"
+    else
         rm -f docker-compose.yml.new
         fail "Failed to download docker-compose.yml, please check network connection"
     fi
-
-    mv docker-compose.yml.new docker-compose.yml
-    ok "docker-compose.yml updated"
 }
 
 # ──────────────────────────────────────────────────────────
@@ -157,12 +167,12 @@ update_compose() {
 merge_env() {
     header "5. Merging .env Settings"
 
-    DOWNLOAD_TOOL="curl -fsSL"
-    command -v curl &>/dev/null || DOWNLOAD_TOOL="wget -qO-"
-
     if [ ! -f ".env" ]; then
         warn ".env does not exist, downloading from upstream"
-        $DOWNLOAD_TOOL "$REPO_URL/.env.example" -o .env
+        if ! download "$REPO_URL/.env.example" .env; then
+            rm -f .env
+            fail "Failed to download .env.example, please check network connection"
+        fi
         ok ".env created (using default values)"
         info "Please edit .env to set passwords and other custom values"
         return
@@ -170,11 +180,11 @@ merge_env() {
 
     local tmp_example
     tmp_example=$(mktemp)
-    $DOWNLOAD_TOOL "$REPO_URL/.env.example" -o "$tmp_example" || {
+    if ! download "$REPO_URL/.env.example" "$tmp_example"; then
         rm -f "$tmp_example"
         warn "Failed to download .env.example, skipping env merge"
         return
-    }
+    fi
 
     local added=0
     while IFS= read -r line; do
@@ -350,13 +360,10 @@ self_update() {
     # Only self-update when running from a regular file on disk
     [ ! -f "$0" ] && return 0
 
-    local DOWNLOAD_TOOL tmp_file
-    DOWNLOAD_TOOL="curl -fsSL"
-    command -v curl &>/dev/null || DOWNLOAD_TOOL="wget -qO-"
-
+    local tmp_file
     tmp_file=$(mktemp)
 
-    if $DOWNLOAD_TOOL "$REPO_URL/upgrade.sh" -o "$tmp_file" 2>/dev/null && [ -s "$tmp_file" ]; then
+    if download "$REPO_URL/upgrade.sh" "$tmp_file" 2>/dev/null && [ -s "$tmp_file" ]; then
         if bash -n "$tmp_file" 2>/dev/null; then
             if ! cmp -s "$0" "$tmp_file"; then
                 info "New version of upgrade.sh found, updating..."

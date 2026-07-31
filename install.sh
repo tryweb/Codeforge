@@ -3,6 +3,19 @@ set -euo pipefail
 
 REPO_URL="https://raw.githubusercontent.com/tryweb/ai-engkit/main"
 
+# Portable download helper (curl preferred, wget fallback)
+# NOTE: wget -O is the output file, -o is the log file
+download() {
+    local url="$1" dest="$2"
+    if command -v curl &>/dev/null; then
+        curl -fsSL "$url" -o "$dest"
+    elif command -v wget &>/dev/null; then
+        wget -qO "$dest" "$url"
+    else
+        return 1
+    fi
+}
+
 set_env_value() {
     local key="$1"
     local value="$2"
@@ -154,14 +167,9 @@ download_files() {
     echo "4. Downloading Configuration Files"
     echo "========================================"
 
-    DOWNLOAD_TOOL="curl -fsSL"
-    if ! command -v curl &> /dev/null; then
-        DOWNLOAD_TOOL="wget -qO-"
-    fi
-
     if [ ! -f "docker-compose.yml" ]; then
         echo "  Downloading docker-compose.yml..."
-        $DOWNLOAD_TOOL "$REPO_URL/docker-compose.yml" -o docker-compose.yml
+        download "$REPO_URL/docker-compose.yml" docker-compose.yml
         echo "  ✅ docker-compose.yml downloaded"
     else
         echo "  ✅ docker-compose.yml already exists"
@@ -173,7 +181,7 @@ download_files() {
             cp .env.example .env
         else
             echo "  Downloading .env.example..."
-            $DOWNLOAD_TOOL "$REPO_URL/.env.example" -o .env
+            download "$REPO_URL/.env.example" .env
         fi
         echo "  ✅ .env created, please edit settings"
     else
@@ -181,7 +189,7 @@ download_files() {
     fi
 
     echo "  Downloading latest upgrade.sh..."
-    $DOWNLOAD_TOOL "$REPO_URL/upgrade.sh" -o upgrade.sh
+    download "$REPO_URL/upgrade.sh" upgrade.sh
     chmod +x upgrade.sh
     echo "  ✅ upgrade.sh ready (run ./upgrade.sh later to upgrade)"
 }
@@ -364,12 +372,8 @@ delegate_to_upgrade_if_installed() {
     echo "  - install.sh is for first-time install only; run ./upgrade.sh instead"
     echo
 
-    DOWNLOAD_TOOL="curl -fsSL"
-    if ! command -v curl &> /dev/null; then
-        DOWNLOAD_TOOL="wget -qO-"
-    fi
     echo "  Downloading latest upgrade.sh..."
-    if ! $DOWNLOAD_TOOL "$REPO_URL/upgrade.sh" -o upgrade.sh; then
+    if ! download "$REPO_URL/upgrade.sh" upgrade.sh; then
         echo "  ❌ Failed to download upgrade.sh, please check network connection"
         exit 1
     fi
