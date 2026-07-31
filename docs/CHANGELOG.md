@@ -1,4 +1,5 @@
 ## [Unreleased]
+- Bake git-credential-glab helper into the image (scripts/git-credential-glab) so git auth survives container recreation; entrypoint no longer re-adds `credential.helper store`
 
 
 ## [1.9.1] - 2026-07-31
