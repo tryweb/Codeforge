@@ -1,8 +1,17 @@
 ## [Unreleased]
 
+
+## [1.9.0] - 2026-07-31
+
 ### Added
 - Add a one-time `AI_ENGKIT_APPLY_OMO_MODEL_DEFAULTS=1` migration that fills only missing low-cost OMO model leaves and preserves existing user settings.
 
+### Changed
+- Upgrade Docker Engine from 29.6.2 to 29.7.0.
+- Upgrade OpenCode from 1.18.9 to 1.18.10.
+- Upgrade Playwright from 1.62.0 to 1.62.1.
+- Upgrade GitHub CLI from 2.96.0 to 2.97.0.
+- Upgrade GitLab CLI from 1.110.0 to 1.111.0.
 
 ## [1.8.0] - 2026-07-30
 
@@ -1013,7 +1022,7 @@
 
 ## Format
 
-[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.8.0...HEAD
+[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.9.0...HEAD
 [0.3.0]: https://github.com/tryweb/ai-engkit/releases/tag/v0.3.0
 [0.3.3]: https://github.com/tryweb/ai-engkit/compare/v0.3.0...v0.3.3
 [0.5.0]: https://github.com/tryweb/ai-engkit/compare/v0.3.3...v0.5.0
@@ -1121,3 +1130,4 @@
 [1.7.3]: https://github.com/tryweb/ai-engkit/compare/v1.7.2...v1.7.3
 [1.7.4]: https://github.com/tryweb/ai-engkit/compare/v1.7.3...v1.7.4
 [1.8.0]: https://github.com/tryweb/ai-engkit/compare/v1.7.4...v1.8.0
+[1.9.0]: https://github.com/tryweb/ai-engkit/compare/v1.8.0...v1.9.0
