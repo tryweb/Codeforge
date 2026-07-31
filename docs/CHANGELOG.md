@@ -1,6 +1,13 @@
 ## [Unreleased]
 
 
+## [1.9.3] - 2026-07-31
+
+### Fixed
+- Make upgrade.sh RAM check container-aware and fault-tolerant
+- Replace DOWNLOAD_TOOL curl/wget shim with portable download() helper
+- Chown bind-mounted compose.yml in entrypoint so admin UI upgrade can write it
+
 ## [1.9.2] - 2026-07-31
 
 - Bake git-credential-glab helper into the image (scripts/git-credential-glab) so git auth survives container recreation; entrypoint no longer re-adds `credential.helper store`
@@ -1040,7 +1047,7 @@
 
 ## Format
 
-[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.9.2...HEAD
+[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.9.3...HEAD
 [0.3.0]: https://github.com/tryweb/ai-engkit/releases/tag/v0.3.0
 [0.3.3]: https://github.com/tryweb/ai-engkit/compare/v0.3.0...v0.3.3
 [0.5.0]: https://github.com/tryweb/ai-engkit/compare/v0.3.3...v0.5.0
@@ -1151,3 +1158,4 @@
 [1.9.0]: https://github.com/tryweb/ai-engkit/compare/v1.8.0...v1.9.0
 [1.9.1]: https://github.com/tryweb/ai-engkit/compare/v1.9.0...v1.9.1
 [1.9.2]: https://github.com/tryweb/ai-engkit/compare/v1.9.1...v1.9.2
+[1.9.3]: https://github.com/tryweb/ai-engkit/compare/v1.9.2...v1.9.3
