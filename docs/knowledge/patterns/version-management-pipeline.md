@@ -64,6 +64,22 @@ without a Dockerfile pin. `OH_MY_OPENAGENT_VERSION` is the reference example:
 it moved from latest-tracked npm monitoring to the normal pinned dependency
 path, where `oh-my-openagent` is compared through npm.
 
+#### OMO schema reference sync rule
+
+`.opencode/omo.jsonc.default` pins its `$schema` URL to a versioned OMO tag
+(e.g. `https://raw.githubusercontent.com/code-yeongyu/oh-my-openagent/v4.19.3/assets/omo.schema.json`).
+That tag is **not** tracked by `check-versions.sh` — only the Dockerfile ARG is —
+so an OMO bump left the schema reference silently lagging the installed plugin.
+
+Fixed in v4.19.4 upgrade (`07018b6`): both `check-updates` skill step 3 and the
+`dependency-update.yml` "Update Dockerfile version ARGs" step now sed the schema
+URL to the new tag whenever `OH_MY_OPENAGENT_VERSION` changes. The CI step
+detects the OMO pin in the `pinned-updates` JSON with
+`jq -e 'any(.[]; .name == "OH_MY_OPENAGENT_VERSION")'` before applying the sed.
+
+The `$schema` field is editor-only (runtime merge ignores it), so a stale tag
+does not break containers — but it degrades IDE validation of the default file.
+
 ### 2. check-updates skill — One-shot update workflow
 
 New skill (`.opencode/skills/check-updates/SKILL.md`) that:
@@ -132,6 +148,11 @@ Two gaps closed:
   `OH_MY_OPENAGENT_VERSION` with `pinned`, `latest`, `source`, and `status`;
   for the verified image it reported `4.19.3 → 4.19.3` from
   `npm:oh-my-openagent`.
+- OMO 4.19.4 upgrade (`07018b6`) verified end-to-end: `check-versions.sh json`
+  reported `pinned: 4.19.4, latest: 4.19.4, status: current`; dev image built;
+  `test/run-tests.sh` passed 151/151 including the "OMO plugin declaration
+  matches runtime pin" assertion; CI workflow YAML parsed cleanly with the new
+  schema-sync step.
 - `.github/workflows/dependency-update.yml` parsed successfully after its pin
   count changed from 11 to 12.
 - Release CHANGELOG script tested: creates version section, inserts
@@ -151,6 +172,7 @@ Two gaps closed:
 - `entrypoint.d/02-init-config.sh` — OPENCODE_PROVIDER merge logic
 - `docker-compose.yml` / `docker-compose.dev.yml` — Env var passthrough
 - `.env.example` — OPENCODE_PROVIDER example
+- `.opencode/omo.jsonc.default` — Baked OMO config whose `$schema` tag must sync with `OH_MY_OPENAGENT_VERSION`
 - `.gitignore` — Added version-snapshot.json
 
 ## Tags
