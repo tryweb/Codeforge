@@ -4,7 +4,7 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        - OH_MY_OPENAGENT_VERSION=${OH_MY_OPENAGENT_VERSION:-4.19.3}
+        - OH_MY_OPENAGENT_VERSION=${OH_MY_OPENAGENT_VERSION:-4.19.4}
         - AI_ENGKIT_VERSION=dev
     container_name: ai-engkit-dev
     ports:

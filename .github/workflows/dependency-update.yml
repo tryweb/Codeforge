@@ -737,6 +737,18 @@ jobs:
             fi
           done < <(echo "$PINNED" | jq -c '.[]')
 
+          # Sync the baked OMO schema reference when OH_MY_OPENAGENT_VERSION changed.
+          # .opencode/omo.jsonc.default pins $schema to a versioned tag that is
+          # NOT tracked by check-versions.sh; keep it aligned with the Dockerfile ARG.
+          if echo "$PINNED" | jq -e 'any(.[]; .name == "OH_MY_OPENAGENT_VERSION")' >/dev/null 2>&1; then
+            OMO_LATEST="$(echo "$PINNED" | jq -r '.[] | select(.name == "OH_MY_OPENAGENT_VERSION") | .latest')"
+            OMO_SCHEMA_TAG="${OMO_LATEST#v}"
+            if [[ -n "$OMO_SCHEMA_TAG" && -f .opencode/omo.jsonc.default ]]; then
+              sed -i "s|https://raw.githubusercontent.com/code-yeongyu/oh-my-openagent/v[0-9.]*/assets/omo.schema.json|https://raw.githubusercontent.com/code-yeongyu/oh-my-openagent/v${OMO_SCHEMA_TAG}/assets/omo.schema.json|" .opencode/omo.jsonc.default
+              echo "::notice::Synced omo.jsonc.default schema to v${OMO_SCHEMA_TAG}"
+            fi
+          fi
+
           {
             echo 'summary<<EOF'
             echo -e "$SUMMARY"

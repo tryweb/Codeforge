@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+### Changed
+- Upgrade oh-my-openagent from 4.19.3 to 4.19.4.
+- Sync the baked OMO schema reference in `.opencode/omo.jsonc.default` with the pinned plugin version; `check-updates` and CI now keep it aligned automatically.
+
 
 ## [1.10.0] - 2026-08-01
 
