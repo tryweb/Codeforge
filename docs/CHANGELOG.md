@@ -1,6 +1,23 @@
 ## [Unreleased]
 
 
+## [1.10.0] - 2026-08-01
+
+### Added
+- Bump Docker 29.7.0 → 29.7.1
+- Add provider API key management with import, apply, and UI
+
+### Fixed
+- Ensure provider-keys.json exists before compose up
+- Persist admin registry and env via named volume
+
+### Documentation
+- Capture run-tests container detection pitfall
+- Archive admin-provider-config change and sync specs
+
+### Changed
+- Upgrade Docker Engine from 29.7.0 to 29.7.1.
+
 ## [1.9.4] - 2026-07-31
 
 ### Fixed
@@ -1052,7 +1069,7 @@
 
 ## Format
 
-[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.9.4...HEAD
+[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.10.0...HEAD
 [0.3.0]: https://github.com/tryweb/ai-engkit/releases/tag/v0.3.0
 [0.3.3]: https://github.com/tryweb/ai-engkit/compare/v0.3.0...v0.3.3
 [0.5.0]: https://github.com/tryweb/ai-engkit/compare/v0.3.3...v0.5.0
@@ -1165,3 +1182,4 @@
 [1.9.2]: https://github.com/tryweb/ai-engkit/compare/v1.9.1...v1.9.2
 [1.9.3]: https://github.com/tryweb/ai-engkit/compare/v1.9.2...v1.9.3
 [1.9.4]: https://github.com/tryweb/ai-engkit/compare/v1.9.3...v1.9.4
+[1.10.0]: https://github.com/tryweb/ai-engkit/compare/v1.9.4...v1.10.0
