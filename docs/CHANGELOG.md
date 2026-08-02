@@ -1,9 +1,13 @@
 ## [Unreleased]
 
+
+## [1.11.0] - 2026-08-02
+
 ### Changed
 - Upgrade oh-my-openagent from 4.19.3 to 4.19.4.
 - Sync the baked OMO schema reference in `.opencode/omo.jsonc.default` with the pinned plugin version; `check-updates` and CI now keep it aligned automatically.
-
+- Upgrade OpenCode from 1.18.10 to 1.18.11.
+- Upgrade OpenChamber from 1.17.1 to 1.17.2.
 
 ## [1.10.0] - 2026-08-01
 
@@ -1073,7 +1077,7 @@
 
 ## Format
 
-[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.10.0...HEAD
+[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.11.0...HEAD
 [0.3.0]: https://github.com/tryweb/ai-engkit/releases/tag/v0.3.0
 [0.3.3]: https://github.com/tryweb/ai-engkit/compare/v0.3.0...v0.3.3
 [0.5.0]: https://github.com/tryweb/ai-engkit/compare/v0.3.3...v0.5.0
@@ -1187,3 +1191,4 @@
 [1.9.3]: https://github.com/tryweb/ai-engkit/compare/v1.9.2...v1.9.3
 [1.9.4]: https://github.com/tryweb/ai-engkit/compare/v1.9.3...v1.9.4
 [1.10.0]: https://github.com/tryweb/ai-engkit/compare/v1.9.4...v1.10.0
+[1.11.0]: https://github.com/tryweb/ai-engkit/compare/v1.10.0...v1.11.0
