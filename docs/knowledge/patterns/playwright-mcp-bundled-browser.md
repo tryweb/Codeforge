@@ -138,6 +138,16 @@ tries to launch its own MCP server via `npx @playwright/mcp@latest` — but this
 container has no `npx` (only `bunx`), so the connection fails. The built-in
 playwright skill's hardcoded `npx` command is not configurable.
 
+> **Main agent (not a subagent) — use the MCP tools first.** The standalone-mode
+> restriction above applies **only** to `task()`-spawned subagents. The main agent
+> has the `playwright_browser_*` MCP tools directly available in-session and should
+> try them first (zero install, zero setup) — e.g. `playwright_browser_navigate`
+> against the target URL, then `playwright_browser_snapshot`. Fall back to the
+> standalone script below only when the MCP tools are absent.
+> For SPA targets (OpenChamber, OpenCode) use `waitUntil: 'domcontentloaded'` +
+> a short `waitForTimeout` — `'networkidle'` never settles because of SSE/websocket
+> streams. (Case: 2026-08-02 prod OpenChamber sync verification.)
+
 The correct pattern for subagents is **Direct Playwright API**:
 
 1. Write a standalone `.mjs` script that imports `playwright`
