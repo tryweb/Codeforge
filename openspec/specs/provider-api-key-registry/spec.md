@@ -7,11 +7,11 @@ Lets administrators store multiple API keys per AI provider and manually select 
 ## Requirements
 
 ### Requirement: Key registry persistence
-API keys SHALL be stored per provider in a dedicated registry file (`provider-keys.json`), never in the `.env` file. The registry SHALL record the ordered list of keys for each provider and which key (if any) is active.
+API keys SHALL be stored per provider in a dedicated registry file (`provider-state/provider-keys.json`), never in the `.env` file. The registry SHALL record the ordered list of keys for each provider and which key (if any) is active.
 
 #### Scenario: Registry file is the single store
 - **WHEN** an admin adds a key for a provider
-- **THEN** the key is appended to `provider-keys.json` and no provider credential is written to `.env`
+- **THEN** the key is appended to `provider-state/provider-keys.json` and no provider credential is written to `.env`
 
 #### Scenario: Registry survives admin restart
 - **WHEN** the admin container restarts

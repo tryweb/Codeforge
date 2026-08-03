@@ -140,7 +140,7 @@ For HTTPS, SSH, multiple accounts, and credential isolation, see [Git authentica
 The Admin Dashboard **Providers** page (`/providers`) edits `OPENCODE_PROVIDER` through structured cards with a raw-JSON fallback per provider, and manages API keys for key-managed providers (currently Opencode Go).
 
 - Provider definitions still live in `OPENCODE_PROVIDER` in `.env` and are injected into `opencode.json` on startup.
-- Provider API keys are stored in `provider-keys.json` (bind-mounted into the admin container as `/opt/ai-engkit/provider-keys.json`, `0600`), deliberately not in `.env` so keys never leak through `docker inspect`.
+- Provider API keys are stored in `provider-state/provider-keys.json` (directory-mounted into the admin container as `/opt/ai-engkit/provider-state`, with the file set to `0600`), deliberately not in `.env` so keys never leak through `docker inspect`.
 - The active key for a key-managed provider is written to the opencode auth store (`~/.local/share/opencode/auth.json`) and applied by restarting the ai-dev container; the page shows a restart-required state and offers the same restart flow as Secrets.
 - When a key-managed provider has an existing key in the auth store, the page offers a one-click import before any key is added.
 
