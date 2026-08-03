@@ -385,9 +385,9 @@ fi
 # ============================================================
 if [ "${RUN_APPLY_TESTS:-0}" = "1" ]; then
   # Backup pre-test registry + auth store so the environment keeps its state.
-  REGISTRY_BACKUP=$(timeout 15 docker exec ai-engkit-admin-dev sh -c 'cat /opt/ai-engkit/provider-keys.json 2>/dev/null' 2>/dev/null || echo "")
+  REGISTRY_BACKUP=$(timeout 15 docker exec ai-engkit-admin-dev sh -c 'cat /opt/ai-engkit/provider-state/provider-keys.json 2>/dev/null' 2>/dev/null || echo "")
   AUTH_BACKUP=$(timeout 15 docker exec ai-engkit-dev sh -c 'cat ~/.local/share/opencode/auth.json 2>/dev/null' 2>/dev/null || echo "")
-  echo '{"providers": {}}' | docker exec -i ai-engkit-admin-dev sh -c 'cat > /opt/ai-engkit/provider-keys.json'
+  echo '{"providers": {}}' | docker exec -i ai-engkit-admin-dev sh -c 'cat > /opt/ai-engkit/provider-state/provider-keys.json'
 
   APPLY_KEY="sk-apply-test-$(date +%s)"
   APPLY_ADD=$(curl -s -b "$COOKIE_JAR" \
@@ -524,12 +524,12 @@ if not found: print('no: provider missing')
   fi
 
   if [ -n "$REGISTRY_BACKUP" ]; then
-    printf '%s' "$REGISTRY_BACKUP" | docker exec -i ai-engkit-admin-dev sh -c 'cat > /opt/ai-engkit/provider-keys.json'
+    printf '%s' "$REGISTRY_BACKUP" | docker exec -i ai-engkit-admin-dev sh -c 'cat > /opt/ai-engkit/provider-state/provider-keys.json'
   fi
   if [ -n "$AUTH_BACKUP" ]; then
     printf '%s' "$AUTH_BACKUP" | docker exec -i ai-engkit-dev sh -c 'cat > ~/.local/share/opencode/auth.json && chmod 600 ~/.local/share/opencode/auth.json'
   fi
-  REG_RESTORED=$(timeout 15 docker exec ai-engkit-admin-dev sh -c 'cat /opt/ai-engkit/provider-keys.json 2>/dev/null' 2>/dev/null || echo "")
+  REG_RESTORED=$(timeout 15 docker exec ai-engkit-admin-dev sh -c 'cat /opt/ai-engkit/provider-state/provider-keys.json 2>/dev/null' 2>/dev/null || echo "")
   if [ "$REG_RESTORED" = "$REGISTRY_BACKUP" ]; then
     pass "Upgrade: registry restored to pre-test state"
   else
