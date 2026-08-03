@@ -1,6 +1,15 @@
 ## [Unreleased]
 
 
+## [1.11.1] - 2026-08-03
+
+### Fixed
+- Move the provider API key registry to a directory mount so atomic updates work reliably.
+- Migrate legacy provider registry files and directories during install and upgrade.
+
+### Documentation
+- Document the provider-state storage layout and bind-mount migration.
+
 ## [1.11.0] - 2026-08-02
 
 ### Changed
@@ -1077,7 +1086,7 @@
 
 ## Format
 
-[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.11.0...HEAD
+[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.11.1...HEAD
 [0.3.0]: https://github.com/tryweb/ai-engkit/releases/tag/v0.3.0
 [0.3.3]: https://github.com/tryweb/ai-engkit/compare/v0.3.0...v0.3.3
 [0.5.0]: https://github.com/tryweb/ai-engkit/compare/v0.3.3...v0.5.0
@@ -1192,3 +1201,4 @@
 [1.9.4]: https://github.com/tryweb/ai-engkit/compare/v1.9.3...v1.9.4
 [1.10.0]: https://github.com/tryweb/ai-engkit/compare/v1.9.4...v1.10.0
 [1.11.0]: https://github.com/tryweb/ai-engkit/compare/v1.10.0...v1.11.0
+[1.11.1]: https://github.com/tryweb/ai-engkit/compare/v1.11.0...v1.11.1
