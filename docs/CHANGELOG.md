@@ -1,6 +1,15 @@
 ## [Unreleased]
 
 
+## [1.12.0] - 2026-08-03
+
+### Added
+- Upgrade lean-ctx to 3.9.14 and Docker Compose to 5.4.0.
+
+### Fixed
+- Verify the `ctx_read`, `ctx_shell`, and `ctx_compose` MCP tools in integration tests.
+- Avoid false negatives in output assertions when `pipefail` is enabled.
+
 ## [1.11.1] - 2026-08-03
 
 ### Fixed
@@ -1087,6 +1096,7 @@
 ## Format
 
 [Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.11.1...HEAD
+[1.12.0]: https://github.com/tryweb/ai-engkit/compare/v1.11.1...v1.12.0
 [0.3.0]: https://github.com/tryweb/ai-engkit/releases/tag/v0.3.0
 [0.3.3]: https://github.com/tryweb/ai-engkit/compare/v0.3.0...v0.3.3
 [0.5.0]: https://github.com/tryweb/ai-engkit/compare/v0.3.3...v0.5.0
