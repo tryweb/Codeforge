@@ -33,7 +33,7 @@ assert_eq() {
 
 assert_contains() {
   local label="$1" needle="$2" haystack="$3"
-  if echo "$haystack" | grep -q "$needle"; then
+  if echo "$haystack" | grep "$needle" >/dev/null; then
     pass "$label"
   else
     fail "$label (expected to contain '$needle')"
