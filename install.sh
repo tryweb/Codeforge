@@ -265,21 +265,31 @@ setup_env() {
     esac
 }
 
-# Prepare the provider API key registry on the host.
-# A missing bind source is auto-created by Docker as a directory,
-# which makes the admin container fail to write the registry (EISDIR).
-ensure_provider_keys() {
-    if [ -d provider-keys.json ]; then
-        # Replace the directory Docker auto-created for the bind mount
-        rm -rf provider-keys.json
+ensure_provider_state() {
+    local state_dir="provider-state"
+    local state_file="${state_dir}/provider-keys.json"
+    mkdir -p "$state_dir"
+
+    if [ -d "$state_file" ]; then
+        mv "$state_file" "${state_file}.legacy.${TIMESTAMP}"
     fi
-    if [ ! -f provider-keys.json ]; then
-        printf '{"providers":{}}\n' > provider-keys.json
-        echo "  ✅ provider-keys.json registry initialized"
+    if [ -e provider-keys.json ]; then
+        if [ -f provider-keys.json ] && [ ! -e "$state_file" ]; then
+            mv provider-keys.json "$state_file"
+            echo "  ✅ migrated legacy provider-keys.json into ${state_dir}/"
+        else
+            mv provider-keys.json "provider-keys.json.legacy.${TIMESTAMP}"
+            echo "  ⚠️  preserved legacy provider-keys.json as provider-keys.json.legacy.${TIMESTAMP}"
+        fi
     fi
-    chown 1000:1000 provider-keys.json 2>/dev/null || true
-    chmod 600 provider-keys.json
-    echo "  ✅ provider-keys.json registry ready"
+    if [ ! -f "$state_file" ]; then
+        printf '{"providers":{}}\n' > "$state_file"
+        echo "  ✅ provider registry initialized"
+    fi
+    chown 1000:1000 "$state_dir" "$state_file" 2>/dev/null || true
+    chmod 700 "$state_dir"
+    chmod 600 "$state_file"
+    echo "  ✅ provider registry ready"
 }
 
 prepare_volumes() {
@@ -293,7 +303,7 @@ prepare_volumes() {
     chmod 777 ./backups
     echo "  ✅ ./backups ready"
 
-    ensure_provider_keys
+    ensure_provider_state
 
     echo "  Creating ./workspace (for code editing)..."
     WS_PATH=$(grep -E "^WORKSPACE_PATH=" .env 2>/dev/null | cut -d= -f2- || echo "")
