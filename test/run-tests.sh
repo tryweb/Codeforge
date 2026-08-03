@@ -454,6 +454,65 @@ OPENCODE_MCP_LIST=$(docker exec "$CONTAINER" sh -c 'opencode mcp list' 2>/dev/nu
 assert_contains "opencode mcp list includes lean-ctx" 'lean-ctx' "$OPENCODE_MCP_LIST"
 assert_contains "opencode mcp list shows lean-ctx connected" 'connected' "$OPENCODE_MCP_LIST"
 
+MCP_TOOLS=$(docker exec -i "$CONTAINER" python3 - <<'PY' 2>/dev/null
+import json
+import select
+import subprocess
+
+process = subprocess.Popen(
+    ["lean-ctx"],
+    stdin=subprocess.PIPE,
+    stdout=subprocess.PIPE,
+    stderr=subprocess.DEVNULL,
+)
+
+def send(message):
+    payload = json.dumps(message, separators=(",", ":")).encode()
+    process.stdin.write(f"Content-Length: {len(payload)}\r\n\r\n".encode() + payload)
+    process.stdin.flush()
+
+def receive():
+    ready, _, _ = select.select([process.stdout], [], [], 10)
+    if not ready:
+        raise TimeoutError("timed out waiting for lean-ctx MCP response")
+    headers = b""
+    while b"\r\n\r\n" not in headers:
+        byte = process.stdout.read(1)
+        if not byte:
+            raise RuntimeError("lean-ctx exited before MCP response")
+        headers += byte
+    length = next(
+        int(line.split(b":", 1)[1])
+        for line in headers.split(b"\r\n")
+        if line.lower().startswith(b"content-length:")
+    )
+    return json.loads(process.stdout.read(length))
+
+try:
+    send({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": "2024-11-05",
+            "capabilities": {},
+            "clientInfo": {"name": "ai-engkit-test", "version": "1.0"},
+        },
+    })
+    receive()
+    send({"jsonrpc": "2.0", "method": "notifications/initialized", "params": {}})
+    send({"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}})
+    response = receive()
+    for tool in response["result"]["tools"]:
+        print(tool["name"])
+finally:
+    process.terminate()
+PY
+)
+assert_contains "lean-ctx MCP exposes ctx_read" $'\nctx_read\n' "\n$MCP_TOOLS\n"
+assert_contains "lean-ctx MCP exposes ctx_shell" $'\nctx_shell\n' "\n$MCP_TOOLS\n"
+assert_contains "lean-ctx MCP exposes ctx_compose" $'\nctx_compose\n' "\n$MCP_TOOLS\n"
+
 if docker exec "$CONTAINER" sh -c 'lean-ctx config validate >/dev/null 2>&1'; then
   pass "lean-ctx config validate passes"
 else
