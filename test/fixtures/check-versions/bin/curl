@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# curl shim for test-check-versions.sh — serves fixture responses only.
+# Never touches the network; unmocked URLs fail like `curl -f` on HTTP 404
+# (exit 22, empty stdout) so the checker reports them as check_failed.
+#
+# Controlled by environment (exported by the harness):
+#   CV_FIXTURE_DIR  fixture root (required)
+#   CV_PKG_MODE     aligned | missing-pm | invalid-pm | vtag-fallback
+set -uo pipefail
+
+url=""
+for arg in "$@"; do url="$arg"; done   # checker calls: curl <flags> <url>
+
+fixtures="${CV_FIXTURE_DIR:?CV_FIXTURE_DIR not set}"
+mode="${CV_PKG_MODE:-aligned}"
+
+http_404() { exit 22; }
+
+serve_pkg_json() {
+  case "$mode" in
+    aligned|vtag-fallback) cat "$fixtures/pkg-json/bun-1.3.14.json" ;;
+    missing-pm)            cat "$fixtures/pkg-json/no-package-manager.json" ;;
+    invalid-pm)            cat "$fixtures/pkg-json/invalid-package-manager.json" ;;
+    *) echo "curl shim: unknown CV_PKG_MODE: $mode" >&2; exit 2 ;;
+  esac
+}
+
+case "$url" in
+  https://registry.npmjs.org/@openchamber/web/latest)
+    cat "$fixtures/npm/openchamber-web-latest.json"
+    ;;
+  https://raw.githubusercontent.com/openchamber/openchamber/v*/package.json)
+    # v-prefixed tag (fallback leg)
+    serve_pkg_json
+    ;;
+  https://raw.githubusercontent.com/openchamber/openchamber/*/package.json)
+    # bare tag (primary leg)
+    if [[ "$mode" == "vtag-fallback" ]]; then
+      http_404
+    fi
+    serve_pkg_json
+    ;;
+  *)
+    echo "curl shim: unmocked URL: $url" >&2
+    http_404
+    ;;
+esac

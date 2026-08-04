@@ -26,6 +26,9 @@
 #   OH_MY_OPENAGENT_VERSION → npm:oh-my-openagent
 #   OPENCODE_VERSION       → npm:opencode-ai
 #   OPENCHAMBER_VERSION    → npm:@openchamber/web
+#   BUN_VERSION            → github:openchamber/openchamber  (derived: packageManager
+#                            "bun@X.Y.Z" of package.json at the pinned OPENCHAMBER_VERSION
+#                            git tag; "latest" means "required", never Bun's newest release)
 #   PLAYWRIGHT_VERSION     → npm:playwright
 #   PLAYWRIGHT_MCP_VERSION → npm:@playwright/mcp
 #   GLAB_VERSION           → gitlab:gitlab-org/cli
@@ -87,6 +90,36 @@ get_gitlab_latest() {
     strip_tag "$tag"
 }
 
+# BUN_VERSION is a derived pin: the Bun release the pinned OPENCHAMBER_VERSION
+# declares as packageManager ("bun@X.Y.Z") in its package.json. Fetch the raw
+# package.json from github.com/openchamber/openchamber at that git tag, trying
+# the bare tag first and the "v"-prefixed tag as fallback. Strict semver only;
+# any fetch/parse/validation failure yields "unknown" (reported check_failed).
+get_bun_required() {
+    local oc_version
+    oc_version=$(awk '/^ARG OPENCHAMBER_VERSION=/ { sub(/^ARG OPENCHAMBER_VERSION=/, ""); print; exit }' "$DOCKERFILE") || true
+    [[ -z "$oc_version" ]] && { echo "unknown"; return 0; }
+    local base="https://raw.githubusercontent.com/openchamber/openchamber"
+    local ver="" tag
+    for tag in "$oc_version" "v$oc_version"; do
+        ver=$(curl -fsSL --max-time "$TIMEOUT" "${base}/${tag}/package.json" 2>/dev/null \
+            | python3 -c '
+import json, sys, re
+try:
+    pm = json.load(sys.stdin).get("packageManager", "")
+except Exception:
+    pm = ""
+if not isinstance(pm, str):
+    pm = ""
+m = re.fullmatch(r"bun@((?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?)", pm)
+print(m.group(1) if m else "")
+' 2>/dev/null) || true
+        [[ -n "$ver" ]] && break
+    done
+    [[ -z "$ver" ]] && { echo "unknown"; return 0; }
+    echo "$ver"
+}
+
 # version_gt "current" "latest" → returns 0 if latest > current (i.e., outdated)
 version_gt() {
     local current="$1" latest="$2"
@@ -106,6 +139,7 @@ lookup() {
         MARKSMAN_VERSION)       get_github_latest "artempyanykh/marksman" ;;
         OPENCODE_VERSION)       get_npm_latest "opencode-ai" ;;
         OPENCHAMBER_VERSION)    get_npm_latest "@openchamber/web" ;;
+        BUN_VERSION)            get_bun_required ;;
         PLAYWRIGHT_VERSION)     get_npm_latest "playwright" ;;
         PLAYWRIGHT_MCP_VERSION) get_npm_latest "@playwright/mcp" ;;
         GLAB_VERSION)           get_gitlab_latest "gitlab-org/cli" ;;
@@ -124,6 +158,7 @@ source_label() {
         MARKSMAN_VERSION)       echo "github:artempyanykh/marksman" ;;
         OPENCODE_VERSION)       echo "npm:opencode-ai" ;;
         OPENCHAMBER_VERSION)    echo "npm:@openchamber/web" ;;
+        BUN_VERSION)            echo "github:openchamber/openchamber" ;;
         PLAYWRIGHT_VERSION)     echo "npm:playwright" ;;
         PLAYWRIGHT_MCP_VERSION) echo "npm:@playwright/mcp" ;;
         GLAB_VERSION)           echo "gitlab:gitlab-org/cli" ;;
@@ -138,7 +173,7 @@ source_label() {
 collect_rows() {
     while IFS=$'\t' read -r name pinned; do
         case "$name" in
-            DOCKER_VERSION|COMPOSE_VERSION|BUILDX_VERSION|GH_VERSION|MARKSMAN_VERSION|OPENCODE_VERSION|OPENCHAMBER_VERSION|PLAYWRIGHT_VERSION|PLAYWRIGHT_MCP_VERSION|GLAB_VERSION|LEANCTX_VERSION|OH_MY_OPENAGENT_VERSION) ;;
+            DOCKER_VERSION|COMPOSE_VERSION|BUILDX_VERSION|GH_VERSION|MARKSMAN_VERSION|OPENCODE_VERSION|OPENCHAMBER_VERSION|BUN_VERSION|PLAYWRIGHT_VERSION|PLAYWRIGHT_MCP_VERSION|GLAB_VERSION|LEANCTX_VERSION|OH_MY_OPENAGENT_VERSION) ;;
             *) continue ;;
         esac
         [[ -z "${pinned:-}" ]] && continue
@@ -149,6 +184,9 @@ collect_rows() {
             status="check_failed"
         elif [[ "$pinned" == "$latest" ]]; then
             status="current"
+        elif [[ "$name" == "BUN_VERSION" ]]; then
+            # Derived pin: exact match required — behind OR ahead is outdated.
+            status="outdated"
         elif version_gt "$pinned" "$latest"; then
             status="outdated"
         else
