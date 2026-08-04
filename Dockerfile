@@ -6,10 +6,11 @@ ARG DOCKER_VERSION=29.7.1
 ARG COMPOSE_VERSION=5.4.0
 ARG BUILDX_VERSION=0.36.0
 ARG OPENCODE_VERSION=1.18.11
-ARG OPENCHAMBER_VERSION=1.17.2
+ARG OPENCHAMBER_VERSION=1.18.0
 ARG GLAB_VERSION=1.111.0
 ARG PLAYWRIGHT_VERSION=1.62.1
 ARG PLAYWRIGHT_MCP_VERSION=0.0.78
+ARG BUN_VERSION=1.3.14
 ARG GH_VERSION=2.97.0
 ARG MARKSMAN_VERSION=2026-02-08
 ARG LEANCTX_VERSION=3.9.14
@@ -126,7 +127,7 @@ RUN curl -fsSL "https://github.com/artempyanykh/marksman/releases/download/${MAR
     rm /tmp/marksman
 
 # ── Bun ────────────────────────────────────────────────
-RUN curl -fsSL https://bun.sh/install | bash
+RUN curl -fsSL https://bun.sh/install | bash -s "bun-v${BUN_VERSION}"
 ENV PATH=/home/${USERNAME}/.bun/bin:${PATH}
 
 # ── CodeGraph 知識圖譜工具 ────────────────────────────
