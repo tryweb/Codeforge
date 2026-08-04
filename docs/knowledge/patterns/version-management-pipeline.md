@@ -64,6 +64,24 @@ without a Dockerfile pin. `OH_MY_OPENAGENT_VERSION` is the reference example:
 it moved from latest-tracked npm monitoring to the normal pinned dependency
 path, where `oh-my-openagent` is compared through npm.
 
+#### Derived pins
+
+Most pins compare against their upstream's newest release. `BUN_VERSION` is
+the exception: it is a derived pin. Its target is the Bun release OpenChamber
+requires, read from the `packageManager` field (`"bun@X.Y.Z"`) of
+`package.json` at the OpenChamber git tag on
+`github.com/openchamber/openchamber`. It is never Bun's own latest release.
+
+- Local: `check-versions.sh` derives the target from the `OPENCHAMBER_VERSION`
+  pinned in `Dockerfile`, so the Bun requirement must be rechecked whenever
+  OpenChamber changes.
+- CI: `dependency-update.yml` expects exactly 13 pinned ARGs and derives the
+  Bun target from the candidate OpenChamber version when both pins update in
+  the same run (pinned version as fallback).
+- Drift is exact-equality: pinned ahead OR behind the required version both
+  count as outdated, because the image must ship the Bun version OpenChamber
+  declares.
+
 #### OMO schema reference sync rule
 
 `.opencode/omo.jsonc.default` pins its `$schema` URL to a versioned OMO tag
@@ -154,7 +172,8 @@ Two gaps closed:
   matches runtime pin" assertion; CI workflow YAML parsed cleanly with the new
   schema-sync step.
 - `.github/workflows/dependency-update.yml` parsed successfully after its pin
-  count changed from 11 to 12.
+  count changed from 11 to 12; the workflow now expects 13 pinned ARGs with
+  `BUN_VERSION` registered.
 - Release CHANGELOG script tested: creates version section, inserts
   `### Changed` block, rebuilds links correctly.
 - OPENCODE_PROVIDER verified end-to-end: image build, container start,
