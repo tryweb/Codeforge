@@ -1,7 +1,20 @@
 ## [Unreleased]
 
+## [1.11.3] - 2026-08-04
+
+### Added
+- Add dependency-aware version checking for Bun requirements declared by OpenChamber.
+
 ### Fixed
 - Reload passphrase-less SSH keys into ssh-agent when ai-dev starts or restarts.
+- Make OpenChamber project registration atomic and deduplicate settings entries.
+
+### Documentation
+- Document SSH agent reload behavior and derived Bun version management.
+
+### Changed
+- Upgrade OpenChamber from 1.17.2 to 1.18.0.
+- Pin Bun to 1.3.14, aligned with OpenChamber 1.18.0.
 
 ## [1.11.2] - 2026-08-03
 
@@ -1097,7 +1110,8 @@
 
 ## Format
 
-[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.11.1...HEAD
+[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.11.3...HEAD
+[1.11.3]: https://github.com/tryweb/ai-engkit/compare/v1.11.2...v1.11.3
 [1.11.2]: https://github.com/tryweb/ai-engkit/compare/v1.11.1...v1.11.2
 [0.3.0]: https://github.com/tryweb/ai-engkit/releases/tag/v0.3.0
 [0.3.3]: https://github.com/tryweb/ai-engkit/compare/v0.3.0...v0.3.3
