@@ -1,0 +1,221 @@
+import { describe, expect, test } from "bun:test";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { createProjectRoutes, type ProjectCommand } from "./projects";
+
+async function shellCommand(source: string): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+  const process = Bun.spawn(["sh", "-c", source], { stdout: "pipe", stderr: "pipe" });
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(process.stdout).text(),
+    new Response(process.stderr).text(),
+    process.exited,
+  ]);
+  return { exitCode, stdout, stderr };
+}
+
+/** Runs the real settings-merge shell locally; fakes every other ai-dev command. */
+function createCommand(): ProjectCommand {
+  return async (source) => source.includes("SETTINGS=")
+    ? shellCommand(source)
+    : { exitCode: 0, stdout: "", stderr: "" };
+}
+
+interface Fixture {
+  directory: string;
+  settingsPath: string;
+  workspaceRoot: string;
+  cleanup: () => Promise<void>;
+}
+
+async function fixture(seed?: string): Promise<Fixture> {
+  const directory = await mkdtemp(join(tmpdir(), "projects-routes-"));
+  const settingsPath = join(directory, "settings.json");
+  const workspaceRoot = join(directory, "workspace");
+  if (seed !== undefined) await writeFile(settingsPath, seed);
+  return {
+    directory,
+    settingsPath,
+    workspaceRoot,
+    cleanup: () => rm(directory, { recursive: true, force: true }),
+  };
+}
+
+function appFor(f: Fixture, command: ProjectCommand = createCommand()) {
+  return createProjectRoutes({ command, settingsPath: f.settingsPath, workspaceRoot: f.workspaceRoot });
+}
+
+function createProject(app: ReturnType<typeof createProjectRoutes>, name: string) {
+  return app.request("http://localhost/api/projects", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, git_init: false }),
+  });
+}
+
+function projectId(fullPath: string): string {
+  return "path_" + Buffer.from(fullPath).toString("base64");
+}
+
+interface StoredProject {
+  id: string;
+  path: string;
+  addedAt?: number;
+  lastOpenedAt?: number;
+  label?: string;
+  icon?: string;
+  color?: string;
+  defaultModel?: string;
+  iconImage?: string;
+  sidebarCollapsed?: boolean;
+}
+
+interface StoredSettings {
+  projects?: StoredProject[];
+  [key: string]: unknown;
+}
+
+async function readSettings(f: Fixture): Promise<StoredSettings> {
+  const parsed: unknown = JSON.parse(await readFile(f.settingsPath, "utf8"));
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    throw new Error("settings file is not an object");
+  }
+  return parsed as StoredSettings;
+}
+
+describe("POST /api/projects OpenChamber registration", () => {
+  test("registers the project when settings have no projects key", async () => {
+    const f = await fixture('{"showOpenCodeUpdateNotifications":true}\n');
+    try {
+      const response = await createProject(appFor(f), "demo");
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ ok: true });
+
+      const settings = await readSettings(f);
+      expect(settings.showOpenCodeUpdateNotifications).toBe(true);
+      const fullPath = `${f.workspaceRoot}/demo`;
+      expect(settings.projects).toHaveLength(1);
+      expect(settings.projects?.[0]?.id).toBe(projectId(fullPath));
+      expect(settings.projects?.[0]?.path).toBe(fullPath);
+      expect(typeof settings.projects?.[0]?.addedAt).toBe("number");
+      expect(typeof settings.projects?.[0]?.lastOpenedAt).toBe("number");
+    } finally {
+      await f.cleanup();
+    }
+  });
+
+  test("creates the settings file when it is missing", async () => {
+    const f = await fixture();
+    try {
+      const response = await createProject(appFor(f), "demo");
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ ok: true });
+
+      const settings = await readSettings(f);
+      expect(settings.projects?.map((p) => p.path)).toEqual([`${f.workspaceRoot}/demo`]);
+    } finally {
+      await f.cleanup();
+    }
+  });
+
+  test("preserves unrelated keys and existing projects", async () => {
+    const existing: StoredProject = { id: "path_other", path: "/somewhere/else", addedAt: 1, lastOpenedAt: 2 };
+    const f = await fixture(JSON.stringify({ theme: "dark", projects: [existing] }) + "\n");
+    try {
+      const response = await createProject(appFor(f), "demo");
+      expect(response.status).toBe(200);
+
+      const settings = await readSettings(f);
+      expect(settings.theme).toBe("dark");
+      expect(settings.projects).toHaveLength(2);
+      expect(settings.projects?.[0]).toEqual(existing);
+      expect(settings.projects?.[1]?.path).toBe(`${f.workspaceRoot}/demo`);
+    } finally {
+      await f.cleanup();
+    }
+  });
+
+  test("does not duplicate an already registered project", async () => {
+    const f = await fixture();
+    try {
+      const fullPath = `${f.workspaceRoot}/demo`;
+      const seeded: StoredProject = { id: projectId(fullPath), path: fullPath, addedAt: 1, lastOpenedAt: 1 };
+      await writeFile(f.settingsPath, JSON.stringify({ projects: [seeded] }) + "\n");
+
+      const response = await createProject(appFor(f), "demo");
+      expect(response.status).toBe(200);
+
+      const settings = await readSettings(f);
+      expect(settings.projects?.filter((p) => p.path === fullPath)).toHaveLength(1);
+      expect(settings.projects?.filter((p) => p.id === projectId(fullPath))).toHaveLength(1);
+    } finally {
+      await f.cleanup();
+    }
+  });
+
+  test("re-registering preserves existing metadata and collapses duplicates", async () => {
+    const f = await fixture();
+    try {
+      const fullPath = `${f.workspaceRoot}/demo`;
+      const seeded: StoredProject = {
+        id: projectId(fullPath),
+        path: fullPath,
+        label: "Demo",
+        icon: "rocket",
+        color: "#ff0000",
+        defaultModel: "gpt-5",
+        iconImage: "data:image/png;base64,xyz",
+        sidebarCollapsed: true,
+        addedAt: 1,
+        lastOpenedAt: 1,
+      };
+      const duplicate: StoredProject = { id: "path_stale", path: fullPath, addedAt: 2, lastOpenedAt: 2 };
+      const other: StoredProject = { id: "path_other", path: "/somewhere/else", addedAt: 3, lastOpenedAt: 3 };
+      await writeFile(f.settingsPath, JSON.stringify({ theme: "dark", projects: [seeded, duplicate, other] }) + "\n");
+
+      const response = await createProject(appFor(f), "demo");
+      expect(response.status).toBe(200);
+
+      const settings = await readSettings(f);
+      expect(settings.theme).toBe("dark");
+      expect(settings.projects).toHaveLength(2);
+      const matches = settings.projects?.filter((p) => p.path === fullPath || p.id === projectId(fullPath)) ?? [];
+      expect(matches).toHaveLength(1);
+      const survivor = matches[0];
+      expect(survivor?.id).toBe(projectId(fullPath));
+      expect(survivor?.label).toBe("Demo");
+      expect(survivor?.icon).toBe("rocket");
+      expect(survivor?.color).toBe("#ff0000");
+      expect(survivor?.defaultModel).toBe("gpt-5");
+      expect(survivor?.iconImage).toBe("data:image/png;base64,xyz");
+      expect(survivor?.sidebarCollapsed).toBe(true);
+      expect(survivor?.addedAt).toBe(1);
+      expect(typeof survivor?.lastOpenedAt).toBe("number");
+      expect(survivor?.lastOpenedAt).not.toBe(1);
+      expect(settings.projects?.some((p) => p.id === "path_stale")).toBe(false);
+      expect(settings.projects?.[1]).toEqual(other);
+    } finally {
+      await f.cleanup();
+    }
+  });
+
+  test("registers via an atomic temp-file write", async () => {
+    const f = await fixture();
+    let invoked = "";
+    const command: ProjectCommand = async (source) => {
+      if (source.includes("SETTINGS=")) invoked = source;
+      return { exitCode: 0, stdout: "", stderr: "" };
+    };
+    try {
+      const response = await createProject(appFor(f, command), "demo");
+      expect(response.status).toBe(200);
+      expect(invoked).toContain("mktemp");
+      expect(invoked).toContain("umask 077");
+      expect(invoked).toContain("--arg path");
+      expect(invoked).toContain(".projects // []");
+      expect(invoked).not.toContain("/tmp/settings.json");
+    } finally {
+      await f.cleanup();
+    }
+  });
+});

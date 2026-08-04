@@ -380,7 +380,85 @@ else
 fi
 
 # ============================================================
-# 19. Optional apply integration (RUN_APPLY_TESTS=1)
+# 19. Project creation registers in OpenChamber settings
+# Creates a real project, asserts registration + dedupe, then cleans up.
+# ============================================================
+E2E_PROJ="e2e-reg-$(date +%s)"
+AI_DEV_CONTAINER="${AI_DEV_CONTAINER:-ai-engkit-dev}"
+e2e_project_cleanup() {
+  curl -s -o /dev/null -b "$COOKIE_JAR" -X POST "$BASE/api/projects/sync" \
+    -H "Content-Type: application/json" \
+    -d "{\"remove\":[\"$E2E_PROJ\"]}" >/dev/null 2>&1 || true
+  docker exec "$AI_DEV_CONTAINER" sh -c "rm -rf /home/devuser/workspace/$E2E_PROJ" >/dev/null 2>&1 || true
+}
+trap e2e_project_cleanup EXIT
+
+if docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "$AI_DEV_CONTAINER"; then
+  OC_SETTINGS="/home/devuser/.config/openchamber/settings.json"
+  OC_COUNT="docker exec $AI_DEV_CONTAINER jq -r --arg path /home/devuser/workspace/$E2E_PROJ '[.projects[]?|select(.path==\$path)]|length' $OC_SETTINGS"
+
+  CREATE_RES=$(curl -s -w "\n%{http_code}" -b "$COOKIE_JAR" \
+    -X POST "$BASE/api/projects" \
+    -H "Content-Type: application/json" \
+    -d "{\"name\":\"$E2E_PROJ\",\"git_init\":false}" 2>/dev/null || echo "")
+  CREATE_CODE=$(echo "$CREATE_RES" | tail -1)
+  CREATE_BODY=$(echo "$CREATE_RES" | head -n -1)
+  CREATE_OK=$(echo "$CREATE_BODY" | jq -r '.ok // false' 2>/dev/null || echo "false")
+  if [ "$CREATE_CODE" = "200" ] && [ "$CREATE_OK" = "true" ]; then
+    pass "POST /api/projects creates project ($CREATE_CODE, ok=true)"
+  else
+    fail "POST /api/projects returned $CREATE_CODE body=$CREATE_BODY"
+  fi
+
+  REG_COUNT=$(timeout 15 sh -c "$OC_COUNT" 2>/dev/null || echo "err")
+  if [ "$REG_COUNT" = "1" ]; then
+    pass "Project registered in OpenChamber settings"
+  else
+    fail "OpenChamber registration count=$REG_COUNT (expected 1)"
+  fi
+
+  # Duplicate create must not duplicate the settings entry
+  curl -s -o /dev/null -b "$COOKIE_JAR" -X POST "$BASE/api/projects" \
+    -H "Content-Type: application/json" \
+    -d "{\"name\":\"$E2E_PROJ\",\"git_init\":false}" 2>/dev/null || true
+  DUP_COUNT=$(timeout 15 sh -c "$OC_COUNT" 2>/dev/null || echo "err")
+  if [ "$DUP_COUNT" = "1" ]; then
+    pass "Duplicate create keeps a single settings entry"
+  else
+    fail "Duplicate create produced count=$DUP_COUNT (expected 1)"
+  fi
+
+  # Settings file remains a valid JSON object with a projects array
+  OC_SHAPE=$(timeout 15 docker exec "$AI_DEV_CONTAINER" jq -r 'type + "/" + (.projects | type)' "$OC_SETTINGS" 2>/dev/null || echo "err")
+  if [ "$OC_SHAPE" = "object/array" ]; then
+    pass "OpenChamber settings shape valid (object with projects array)"
+  else
+    fail "OpenChamber settings shape=$OC_SHAPE (expected object/array)"
+  fi
+
+  # Explicit cleanup (trap above is the backstop)
+  SYNC_DEL=$(curl -s -o /dev/null -w "%{http_code}" -b "$COOKIE_JAR" \
+    -X POST "$BASE/api/projects/sync" \
+    -H "Content-Type: application/json" \
+    -d "{\"remove\":[\"$E2E_PROJ\"]}" 2>/dev/null || echo "000")
+  docker exec "$AI_DEV_CONTAINER" sh -c "rm -rf /home/devuser/workspace/$E2E_PROJ" >/dev/null 2>&1 || true
+  if [ "$SYNC_DEL" = "200" ]; then
+    pass "POST /api/projects/sync remove returns 200 (cleanup)"
+  else
+    fail "POST /api/projects/sync remove returned $SYNC_DEL (expected 200)"
+  fi
+  POST_COUNT=$(timeout 15 sh -c "$OC_COUNT" 2>/dev/null || echo "err")
+  if [ "$POST_COUNT" = "0" ]; then
+    pass "Settings entry removed after cleanup"
+  else
+    fail "Settings entry still present after cleanup (count=$POST_COUNT)"
+  fi
+else
+  echo "  SKIP project registration E2E ($AI_DEV_CONTAINER container not running)"
+fi
+
+# ============================================================
+# 20. Optional apply integration (RUN_APPLY_TESTS=1)
 # Writes a key to the opencode auth store in ai-engkit-dev and restarts it.
 # ============================================================
 if [ "${RUN_APPLY_TESTS:-0}" = "1" ]; then
