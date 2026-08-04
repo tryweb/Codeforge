@@ -21,8 +21,12 @@ git clone https://github.com/your-org/private-repo.git
 # From the host, copy your key into the container
 docker cp ~/.ssh/id_ed25519 ai-dev:/home/devuser/.ssh/
 docker exec ai-dev chmod 600 /home/devuser/.ssh/id_ed25519
-docker exec ai-dev ssh-add ~/.ssh/id_ed25519   # optional, for ssh-agent
+docker exec ai-dev ssh-add ~/.ssh/id_ed25519   # optional for passphrase-protected keys
 ```
+
+The ai-dev startup flow automatically reloads existing private keys with an
+empty passphrase into ssh-agent after container restart. Passphrase-protected
+keys are intentionally skipped and must be added interactively.
 
 ### `gh` / `glab` CLI
 

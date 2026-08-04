@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+### Fixed
+- Reload passphrase-less SSH keys into ssh-agent when ai-dev starts or restarts.
 
 ## [1.11.2] - 2026-08-03
 
