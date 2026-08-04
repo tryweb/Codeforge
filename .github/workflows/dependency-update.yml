@@ -121,6 +121,24 @@ jobs:
 
           strip_v() { printf '%s\n' "${1#v}"; }
 
+          # BUN_VERSION is a derived pin: the Bun release the reference OpenChamber
+          # tag declares as packageManager ("bun@X.Y.Z") in its package.json. Fetch
+          # the raw package.json from openchamber/openchamber at that git tag, trying
+          # the bare tag first and the "v"-prefixed tag as fallback. Never query Bun
+          # releases directly; any fetch/parse/validation failure yields "unknown".
+          get_openchamber_bun_version() {
+            local ref="$1" tag="" pm=""
+            for tag in "$ref" "v${ref#v}"; do
+              [[ -z "$tag" || "$tag" == "v" ]] && continue
+              pm="$(curl -sL --max-time 10 "https://raw.githubusercontent.com/openchamber/openchamber/${tag}/package.json" 2>/dev/null | jq -r '.packageManager // ""' 2>/dev/null || true)"
+              if [[ "$pm" =~ ^bun@([0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z]+)*)$ ]]; then
+                printf '%s\n' "${BASH_REMATCH[1]}"
+                return 0
+              fi
+            done
+            printf 'unknown\n'
+          }
+
           get_gitlab_tag() {
             local project="$1" raw="" encoded=""
             encoded="$(printf '%s' "$project" | sed 's/\//%2F/g')"
@@ -201,15 +219,15 @@ jobs:
           declare -a PINNED_VERSIONS=()
           while IFS='=' read -r name ver; do
             case "$name" in
-              DOCKER_VERSION|COMPOSE_VERSION|BUILDX_VERSION|OPENCODE_VERSION|OPENCHAMBER_VERSION|GLAB_VERSION|PLAYWRIGHT_VERSION|PLAYWRIGHT_MCP_VERSION|GH_VERSION|MARKSMAN_VERSION|LEANCTX_VERSION|OH_MY_OPENAGENT_VERSION)
+              DOCKER_VERSION|COMPOSE_VERSION|BUILDX_VERSION|OPENCODE_VERSION|OPENCHAMBER_VERSION|GLAB_VERSION|PLAYWRIGHT_VERSION|PLAYWRIGHT_MCP_VERSION|BUN_VERSION|GH_VERSION|MARKSMAN_VERSION|LEANCTX_VERSION|OH_MY_OPENAGENT_VERSION)
                 PINNED_NAMES+=("$name")
                 PINNED_VERSIONS+=("$ver")
                 ;;
             esac
           done < <(awk '/^ARG [A-Z0-9_]+=/{sub(/^ARG /, ""); print}' Dockerfile)
 
-          if [[ "${#PINNED_NAMES[@]}" -ne 12 ]]; then
-            echo "::error::Expected 12 pinned ARG versions in Dockerfile, found ${#PINNED_NAMES[@]}"
+          if [[ "${#PINNED_NAMES[@]}" -ne 13 ]]; then
+            echo "::error::Expected 13 pinned ARG versions in Dockerfile, found ${#PINNED_NAMES[@]}"
             exit 1
           fi
 
@@ -219,6 +237,9 @@ jobs:
           check_failures=0
           pinned_updates_lines=()
           latest_updates_lines=()
+          # Bun target derives from the OpenChamber candidate resolved below (pinned
+          # OPENCHAMBER_VERSION as fallback); Dockerfile orders OPENCHAMBER before BUN.
+          _openchamber_ref=""
 
           for i in "${!PINNED_NAMES[@]}"; do
             name="${PINNED_NAMES[$i]}"
@@ -231,9 +252,10 @@ jobs:
               COMPOSE_VERSION)  source='docker/compose';   latest="$(get_github_tag "$source")" ;;
               BUILDX_VERSION)   source='docker/buildx';    latest="$(get_github_tag "$source")" ;;
               OPENCODE_VERSION) source='opencode-ai';      latest="$(get_npm_version "$source")" ;;
-              OPENCHAMBER_VERSION) source='@openchamber/web'; latest="$(get_npm_version "$source")" ;;
+              OPENCHAMBER_VERSION) source='@openchamber/web'; latest="$(get_npm_version "$source")"; _openchamber_ref="$current"; if [[ "$latest" != "unknown" ]]; then _openchamber_ref="$latest"; fi ;;
               PLAYWRIGHT_VERSION)  source='playwright';    latest="$(get_npm_version "$source")" ;;
               PLAYWRIGHT_MCP_VERSION) source='@playwright/mcp'; latest="$(get_npm_version "$source")" ;;
+              BUN_VERSION)      source='openchamber/openchamber'; latest="$(get_openchamber_bun_version "$_openchamber_ref")" ;;
               GH_VERSION)       source='cli/cli';          latest="$(get_github_tag "$source")" ;;
               GLAB_VERSION)     source='gitlab-org/cli';   latest="$(get_gitlab_tag "$source")" ;;
               MARKSMAN_VERSION) source='artempyanykh/marksman'; latest="$(get_github_tag "$source")" ;;
@@ -248,7 +270,16 @@ jobs:
               continue
             fi
 
-            if version_gt "$current" "$latest"; then
+            changed=false
+            if [[ "$name" == "BUN_VERSION" ]]; then
+              # Derived pin: require exact equality with the OpenChamber-declared
+              # Bun version — ahead or behind both count as an update.
+              [[ "$current" != "$latest" ]] && changed=true
+            elif version_gt "$current" "$latest"; then
+              changed=true
+            fi
+
+            if [[ "$changed" == true ]]; then
               dockerfile_changes_needed=true
               pinned_updates_lines+=("$(printf '%s\t%s\t%s\t%s\t%s' "$name" "$current" "$latest" "$source" "changed")")
               echo "::notice::$name: $current -> $latest (from $source)"
@@ -812,6 +843,7 @@ jobs:
                   'BUILDX_VERSION': 'Docker Buildx',
                   'OPENCODE_VERSION': 'OpenCode',
                   'OPENCHAMBER_VERSION': 'OpenChamber',
+                  'BUN_VERSION': 'Bun',
                   'PLAYWRIGHT_VERSION': 'Playwright',
                   'PLAYWRIGHT_MCP_VERSION': '@playwright/mcp',
                   'GH_VERSION': 'GitHub CLI',
