@@ -6,6 +6,7 @@
 - Add dependency-aware version checking for Bun requirements declared by OpenChamber.
 
 ### Fixed
+- Repair auth-store provider import in the admin Providers page.
 - Reload passphrase-less SSH keys into ssh-agent when ai-dev starts or restarts.
 - Make OpenChamber project registration atomic and deduplicate settings entries.
 
