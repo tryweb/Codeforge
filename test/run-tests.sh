@@ -717,6 +717,29 @@ else
 fi
 
 # --------------------------------------------------
+# 11. SSH Agent
+# --------------------------------------------------
+echo ""
+echo "--- SSH Agent ---"
+
+assert_file_exists "ssh-agent environment exists" "/home/devuser/.ssh/agent.env"
+if docker exec "$CONTAINER" sh -c '. /home/devuser/.ssh/agent.env && test -S "$SSH_AUTH_SOCK"' 2>/dev/null; then
+  pass "ssh-agent socket is live"
+else
+  fail "ssh-agent socket is not live"
+fi
+
+if docker exec "$CONTAINER" sh -c '. /home/devuser/.ssh/agent.env && ssh-add -l >/dev/null 2>&1; status=$?; test "$status" -eq 0 || test "$status" -eq 1' 2>/dev/null; then
+  SSH_ADD_STATUS=0
+else
+  SSH_ADD_STATUS=1
+fi
+assert_eq "ssh-add can query agent" "0" "$SSH_ADD_STATUS"
+
+AGENT_LOGS=$(docker logs "$CONTAINER" 2>/dev/null || echo "")
+assert_contains "startup reports SSH-agent reload" "SSH agent:" "$AGENT_LOGS"
+
+# --------------------------------------------------
 # Summary
 # --------------------------------------------------
 echo ""

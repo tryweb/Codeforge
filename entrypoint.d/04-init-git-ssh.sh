@@ -68,12 +68,67 @@ create_symlink "$GIT_CONFIG_DIR/.git-credentials" "$DEVUSER_HOME/.git-credential
 
 # --- Start SSH agent (persistent across sessions) ---
 AGENT_ENV="$SSH_DIR/agent.env"
-if [ ! -f "$AGENT_ENV" ] || ! ( . "$AGENT_ENV" 2>/dev/null && [ -S "$SSH_AUTH_SOCK" ] 2>/dev/null ); then
+agent_is_usable() {
+  [ -f "$AGENT_ENV" ] || return 1
+  . "$AGENT_ENV" 2>/dev/null || return 1
+  [ -S "${SSH_AUTH_SOCK:-}" ] || return 1
+
+  local status
+  if sudo -u devuser env SSH_AUTH_SOCK="$SSH_AUTH_SOCK" ssh-add -l >/dev/null 2>&1; then
+    return 0
+  else
+    status=$?
+  fi
+  [ "$status" -eq 1 ]
+}
+
+if ! agent_is_usable; then
   # Run as devuser so agent socket is accessible to devuser sessions
   sudo -u devuser ssh-agent -s > "$AGENT_ENV" 2>/dev/null
   chmod 600 "$AGENT_ENV"
   echo "Started: ssh-agent (pid $(grep SSH_AGENT_PID "$AGENT_ENV" | cut -d= -f2 | tr -d ';'))"
 fi
+chown devuser:devuser "$AGENT_ENV"
+
+. "$AGENT_ENV"
+loaded_keys=0
+skipped_keys=0
+for key_file in "$SSH_DIR"/*; do
+  [ -f "$key_file" ] || continue
+  key_name=$(basename "$key_file")
+  case "$key_name" in
+    *.pub|known_hosts*|authorized_keys*|config|agent.env)
+      continue
+      ;;
+  esac
+
+  if ! sudo -u devuser ssh-keygen -y -P "" -f "$key_file" </dev/null >/dev/null 2>&1; then
+    skipped_keys=$((skipped_keys + 1))
+    echo "Skipped: $key_name (not an unencrypted private key)"
+    continue
+  fi
+
+  chmod 600 "$key_file"
+  fingerprint=$(ssh-keygen -lf "$key_file" 2>/dev/null | awk '{print $2}')
+  if [ -z "$fingerprint" ]; then
+    skipped_keys=$((skipped_keys + 1))
+    echo "Skipped: $key_name (fingerprint unavailable)"
+    continue
+  fi
+
+  loaded_fingerprints=$(sudo -u devuser env SSH_AUTH_SOCK="$SSH_AUTH_SOCK" ssh-add -l 2>/dev/null || true)
+  if printf '%s\n' "$loaded_fingerprints" | awk -v fingerprint="$fingerprint" '$2 == fingerprint { found = 1 } END { exit !found }'; then
+    continue
+  fi
+
+  if sudo -u devuser env SSH_AUTH_SOCK="$SSH_AUTH_SOCK" ssh-add -q "$key_file" </dev/null 2>/dev/null; then
+    loaded_keys=$((loaded_keys + 1))
+  else
+    skipped_keys=$((skipped_keys + 1))
+    echo "Skipped: $key_name (ssh-add failed)"
+  fi
+done
+echo "SSH agent: $loaded_keys key(s) loaded, $skipped_keys skipped"
 
 # Source agent env in .bashrc if not already there
 for rcfile in ".bashrc" ".bashenv"; do
