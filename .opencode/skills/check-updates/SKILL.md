@@ -82,6 +82,22 @@ fi
 
 **Repeat for each outdated package** the user chose to update.
 
+**Derived pin: `BUN_VERSION`.** This pin is not compared against Bun's own
+latest release. `check-versions.sh` reports its target as the Bun release the
+pinned `OPENCHAMBER_VERSION` requires: the `packageManager` field
+(`"bun@X.Y.Z"`) of `package.json` at that OpenChamber git tag, fetched from
+`github.com/openchamber/openchamber` (source label
+`github:openchamber/openchamber`). Drift is exact-equality: pinned ahead OR
+behind the required version both report `outdated`, because the image must
+ship the Bun version OpenChamber declares.
+
+Ordering matters when `OPENCHAMBER_VERSION` is also outdated: update it first,
+then re-run `check-versions.sh json`. The Bun target derives from the
+`OPENCHAMBER_VERSION` pinned in the Dockerfile, so the recheck reads the new
+OpenChamber tag and reports the correct `BUN_VERSION` target. If it drifted,
+apply the same `sed` flow. (CI already derives the Bun target from the
+candidate OpenChamber version when both pins update in the same run.)
+
 `OH_MY_OPENAGENT_VERSION` is a Dockerfile pin and is included in the standard
 `outdated` and `json` output. Update it with the same `ARG` replacement flow;
 do not use `--latest` for OMO because that flag is only for packages without a
