@@ -193,17 +193,20 @@ export function ProvidersPage({
       }
 
       function importKey(name) {
-        fetch('/api/providers/' + name + '/import-candidate')
+        fetch('/api/providers/' + name + '/keys/import-candidate')
           .then(function (r) { return r.json(); })
           .then(function (j) {
-            if (!j.ok || !j.candidate) { alert('No key to import: ' + ((j.error) || 'auth store has no key for ' + name)); return; }
-            if (!confirm('Import key ' + j.candidate.masked + ' as the first key for ' + name + '? ai-dev will restart.')) return;
-            return fetch('/api/providers/' + name + '/import', { method: 'POST' })
+            if (!j.candidate) { alert('No key to import: ' + ((j.error) || 'auth store has no key for ' + name)); return; }
+            if (!confirm('Import key ' + j.masked + ' as the first key for ' + name + '? Restart ai-dev afterward to apply it.')) return;
+            return fetch('/api/providers/' + name + '/keys/import', { method: 'POST' })
               .then(function (r) { return r.json(); })
               .then(function (j2) {
                 if (j2.ok) return location.reload();
                 alert('Import failed: ' + (j2.error || 'unknown error'));
               });
+          })
+          .catch(function (err) {
+            alert('Import failed: ' + (err && err.message ? err.message : 'network error'));
           });
       }
     </script>
