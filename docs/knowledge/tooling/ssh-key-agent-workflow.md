@@ -81,6 +81,8 @@ The explicit `. ~/.ssh/agent.env` is required because `execInAiDev` uses
 - `ssh-agent` is a persistent per-container daemon — survives shell restarts
 - `agent.env` file contains `SSH_AUTH_SOCK` and `SSH_AGENT_PID`; sourcing them
   is all SSH needs to find the agent
+- Container startup scans the SSH volume and reloads existing private keys that
+  have an empty passphrase. Fingerprints prevent duplicate registrations.
 - `ssh-add` registers the private key; SSH client automatically tries all agent
   keys during authentication, matching against the remote's `authorized_keys`
 - The explicit source in the API handler ensures the `docker exec` context also
@@ -88,14 +90,16 @@ The explicit `. ~/.ssh/agent.env` is required because `execInAiDev` uses
 
 ## Side Effects / Tradeoffs
 
-- **Agent persistence**: Container restart re-evaluates the entrypoint check.
-  If the old socket is stale (PID no longer exists), a fresh agent is started
-  and keys must be re-added (via Generate Key or manual `ssh-add`).
-- **Volume dependency**: `agent.env` lives on the `ssh-keys-dev` Docker volume.
-  Lost on `docker compose down -v`, but the entrypoint recreates it at next
-  start (agent starts empty, keys need re-add).
-- **Old keys not in agent**: Keys generated before this fix are not in the
-  agent. Users must manually `ssh-add ~/.ssh/<name>` for those.
+- **Agent persistence**: Container restart re-evaluates the entrypoint check,
+  starts a fresh agent when needed, and reloads existing unencrypted keys from
+  the SSH volume. The key files survive as long as the named volume survives.
+- **Passphrase-protected keys**: Startup never prompts or attempts a passphrase;
+  those keys are skipped and require an explicit interactive `ssh-add`.
+- **Volume dependency**: `agent.env` and key files live on the `ssh-keys-dev`
+  Docker volume. `docker compose down -v` removes them, so keys must be
+  recreated or restored afterward.
+- **Passphrase-protected existing keys**: Keys that cannot be loaded without a
+  passphrase remain outside the agent and require manual `ssh-add`.
 - **No `ssh-add` for Deploy-only**: The Deploy button copies the command but
   doesn't call `ssh-add`. If the user deploys a key that isn't in the agent,
   SSH still asks for a password. The key must be either newly generated (auto
