@@ -1,5 +1,18 @@
 ## [Unreleased]
 
+
+## [1.11.4] - 2026-08-05
+
+### Added
+- Bump buildx 0.36.0→0.36.1, opencode 1.18.12→1.18.13, openchamber 1.18.0→1.18.1, glab 1.111.0→1.112.0, lean-ctx 3.9.14→3.9.17
+
+### Changed
+- Upgrade Docker Buildx from 0.36.0 to 0.36.1.
+- Upgrade OpenCode from 1.18.12 to 1.18.13.
+- Upgrade OpenChamber from 1.18.0 to 1.18.1.
+- Upgrade GitLab CLI from 1.111.0 to 1.112.0.
+- Upgrade lean-ctx from 3.9.14 to 3.9.17.
+
 ## [1.11.3] - 2026-08-04
 
 ### Added
@@ -1111,9 +1124,7 @@
 
 ## Format
 
-[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.11.3...HEAD
-[1.11.3]: https://github.com/tryweb/ai-engkit/compare/v1.11.2...v1.11.3
-[1.11.2]: https://github.com/tryweb/ai-engkit/compare/v1.11.1...v1.11.2
+[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.11.4...HEAD
 [0.3.0]: https://github.com/tryweb/ai-engkit/releases/tag/v0.3.0
 [0.3.3]: https://github.com/tryweb/ai-engkit/compare/v0.3.0...v0.3.3
 [0.5.0]: https://github.com/tryweb/ai-engkit/compare/v0.3.3...v0.5.0
@@ -1229,3 +1240,6 @@
 [1.10.0]: https://github.com/tryweb/ai-engkit/compare/v1.9.4...v1.10.0
 [1.11.0]: https://github.com/tryweb/ai-engkit/compare/v1.10.0...v1.11.0
 [1.11.1]: https://github.com/tryweb/ai-engkit/compare/v1.11.0...v1.11.1
+[1.11.2]: https://github.com/tryweb/ai-engkit/compare/v1.11.1...v1.11.2
+[1.11.3]: https://github.com/tryweb/ai-engkit/compare/v1.11.2...v1.11.3
+[1.11.4]: https://github.com/tryweb/ai-engkit/compare/v1.11.3...v1.11.4
