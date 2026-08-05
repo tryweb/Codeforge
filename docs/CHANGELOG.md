@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+### Changed
+- Update the tracked latest version for @fission-ai/openspec from 1.6.0 to 1.8.0.
 
 ## [1.11.4] - 2026-08-05
 
