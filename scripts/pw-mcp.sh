@@ -12,18 +12,34 @@ set -euo pipefail
 PLAYWRIGHT_BROWSERS_PATH="${PLAYWRIGHT_BROWSERS_PATH:-/ms-playwright}"
 PLAYWRIGHT_MCP_VERSION="${PLAYWRIGHT_MCP_VERSION:-latest}"
 
-# Prefer full bundled Chromium; fall back to the headless shell if absent.
-CHROME_BIN="$(find "${PLAYWRIGHT_BROWSERS_PATH}" \
-    -type f -name chrome -path '*/chromium-*/chrome-linux64/*' 2>/dev/null | sort -V | tail -1)"
+find_executable() {
+    local name="$1"
+    local path_pattern="$2"
+    local candidate
 
-if [ -z "${CHROME_BIN}" ]; then
-    CHROME_BIN="$(find "${PLAYWRIGHT_BROWSERS_PATH}" \
-        -type f -name chrome-headless-shell -path '*/chromium_headless_shell-*/chrome-headless-shell-linux64/*' 2>/dev/null | sort -V | tail -1)"
+    while IFS= read -r -d '' candidate; do
+        if [ -x "${candidate}" ]; then
+            printf '%s' "${candidate}"
+            return 0
+        fi
+    done < <(find "${PLAYWRIGHT_BROWSERS_PATH}" \
+        -type f -name "${name}" -path "${path_pattern}" -print0 2>/dev/null | sort -z -V -r)
+}
+
+if [ ! -d "${PLAYWRIGHT_BROWSERS_PATH}" ]; then
+    echo "pw-mcp: browser directory does not exist: ${PLAYWRIGHT_BROWSERS_PATH}" >&2
+    exit 127
 fi
 
-if [ -z "${CHROME_BIN}" ] || [ ! -x "${CHROME_BIN}" ]; then
+CHROME_BIN="$(find_executable chrome '*/chromium-*/chrome-linux64/*' || true)"
+
+if [ -z "${CHROME_BIN}" ]; then
+    CHROME_BIN="$(find_executable chrome-headless-shell '*/chromium_headless_shell-*/chrome-headless-shell-linux64/*' || true)"
+fi
+
+if [ -z "${CHROME_BIN}" ]; then
     echo "pw-mcp: no bundled Chromium found under ${PLAYWRIGHT_BROWSERS_PATH}" >&2
-    echo "pw-mcp: expected paths like chromium-<rev>/chrome-linux64/chrome" >&2
+    echo "pw-mcp: expected an executable at chromium-<rev>/chrome-linux64/chrome" >&2
     exit 127
 fi
 

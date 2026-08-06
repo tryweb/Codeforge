@@ -680,6 +680,22 @@ else
   fail "@playwright/mcp CLI not available (expected version: ${PLAYWRIGHT_MCP_VERSION})"
 fi
 
+MCP_OUTPUT=$(docker exec "$CONTAINER" sh -c '
+  {
+    printf "%s\\n" "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},\"clientInfo\":{\"name\":\"ai-engkit-tests\",\"version\":\"1.0\"}}}"
+    sleep 1
+    printf "%s\\n" "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}"
+    sleep 1
+    printf "%s\\n" "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"browser_navigate\",\"arguments\":{\"url\":\"about:blank\"}}}"
+    sleep 5
+  } | timeout 20 pw-mcp 2>/dev/null
+' 2>/dev/null)
+if echo "$MCP_OUTPUT" | grep -q '"id":2' && ! echo "$MCP_OUTPUT" | grep -q '"isError":true'; then
+  pass "MCP JSON-RPC browser_navigate succeeds"
+else
+  fail "MCP JSON-RPC browser_navigate failed"
+fi
+
 CHROMIUM_BIN=$(docker exec "$CONTAINER" sh -c 'find /ms-playwright -type f -name chrome -path "*/chrome-linux64/*" 2>/dev/null | head -1')
 if [ -n "$CHROMIUM_BIN" ]; then
   pass "chromium binary exists at ${CHROMIUM_BIN}"
