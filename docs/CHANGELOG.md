@@ -1,6 +1,18 @@
 ## [Unreleased]
 
 
+## [1.11.6] - 2026-08-06
+
+### Added
+- Upgrade @playwright/mcp from 0.0.78 to 0.0.79.
+
+### Fixed
+- Harden pw-mcp browser discovery and add MCP JSON-RPC navigation coverage.
+
+### Documentation
+- Add the deferred vulnerability register and connect it to release/update workflows.
+- Document independent Playwright pins, Chromium diagnostics, and `fixed` alert-state reconciliation.
+
 ## [1.11.5] - 2026-08-05
 
 ### Changed
@@ -1250,3 +1262,5 @@
 [1.11.3]: https://github.com/tryweb/ai-engkit/compare/v1.11.2...v1.11.3
 [1.11.4]: https://github.com/tryweb/ai-engkit/compare/v1.11.3...v1.11.4
 [1.11.5]: https://github.com/tryweb/ai-engkit/compare/v1.11.4...v1.11.5
+[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.11.6...HEAD
+[1.11.6]: https://github.com/tryweb/ai-engkit/releases/tag/v1.11.6
