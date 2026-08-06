@@ -382,12 +382,12 @@ This ensures the CHANGELOG changes are included in the release tag.
 Before tagging, check the deferred vulnerability register
 (`docs/DEFERRED_VULNERABILITIES.md`) for convergence. The register tracks
 upstream-blocked alerts dismissed as `won't fix`; CI rebuilds re-run Grype, so
-upstream fixes flip the alert state from `dismissed` to `closed`:
+upstream fixes flip the alert state from `dismissed` to `fixed`:
 
 ```bash
 # For each ALERT_NUMBER in the Active section of the register:
 gh api repos/tryweb/ai-engkit/code-scanning/alerts/<ALERT_NUMBER> --jq '.state'
-# closed    → upstream fixed; move the row from Active to Resolved in the register
+# fixed     → upstream fixed; move the row from Active to Resolved in the register
 # open      → alert re-appeared; re-evaluate (dismiss as FP, mitigate, or handle)
 # dismissed → still waiting on upstream; keep Active
 ```

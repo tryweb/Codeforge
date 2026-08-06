@@ -182,7 +182,7 @@ bundled-runtime repackage can satisfy their resolution condition.
 
 # Alert state check (CI must rebuild for this to flip; local check may lag):
 gh api repos/tryweb/ai-engkit/code-scanning/alerts/<ALERT_NUMBER> --jq '.state'
-# closed → resolved; dismissed → still waiting on upstream
+# fixed → resolved; dismissed → still waiting on upstream
 ```
 
 If any rows resolved, include the register update in the commit:
