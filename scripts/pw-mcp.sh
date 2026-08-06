@@ -28,6 +28,7 @@ if [ -z "${CHROME_BIN}" ] || [ ! -x "${CHROME_BIN}" ]; then
 fi
 
 export PLAYWRIGHT_BROWSERS_PATH
+echo "pw-mcp: using $(basename "$(dirname "$(dirname "$CHROME_BIN")")") (${CHROME_BIN})" >&2
 
 exec bunx -y "@playwright/mcp@${PLAYWRIGHT_MCP_VERSION}" \
     --executable-path="${CHROME_BIN}" \

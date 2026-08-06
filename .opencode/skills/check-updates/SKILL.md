@@ -98,6 +98,15 @@ OpenChamber tag and reports the correct `BUN_VERSION` target. If it drifted,
 apply the same `sed` flow. (CI already derives the Bun target from the
 candidate OpenChamber version when both pins update in the same run.)
 
+**Playwright pair: `PLAYWRIGHT_VERSION` + `PLAYWRIGHT_MCP_VERSION`.** These are
+independent pins. `PLAYWRIGHT_MCP_VERSION` depends on an *alpha* playwright
+(always ahead of npm stable), while `PLAYWRIGHT_VERSION` pins npm stable; the
+two tracks never align, so do not try to sync their version numbers. The
+bundled Chromium revision is controlled solely by `PLAYWRIGHT_VERSION`.
+Compatibility between the MCP driver and that Chromium is verified ONLY by the
+integration tests (headless Chromium launch must pass) — do not skip them after
+any bump of either pin.
+
 `OH_MY_OPENAGENT_VERSION` is a Dockerfile pin and is included in the standard
 `outdated` and `json` output. Update it with the same `ARG` replacement flow;
 do not use `--latest` for OMO because that flag is only for packages without a
