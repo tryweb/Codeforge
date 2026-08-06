@@ -339,7 +339,7 @@ grype ai-engkit:latest
 [DEFERRED_VULNERABILITIES.md](./DEFERRED_VULNERABILITIES.md)：
 
 - 每條記錄含解除條件（resolution condition），並在 release / check-updates 流程中驗證收斂
-- CI 每次 build 重跑 Grype 掃描；上游修復後 alert 自動轉 `closed`，條目移入 Resolved 區段
+- CI 每次 build 重跑 Grype 掃描；上游修復後 alert 自動轉 `fixed`，條目移入 Resolved 區段
 - 可 pin 的依賴與 OS 套件**不進 register**——分別由 `check-versions.sh` 與 `UPGRADE_PACKAGES` 追蹤
 
 ### 待處理事項

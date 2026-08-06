@@ -15,7 +15,7 @@
    - 僅限 bundled binary（套件內建 runtime，本專案無法替換）與永久環境事實
 2. 每條記錄必須有 **解除條件（resolution condition）**：達到即收斂（resolved）
 3. 收斂驗證掛在 release / check-updates 流程（見下方「收斂驗證」），
-   CI 重建 image 後 Grype 重掃，修復的 CVE 會自動從掃描結果消失（alert 轉 `closed`）
+   CI 重建 image 後 Grype 重掃，修復的 CVE 會自動從掃描結果消失（alert 轉 `fixed`）
 4. 已收斂條目從 Active 區段移到 Resolved 區段，保留 audit 軌跡
 
 ## Active
@@ -41,12 +41,12 @@
 ## 收斂驗證
 
 release 與 check-updates 流程會執行以下檢查；本專案 CI 每次 build 皆會重跑
-Grype 掃描，上游修復後 alert 會自動轉為 `closed`：
+Grype 掃描，上游修復後 alert 會自動轉為 `fixed`：
 
 ```bash
 # 對 Active 區段每條 alert 查目前狀態
 gh api repos/tryweb/ai-engkit/code-scanning/alerts/<ALERT_NUMBER> --jq '.state'
-# closed  → 上游已修，掃描不再報 → 移入 Resolved 區段
+# fixed   → 上游已修，掃描不再報 → 移入 Resolved 區段
 # open    → 重新出現在掃描結果 → 重新評估（可能是誤判或需緩解）
 # dismissed → 仍等上游，保持 Active
 ```
