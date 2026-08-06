@@ -332,6 +332,16 @@ apt-get update && apt-get list --upgradable
 grype ai-engkit:latest
 ```
 
+### 上游阻擋弱點（Deferred Vulnerabilities）
+
+依賴上游重新打包才能修復、本專案無法直接處理的弱點（例如 bundled binary
+內建的 runtime），以 `won't fix` dismiss 後登記於
+[DEFERRED_VULNERABILITIES.md](./DEFERRED_VULNERABILITIES.md)：
+
+- 每條記錄含解除條件（resolution condition），並在 release / check-updates 流程中驗證收斂
+- CI 每次 build 重跑 Grype 掃描；上游修復後 alert 自動轉 `closed`，條目移入 Resolved 區段
+- 可 pin 的依賴與 OS 套件**不進 register**——分別由 `check-versions.sh` 與 `UPGRADE_PACKAGES` 追蹤
+
 ### 待處理事項
 
 技術債務、安全改進、功能請求統一在 [GitHub Issues](https://github.com/tryweb/ai-engkit/issues) 追蹤與管理。

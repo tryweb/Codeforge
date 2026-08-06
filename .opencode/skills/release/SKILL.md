@@ -377,6 +377,33 @@ git commit -m "docs: update CHANGELOG for ${NEXT_VERSION} release"
 
 This ensures the CHANGELOG changes are included in the release tag.
 
+### 5.3. Verify Deferred Vulnerability Register
+
+Before tagging, check the deferred vulnerability register
+(`docs/DEFERRED_VULNERABILITIES.md`) for convergence. The register tracks
+upstream-blocked alerts dismissed as `won't fix`; CI rebuilds re-run Grype, so
+upstream fixes flip the alert state from `dismissed` to `closed`:
+
+```bash
+# For each ALERT_NUMBER in the Active section of the register:
+gh api repos/tryweb/ai-engkit/code-scanning/alerts/<ALERT_NUMBER> --jq '.state'
+# closed    → upstream fixed; move the row from Active to Resolved in the register
+# open      → alert re-appeared; re-evaluate (dismiss as FP, mitigate, or handle)
+# dismissed → still waiting on upstream; keep Active
+```
+
+Also verify bundled-runtime rows directly when their fix is expected (e.g.
+codegraph rows once the package repackages with a patched node):
+
+```bash
+~/.bun/install/global/node_modules/@colbymchenry/codegraph-linux-x64/node --version
+# >= 24.18.1 → resolved, move rows to Resolved
+```
+
+If any rows resolved, commit the register update alongside the CHANGELOG
+(`docs: update deferred vulnerability register`). Do not release with
+Active rows whose resolution condition is already met — resolve them first.
+
 ### 6. Confirm with User
 
 Present the calculated version and generated release notes. Ask for confirmation before proceeding.

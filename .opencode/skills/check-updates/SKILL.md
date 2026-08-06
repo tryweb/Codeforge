@@ -158,6 +158,34 @@ CONTAINER=$(docker compose -f docker-compose.dev.yml ps --format '{{.Name}}' 2>/
 
 If any test fails, report and stop. Do not commit.
 
+### 5.5. Reconcile Deferred Vulnerability Register
+
+Check whether the updates just applied resolve any rows in the deferred
+vulnerability register (`docs/DEFERRED_VULNERABILITIES.md`). Rows there track
+upstream-blocked alerts dismissed as `won't fix`; a dependency bump or a
+bundled-runtime repackage can satisfy their resolution condition.
+
+```bash
+# For each Active row whose package was just updated, verify directly.
+# Example — codegraph rows resolve when the bundled node is patched:
+~/.bun/install/global/node_modules/@colbymchenry/codegraph-linux-x64/node --version
+# >= 24.18.1 → resolved, move the row from Active to Resolved
+
+# Alert state check (CI must rebuild for this to flip; local check may lag):
+gh api repos/tryweb/ai-engkit/code-scanning/alerts/<ALERT_NUMBER> --jq '.state'
+# closed → resolved; dismissed → still waiting on upstream
+```
+
+If any rows resolved, include the register update in the commit:
+
+```bash
+git add Dockerfile docs/DEFERRED_VULNERABILITIES.md
+git commit -m "feat: bump <pkg> <old> → <new>, resolve deferred <CVE>"
+```
+
+Do not drop rows silently — always move resolved rows to the Resolved section
+to preserve the audit trail.
+
 ### 6. Commit (Ask First)
 
 If build + tests passed, offer to commit:
