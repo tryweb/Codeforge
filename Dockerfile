@@ -287,6 +287,10 @@ RUN mkdir -p /opt/ai-engkit && echo "$AI_ENGKIT_VERSION" > /opt/ai-engkit/VERSIO
     rm -rf /tmp/superpowers-bake && \
     chown -R ${USERNAME}:${USERNAME} /opt/opencode
 
+# OpenChamber registration reconcile — shipped at a fixed path so both upgrade
+# paths (host upgrade.sh, admin runUpgrade) can exec it inside ai-dev.
+COPY --chmod=0755 scripts/reconcile-openchamber-projects.sh /opt/ai-engkit/scripts/reconcile-openchamber-projects.sh
+
 # 預裝 baked skills 到 image（供 entrypoint 在 runtime 時 symlink 到 SKILLS_ROOT）
 COPY .opencode/baked-skills /opt/opencode/baked-skills
 RUN chown -R ${USERNAME}:${USERNAME} /opt/opencode/baked-skills

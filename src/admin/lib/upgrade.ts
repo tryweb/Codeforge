@@ -1,7 +1,7 @@
-import { execInAiDev, composeCommand, dockerCommand, getComposeProject, isAiDevRunning } from "./docker";
-import { readFileSync, writeFileSync, existsSync, mkdirSync, cpSync, rmSync, statSync } from "node:fs";
+import { execInAiDev, composeCommand, dockerCommand, getAiDevContainerRef, getComposeProject, isAiDevRunning } from "./docker";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, cpSync, rmSync, statSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { readEnvFile, writeEnvFile } from "./env";
+import { readEnvFile, writeEnvFile, type EnvVars } from "./env";
 
 const BACKUP_DIR = "/opt/ai-engkit/backups";
 const COMPOSE_FILE = "/opt/ai-engkit/compose.yml";
@@ -9,12 +9,55 @@ const ENV_FILE = "/opt/ai-engkit/.env";
 const IMAGE = "ghcr.io/tryweb/ai-engkit:latest";
 const UPSTREAM_BASE = "https://raw.githubusercontent.com/tryweb/ai-engkit/main";
 
+/** BACKUP_RETENTION from .env: positive integer, default 5 (mirrors upgrade.sh). */
+export function resolveBackupRetention(env: EnvVars): number {
+  const raw = env.BACKUP_RETENTION;
+  if (raw === undefined || !/^[0-9]+$/.test(raw)) return 5;
+  const n = Number(raw);
+  return n >= 1 ? n : 5;
+}
+
+/** Delete oldest pre-* backup dirs beyond retention; returns the removed names. */
+export function pruneOldBackups(backupRoot: string, retention: number): string[] {
+  if (retention < 1) return [];
+  let dirs: string[];
+  try {
+    dirs = readdirSync(backupRoot).filter((d: string) => d.startsWith("pre-")).sort();
+  } catch {
+    return [];
+  }
+  const toRemove = dirs.length - retention;
+  if (toRemove <= 0) return [];
+  const removed: string[] = [];
+  for (const d of dirs.slice(0, toRemove)) {
+    rmSync(join(backupRoot, d), { recursive: true, force: true });
+    removed.push(d);
+  }
+  return removed;
+}
+
+/** Parse the reconcile script's {"added":N} output; null when not parseable. */
+export function parseReconcileOutput(stdout: string): { added: number } | null {
+  const trimmed = stdout.trim();
+  if (!trimmed) return null;
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null;
+    const added = (parsed as Record<string, unknown>).added;
+    if (typeof added !== "number" || !Number.isInteger(added) || added < 0) return null;
+    return { added };
+  } catch {
+    return null;
+  }
+}
+
 export type UpgradeStep =
   | "digest_compare"
   | "backup"
   | "merge_env"
   | "recreate"
   | "poll_health"
+  | "reconcile"
   | "cleanup";
 
 export type StepStatus = "pending" | "running" | "success" | "failure";
@@ -65,7 +108,7 @@ function emit(step: UpgradeStep, status: StepStatus, message: string): void {
 }
 
 export function getStatus(): { state: UpgradeState; events: UpgradeEvent[]; current_step: UpgradeStep | ""; progress_pct: number } {
-  const steps: UpgradeStep[] = ["digest_compare", "backup", "merge_env", "recreate", "poll_health", "cleanup"];
+  const steps: UpgradeStep[] = ["digest_compare", "backup", "merge_env", "recreate", "poll_health", "reconcile", "cleanup"];
   const lastRunning = [...eventLog].reverse().find((e) => e.status === "running");
   const lastFailed = [...eventLog].reverse().find((e) => e.status === "failure");
   const currentStep = lastFailed?.step || lastRunning?.step || "";
@@ -150,7 +193,24 @@ export async function runUpgrade(): Promise<boolean> {
         if (!st.isDirectory()) cpSync(COMPOSE_FILE, join(backupPath, "compose.yml"));
       } catch {}
     }
-    emit("backup", "success", `Backup saved to ${backupPath}`);
+    const backupNotes: string[] = [];
+    // Snapshot the registration list while the old image still runs; the new
+    // image may start with a fresh list that needs reconciling against it.
+    const devRef = await getAiDevContainerRef();
+    const snapshot = await dockerCommand(
+      `cp ${devRef}:/home/devuser/.config/openchamber/settings.json ${join(backupPath, "openchamber-settings.json")}`,
+      30_000,
+    );
+    backupNotes.push(
+      snapshot.exitCode === 0 ? "OpenChamber settings snapshot saved" : "OpenChamber settings not found, snapshot skipped",
+    );
+    const pruned = pruneOldBackups(BACKUP_DIR, resolveBackupRetention(readEnvFile()));
+    if (pruned.length > 0) backupNotes.push(`${pruned.length} old backup(s) pruned`);
+    emit(
+      "backup",
+      "success",
+      `Backup saved to ${backupPath}${backupNotes.length > 0 ? ` (${backupNotes.join("; ")})` : ""}`,
+    );
 
     // Step 3: Merge .env
     emit("merge_env", "running", "Merging new environment variables...");
@@ -186,7 +246,26 @@ export async function runUpgrade(): Promise<boolean> {
     }
     emit("poll_health", "success", "ai-dev is healthy");
 
-    // Step 6: Cleanup
+    // Step 6: Reconcile OpenChamber registrations. Soft step on purpose:
+    // a reconcile failure must not fail the upgrade; the manual
+    // Projects → Sync flow stays available as the fallback.
+    emit("reconcile", "running", "Reconciling OpenChamber project registrations...");
+    const reconcile = await execInAiDev("/opt/ai-engkit/scripts/reconcile-openchamber-projects.sh", 60_000);
+    if (reconcile.exitCode === 0) {
+      const parsed = parseReconcileOutput(reconcile.stdout);
+      if (parsed !== null && parsed.added > 0) {
+        emit("reconcile", "success", `${parsed.added} project registration${parsed.added === 1 ? "" : "s"} restored`);
+      } else if (parsed !== null) {
+        emit("reconcile", "success", "Registration list is consistent; nothing needed restoring");
+      } else {
+        emit("reconcile", "success", `Reconcile finished: ${reconcile.stdout.trim() || "no output"}`);
+      }
+    } else {
+      const detail = reconcile.stderr.trim() || reconcile.stdout.trim() || `exit code ${reconcile.exitCode}`;
+      emit("reconcile", "success", `Reconcile skipped: ${detail} (manual sync remains available)`);
+    }
+
+    // Step 7: Cleanup
     emit("cleanup", "running", "Cleaning up old images...");
     await dockerCommand("image prune -f", 60_000);
     emit("cleanup", "success", "Upgrade complete");

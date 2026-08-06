@@ -56,7 +56,7 @@ const UpgradeContent: FC<{ devBuild?: boolean }> = ({ devBuild }) => (
         document.getElementById("progress-card").style.display = "block";
         if (eventSource) eventSource.close();
         eventSource = new EventSource("/api/upgrade/log");
-        const steps = ["digest_compare","backup","merge_env","recreate","poll_health","cleanup"];
+        const steps = ["digest_compare","backup","merge_env","recreate","poll_health","reconcile","cleanup"];
         const stepIdx = {};
         steps.forEach((s, i) => stepIdx[s] = i);
         eventSource.onmessage = (e) => {

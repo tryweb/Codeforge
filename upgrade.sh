@@ -160,6 +160,16 @@ backup_files() {
         fi
     done
 
+    # ── Snapshot OpenChamber registration list (pre-upgrade state) ──
+    local dev_ref
+    dev_ref=$(docker compose ps -q ai-dev 2>/dev/null | head -1 || true)
+    dev_ref="${dev_ref:-ai-engkit}"
+    if docker cp "${dev_ref}:/home/devuser/.config/openchamber/settings.json" "${backup_dir}/openchamber-settings.json" 2>/dev/null; then
+        ok "OpenChamber settings → ${backup_dir}/openchamber-settings.json"
+    else
+        info "OpenChamber settings not found, skipping snapshot"
+    fi
+
     # ── Prune old backups per retention setting ──
     local retention
     retention=$(grep -E "^BACKUP_RETENTION=" .env 2>/dev/null | head -1 | cut -d= -f2 || true)
@@ -367,10 +377,35 @@ recreate_containers() {
 }
 
 # ──────────────────────────────────────────────────────────
+# Reconcile OpenChamber project registrations after recreate
+# ──────────────────────────────────────────────────────────
+reconcile_openchamber_projects() {
+    header "9. Reconciling OpenChamber Project Registrations"
+
+    local dev_ref out added
+    dev_ref=$(docker compose ps -q ai-dev 2>/dev/null | head -1 || true)
+    dev_ref="${dev_ref:-ai-engkit}"
+
+    if ! out=$(docker exec "$dev_ref" /opt/ai-engkit/scripts/reconcile-openchamber-projects.sh 2>/dev/null); then
+        warn "Reconcile unavailable (script missing in image or container not ready) — use Admin → Projects → Sync for manual recovery"
+        return 0
+    fi
+
+    added=$(printf '%s' "$out" | sed -n 's/.*"added"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p' | head -1)
+    if [ -n "$added" ] && [ "$added" -gt 0 ] 2>/dev/null; then
+        ok "Restored ${added} OpenChamber project registration(s)"
+    elif [ -n "$added" ]; then
+        ok "OpenChamber registration list is consistent, nothing to restore"
+    else
+        warn "Reconcile returned unexpected output — use Admin → Projects → Sync for manual recovery"
+    fi
+}
+
+# ──────────────────────────────────────────────────────────
 # Clean up dangling images
 # ──────────────────────────────────────────────────────────
 cleanup_images() {
-    header "9. Cleaning Up Old Images"
+    header "10. Cleaning Up Old Images"
 
     local pruned
     pruned=$(docker image prune -f 2>&1 | grep -oE 'Total reclaimed space: .*' | sed 's/^Total reclaimed space: //' || true)
@@ -484,6 +519,7 @@ main() {
     pull_image
     prepare_volumes
     recreate_containers
+    reconcile_openchamber_projects
     cleanup_images
     show_info
 }
