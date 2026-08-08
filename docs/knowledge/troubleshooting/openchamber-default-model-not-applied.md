@@ -27,11 +27,11 @@ jq '.defaultModel = "opencode/big-pickle"' /home/devuser/.config/openchamber/set
 
 OpenChamber reads settings from disk per request (`readSettingsFromDiskMigrated`), so the change is live for the next new session.
 
-Root-cause fix (repo, applies on next image build): the create-if-absent seed was replaced by `ensure_openchamber_default_model` in `entrypoint.d/lib-openchamber-settings.bash`, called from `entrypoint.d/02-init-config.sh`:
+Root-cause fix (repo, applies on next image build): the create-if-absent seed was replaced by `ensure_openchamber_default_settings` in `entrypoint.d/lib-openchamber-settings.bash`, called from `entrypoint.d/02-init-config.sh`:
 
-- settings.json missing → seed a fresh file (original behavior).
-- settings.json present but **without** `defaultModel` → backfill just that key, preserving all other keys (upgrades now self-heal).
-- settings.json with any `defaultModel` → untouched (a user-chosen model must win).
+- settings.json missing → seed a fresh file with `defaultModel` and `showOpenCodeUpdateNotifications: false` (original behavior).
+- settings.json present but missing a key → backfill just the missing key(s), preserving all other keys (upgrades now self-heal).
+- settings.json with both keys present → untouched (a user-chosen value must win).
 - Symlinked file → skipped with a warning; non-JSON file → skipped with a warning (fails soft, never blocks container boot).
 
 ## Why It Works

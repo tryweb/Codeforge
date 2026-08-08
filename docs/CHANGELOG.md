@@ -1,5 +1,6 @@
 ## [Unreleased]
 
+- Backfill `showOpenCodeUpdateNotifications: false` into existing OpenChamber settings at container start (`entrypoint.d/lib-openchamber-settings.bash`), so OpenCode update banners default to off on upgraded installs too; a user's explicit choice is never overwritten.
 
 ## [1.11.7] - 2026-08-08
 
