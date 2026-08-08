@@ -123,6 +123,11 @@ jobs:
           # === 1.2 OpenChamber defaultModel seed/backfill (unit) ===
           bash ./test/test-openchamber-settings-seed.sh
 
+          # === 1.3 Release vulnerability gate contracts ===
+          bash ./test/test-grype-release-check.sh
+          bash ./test/test-release-body.sh
+          bash ./test/test-release-gate-e2e.sh
+
           # === 2. Admin container — dashboard integration ===
           ./test/test-admin.sh ai-engkit-admin-dev
 
@@ -150,6 +155,9 @@ jobs:
       contents: read
     outputs:
       critical-count: ${{ steps.summary.outputs.critical-count }}
+      high-count: ${{ steps.summary.outputs.high-count }}
+      medium-count: ${{ steps.summary.outputs.medium-count }}
+      low-count: ${{ steps.summary.outputs.low-count }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -165,7 +173,28 @@ jobs:
       - name: Load image
         run: docker load -i /tmp/image.tar
 
-      - name: Run Grype vulnerability scan
+      - name: Pull published baseline image
+        run: docker pull "${{ env.REGISTRY }}/${GITHUB_REPOSITORY,,}:latest"
+
+      - name: Scan published baseline image
+        uses: anchore/scan-action@v7
+        with:
+          image: "${{ env.REGISTRY }}/${{ github.repository }}:latest"
+          output-format: json
+          output-file: grype-baseline-results.json
+          severity-cutoff: negligible
+          fail-build: false
+
+      - name: Scan candidate image for release gate
+        uses: anchore/scan-action@v7
+        with:
+          image: "ai-engkit:ci"
+          output-format: json
+          output-file: grype-candidate-results.json
+          severity-cutoff: negligible
+          fail-build: false
+
+      - name: Run Grype vulnerability scan for Security tab
         uses: anchore/scan-action@v7
         with:
           image: "ai-engkit:ci"
@@ -174,14 +203,9 @@ jobs:
           severity-cutoff: critical
           fail-build: false
 
-      - name: Summarize scan results
+      - name: Summarize and gate scan results
         id: summary
-        run: |
-          COUNT=0
-          if [ -f grype-results.sarif ]; then
-            COUNT=$(jq '[.runs[].results[]?] | length' grype-results.sarif 2>/dev/null || echo 0)
-          fi
-          echo "critical-count=${COUNT}" >> "$GITHUB_OUTPUT"
+        run: bash .github/scripts/grype-release-check.sh grype-candidate-results.json grype-baseline-results.json
 
       - name: Upload Grype results to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v4
@@ -192,7 +216,7 @@ jobs:
 
   push:
     name: Push to GHCR
-    needs: build
+    needs: [build, scan]
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -249,6 +273,10 @@ jobs:
 
       - name: Generate Release Body
         id: body
+        env:
+          HIGH_COUNT: ${{ needs.scan.outputs.high-count }}
+          MEDIUM_COUNT: ${{ needs.scan.outputs.medium-count }}
+          LOW_COUNT: ${{ needs.scan.outputs.low-count }}
         run: |
           bash .github/scripts/release-body.sh \
             "${{ github.ref_name }}" \
@@ -355,6 +383,10 @@ jobs:
 
       - name: Generate Release Body
         id: body
+        env:
+          HIGH_COUNT: ${{ needs.scan.outputs.high-count }}
+          MEDIUM_COUNT: ${{ needs.scan.outputs.medium-count }}
+          LOW_COUNT: ${{ needs.scan.outputs.low-count }}
         run: |
           bash .github/scripts/release-body.sh \
             "${{ steps.version.outputs.next-version }}" \
