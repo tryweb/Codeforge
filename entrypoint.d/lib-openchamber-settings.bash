@@ -1,17 +1,19 @@
 #!/usr/bin/env bash
 
-# Ensure the OpenChamber settings file carries a defaultModel so new sessions
-# default to the intended model (opencode/big-pickle).
+# Ensure the OpenChamber settings file carries our defaults: a defaultModel so
+# new sessions use the intended model (opencode/big-pickle), and update
+# notifications off (showOpenCodeUpdateNotifications: false) so OpenChamber
+# does not surface OpenCode update banners out of the box.
 #
-# - Missing file (first boot): seed a fresh settings.json.
-# - Existing file WITHOUT a defaultModel key (e.g. settings predating the seed
-#   logic in 02-init-config.sh): backfill just the key, preserving everything
-#   else in the file.
-# - Existing file WITH a defaultModel: untouched — a user-chosen model must win.
+# - Missing file (first boot): seed a fresh settings.json with both keys.
+# - Existing file WITHOUT a key (e.g. settings predating the seed logic in
+#   02-init-config.sh): backfill just the missing key(s), preserving
+#   everything else in the file.
+# - Existing file WITH both keys: untouched — a user-chosen value must win.
 # - Symlinked file: skipped, never replaced.
 #
 # Always fails soft: a settings issue must not block container startup.
-ensure_openchamber_default_model() {
+ensure_openchamber_default_settings() {
   local settings_file="$1"
   local default_model="$2"
   local temporary_file
@@ -31,14 +33,16 @@ ensure_openchamber_default_model() {
     return 0
   fi
 
-  if jq -e 'has("defaultModel")' "$settings_file" >/dev/null 2>&1; then
+  if jq -e 'has("defaultModel") and has("showOpenCodeUpdateNotifications")' "$settings_file" >/dev/null 2>&1; then
     return 0
   fi
 
   temporary_file="$(mktemp "${settings_file}.tmp.XXXXXX")"
-  if jq --arg model "$default_model" '.defaultModel = $model' "$settings_file" > "$temporary_file" 2>/dev/null; then
+  if jq --arg model "$default_model" \
+      '(.defaultModel //= $model) | (.showOpenCodeUpdateNotifications //= false)' \
+      "$settings_file" > "$temporary_file" 2>/dev/null; then
     mv "$temporary_file" "$settings_file"
-    echo "Backfilled OpenChamber defaultModel ($default_model): $settings_file"
+    echo "Backfilled OpenChamber default settings (defaultModel=$default_model, showOpenCodeUpdateNotifications=false): $settings_file"
   else
     rm -f "$temporary_file"
     echo "Warning: OpenChamber settings backfill skipped; $settings_file is not valid JSON" >&2

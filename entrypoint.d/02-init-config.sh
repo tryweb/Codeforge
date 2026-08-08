@@ -360,7 +360,7 @@ if [ -f "$AI_ENGKIT_AGENTS_DEFAULT" ]; then
   fi
 fi
 
-# --- OpenChamber default settings (seed + backfill defaultModel) ---
-ensure_openchamber_default_model "$OPENCHAMBER_DATA_DIR/settings.json" "opencode/big-pickle"
+# --- OpenChamber default settings (seed + backfill defaultModel, update notifications off) ---
+ensure_openchamber_default_settings "$OPENCHAMBER_DATA_DIR/settings.json" "opencode/big-pickle"
 
 echo "Default configs initialized"
