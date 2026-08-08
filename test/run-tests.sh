@@ -416,9 +416,13 @@ assert_file_exists "lean-ctx env.sh exists" "/home/devuser/.config/lean-ctx/env.
 assert_file_exists "lean-ctx shell hook exists" "/home/devuser/.config/lean-ctx/shell-hook.bash"
 assert_file_exists "~/.bashenv exists" "/home/devuser/.bashenv"
 
+LEAN_CTX_VERSION_OUT=$(docker exec "$CONTAINER" sh -c 'lean-ctx --version' 2>/dev/null || echo "")
+assert_contains "lean-ctx --version reports 3.9.18" '3.9.18' "$LEAN_CTX_VERSION_OUT"
+
 LEAN_CTX_CONFIG=$(docker exec "$CONTAINER" sh -c 'cat /home/devuser/.config/lean-ctx/config.toml' 2>/dev/null || echo "")
 assert_contains "lean-ctx config enables permission inheritance" 'permission_inheritance = "on"' "$LEAN_CTX_CONFIG"
 assert_contains "lean-ctx config sets standard compression" 'compression_level = "standard"' "$LEAN_CTX_CONFIG"
+assert_contains "lean-ctx config pins full cognitive mode" 'cognitive_mode = "full"' "$LEAN_CTX_CONFIG"
 assert_contains "lean-ctx config caps graph index" 'graph_index_max_files = 5000' "$LEAN_CTX_CONFIG"
 
 BASHRC_CONTENT=$(docker exec "$CONTAINER" sh -c 'cat /home/devuser/.bashrc' 2>/dev/null || echo "")

@@ -13,7 +13,7 @@ ARG PLAYWRIGHT_MCP_VERSION=0.0.79
 ARG BUN_VERSION=1.3.14
 ARG GH_VERSION=2.97.0
 ARG MARKSMAN_VERSION=2026-02-08
-ARG LEANCTX_VERSION=3.9.17
+ARG LEANCTX_VERSION=3.9.18
 ARG OH_MY_OPENAGENT_VERSION=4.19.4
 ARG AI_ENGKIT_VERSION=dev
 ARG USERNAME=devuser
@@ -145,6 +145,7 @@ RUN mkdir -p /home/${USERNAME}/.config/lean-ctx && \
 # lean-ctx ai-engkit tuning — overrides conservative defaults
 permission_inheritance = "on"
 compression_level = "standard"
+cognitive_mode = "full"
 shell_allowlist_extra = [
   "gh", "glab",
   "docker", "docker-compose", "docker compose",
