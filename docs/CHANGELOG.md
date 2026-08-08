@@ -1,6 +1,17 @@
 ## [Unreleased]
 
+
+## [1.11.8] - 2026-08-08
+
+### Added
+- Configure `fallback_models` for the `plan`/`prometheus` agents via `.opencode/omo.jsonc.default` (OpenChamber 4.19.4 config-driven).
+
+### Fixed
 - Backfill `showOpenCodeUpdateNotifications: false` into existing OpenChamber settings at container start (`entrypoint.d/lib-openchamber-settings.bash`), so OpenCode update banners default to off on upgraded installs too; a user's explicit choice is never overwritten.
+- Reconcile OpenChamber project registrations on restart, closing a boot mount race that transiently pruned registrations before the workspace bind mount was fully visible.
+
+### Documentation
+- Record the update-notification suppression fix.
 
 ## [1.11.7] - 2026-08-08
 
@@ -1155,7 +1166,7 @@
 
 ## Format
 
-[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.11.7...HEAD
+[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.11.8...HEAD
 [0.3.0]: https://github.com/tryweb/ai-engkit/releases/tag/v0.3.0
 [0.3.3]: https://github.com/tryweb/ai-engkit/compare/v0.3.0...v0.3.3
 [0.5.0]: https://github.com/tryweb/ai-engkit/compare/v0.3.3...v0.5.0
@@ -1275,5 +1286,6 @@
 [1.11.3]: https://github.com/tryweb/ai-engkit/compare/v1.11.2...v1.11.3
 [1.11.4]: https://github.com/tryweb/ai-engkit/compare/v1.11.3...v1.11.4
 [1.11.5]: https://github.com/tryweb/ai-engkit/compare/v1.11.4...v1.11.5
-[1.11.7]: https://github.com/tryweb/ai-engkit/compare/v1.11.6...v1.11.7
 [1.11.6]: https://github.com/tryweb/ai-engkit/compare/v1.11.5...v1.11.6
+[1.11.7]: https://github.com/tryweb/ai-engkit/compare/v1.11.6...v1.11.7
+[1.11.8]: https://github.com/tryweb/ai-engkit/compare/v1.11.7...v1.11.8
