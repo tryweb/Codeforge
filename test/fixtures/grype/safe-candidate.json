@@ -1,0 +1,6 @@
+{"matches":[
+  {"vulnerability":{"id":"CVE-OLD-CRITICAL","severity":"Critical"},"artifact":{"name":"openssl","version":"2.0"}},
+  {"vulnerability":{"id":"CVE-OLD-HIGH","severity":"High"},"artifact":{"name":"curl","version":"2.0"}},
+  {"vulnerability":{"id":"CVE-NEW-MEDIUM","severity":"Medium"},"artifact":{"name":"git","version":"2.0"}},
+  {"vulnerability":{"id":"CVE-NEW-LOW","severity":"Low"},"artifact":{"name":"jq","version":"2.0"}}
+]}

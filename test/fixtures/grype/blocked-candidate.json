@@ -1,0 +1,6 @@
+{"matches":[
+  {"vulnerability":{"id":"CVE-OLD-CRITICAL","severity":"Critical"},"artifact":{"name":"openssl","version":"2.0"}},
+  {"vulnerability":{"id":"CVE-NEW-CRITICAL","severity":"Critical"},"artifact":{"name":"chrome","version":"2.0"}},
+  {"vulnerability":{"id":"CVE-NEW-HIGH","severity":"High"},"artifact":{"name":"node","version":"2.0"}},
+  {"vulnerability":{"id":"CVE-NEW-MEDIUM","severity":"Medium"},"artifact":{"name":"git","version":"2.0"}}
+]}
