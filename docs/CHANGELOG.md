@@ -1,6 +1,18 @@
 ## [Unreleased]
 
 
+## [1.11.7] - 2026-08-08
+
+### Added
+- Preserve OpenChamber projects across upgrades.
+
+### Changed
+- Gate release artifacts on vulnerability scanning.
+- Group release vulnerability findings by severity.
+- Add a Grype severity delta gate.
+- Upgrade Docker Engine from 29.7.1 to 29.7.2.
+- Upgrade OpenCode from 1.18.14 to 1.18.15.
+
 ## [1.11.6] - 2026-08-06
 
 ### Added
@@ -1142,7 +1154,7 @@
 
 ## Format
 
-[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.11.5...HEAD
+[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.11.7...HEAD
 [0.3.0]: https://github.com/tryweb/ai-engkit/releases/tag/v0.3.0
 [0.3.3]: https://github.com/tryweb/ai-engkit/compare/v0.3.0...v0.3.3
 [0.5.0]: https://github.com/tryweb/ai-engkit/compare/v0.3.3...v0.5.0
@@ -1262,5 +1274,5 @@
 [1.11.3]: https://github.com/tryweb/ai-engkit/compare/v1.11.2...v1.11.3
 [1.11.4]: https://github.com/tryweb/ai-engkit/compare/v1.11.3...v1.11.4
 [1.11.5]: https://github.com/tryweb/ai-engkit/compare/v1.11.4...v1.11.5
-[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.11.6...HEAD
-[1.11.6]: https://github.com/tryweb/ai-engkit/releases/tag/v1.11.6
+[1.11.7]: https://github.com/tryweb/ai-engkit/compare/v1.11.6...v1.11.7
+[1.11.6]: https://github.com/tryweb/ai-engkit/compare/v1.11.5...v1.11.6
