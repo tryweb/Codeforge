@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createProjectRoutes, type ProjectCommand } from "./projects";
@@ -14,9 +14,9 @@ async function shellCommand(source: string): Promise<{ exitCode: number; stdout:
   return { exitCode, stdout, stderr };
 }
 
-/** Runs the real settings-merge shell locally; fakes every other ai-dev command. */
+/** Runs the real settings/disabled-state merge shell locally; fakes every other ai-dev command. */
 function createCommand(): ProjectCommand {
-  return async (source) => source.includes("SETTINGS=")
+  return async (source) => source.includes("SETTINGS=") || source.includes("DISABLED=")
     ? shellCommand(source)
     : { exitCode: 0, stdout: "", stderr: "" };
 }
@@ -24,6 +24,7 @@ function createCommand(): ProjectCommand {
 interface Fixture {
   directory: string;
   settingsPath: string;
+  disabledPath: string;
   workspaceRoot: string;
   cleanup: () => Promise<void>;
 }
@@ -31,18 +32,20 @@ interface Fixture {
 async function fixture(seed?: string): Promise<Fixture> {
   const directory = await mkdtemp(join(tmpdir(), "projects-routes-"));
   const settingsPath = join(directory, "settings.json");
+  const disabledPath = join(directory, "disabled-projects.json");
   const workspaceRoot = join(directory, "workspace");
   if (seed !== undefined) await writeFile(settingsPath, seed);
   return {
     directory,
     settingsPath,
+    disabledPath,
     workspaceRoot,
     cleanup: () => rm(directory, { recursive: true, force: true }),
   };
 }
 
 function appFor(f: Fixture, command: ProjectCommand = createCommand()) {
-  return createProjectRoutes({ command, settingsPath: f.settingsPath, workspaceRoot: f.workspaceRoot });
+  return createProjectRoutes({ command, settingsPath: f.settingsPath, disabledPath: f.disabledPath, workspaceRoot: f.workspaceRoot });
 }
 
 function createProject(app: ReturnType<typeof createProjectRoutes>, name: string) {
@@ -214,6 +217,99 @@ describe("POST /api/projects OpenChamber registration", () => {
       expect(invoked).toContain("--arg path");
       expect(invoked).toContain(".projects // []");
       expect(invoked).not.toContain("/tmp/settings.json");
+    } finally {
+      await f.cleanup();
+    }
+  });
+});
+
+async function readDisabled(f: Fixture): Promise<string[]> {
+  const parsed: unknown = JSON.parse(await readFile(f.disabledPath, "utf8"));
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return [];
+  const disabled = (parsed as Record<string, unknown>).disabled;
+  if (!Array.isArray(disabled)) return [];
+  return disabled.filter((n): n is string => typeof n === "string");
+}
+
+describe("POST /api/projects/:name/disable and enable", () => {
+  /** Runs real shell for directory checks, project listing, and both state files. */
+  function realCommand(): ProjectCommand {
+    return async (source) => source.includes("jq") || source.includes("find ") || source.includes("test -d")
+      ? shellCommand(source)
+      : { exitCode: 0, stdout: "", stderr: "" };
+  }
+
+  function requestDisable(app: ReturnType<typeof createProjectRoutes>, name: string) {
+    return app.request(`http://localhost/api/projects/${encodeURIComponent(name)}/disable`, { method: "POST" });
+  }
+
+  function requestEnable(app: ReturnType<typeof createProjectRoutes>, name: string) {
+    return app.request(`http://localhost/api/projects/${encodeURIComponent(name)}/enable`, { method: "POST" });
+  }
+
+  test("disable removes the OpenChamber registration and marks the project", async () => {
+    const f = await fixture();
+    try {
+      await mkdir(join(f.workspaceRoot, "demo"), { recursive: true });
+      const fullPath = `${f.workspaceRoot}/demo`;
+      await writeFile(f.settingsPath, JSON.stringify({
+        projects: [{ id: projectId(fullPath), path: fullPath, addedAt: 1, lastOpenedAt: 1 }],
+      }) + "\n");
+
+      const response = await requestDisable(appFor(f, realCommand()), "demo");
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ ok: true });
+
+      expect((await readSettings(f)).projects).toEqual([]);
+      expect(await readDisabled(f)).toEqual(["demo"]);
+    } finally {
+      await f.cleanup();
+    }
+  });
+
+  test("enable re-registers the project and unmarks it", async () => {
+    const f = await fixture();
+    try {
+      await mkdir(join(f.workspaceRoot, "demo"), { recursive: true });
+      await writeFile(f.disabledPath, JSON.stringify({ disabled: ["demo"] }) + "\n");
+
+      const response = await requestEnable(appFor(f, realCommand()), "demo");
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ ok: true });
+
+      expect((await readSettings(f)).projects?.map((p) => p.path)).toEqual([`${f.workspaceRoot}/demo`]);
+      expect(await readDisabled(f)).toEqual([]);
+    } finally {
+      await f.cleanup();
+    }
+  });
+
+  test("disable rolls back the disabled mark when unregistration fails", async () => {
+    const f = await fixture();
+    const command: ProjectCommand = async (source) => {
+      if (source.includes("jq") && source.includes("DISABLED=")) return shellCommand(source);
+      if (source.includes("SETTINGS=")) return { exitCode: 1, stdout: "", stderr: "settings boom" };
+      if (source.includes("test -d")) return shellCommand(source);
+      return { exitCode: 0, stdout: "", stderr: "" };
+    };
+    try {
+      await mkdir(join(f.workspaceRoot, "demo"), { recursive: true });
+
+      const response = await requestDisable(appFor(f, command), "demo");
+      expect(response.status).toBe(500);
+      const body = await response.json() as Record<string, unknown>;
+      expect(String(body.error)).toContain("settings boom");
+      expect(await readDisabled(f)).toEqual([]);
+    } finally {
+      await f.cleanup();
+    }
+  });
+
+  test("disable requires an existing project directory", async () => {
+    const f = await fixture();
+    try {
+      const response = await requestDisable(appFor(f, realCommand()), "ghost");
+      expect(response.status).toBe(404);
     } finally {
       await f.cleanup();
     }

@@ -118,3 +118,79 @@ export async function readOpenChamberProjects(
   );
   return result.stdout.split("\n").filter(Boolean).map((p) => p.slice(prefix.length));
 }
+
+/**
+ * Disabled project names, kept in a file ai-engkit owns next to the
+ * OpenChamber settings file. A disabled project stays hidden from OpenChamber
+ * (its settings.json entry is removed) while its directory is never touched;
+ * the reconcile script and the sync overview skip names on this list so a
+ * restart or "Fix All" does not silently re-enable them.
+ */
+export type DisabledAction = "disable" | "enable";
+
+const DISABLED_TIMEOUT_MS = 10_000;
+
+const DISABLED_SHAPE_GUARD =
+  'if type != "object" then error("disabled list must be an object") ' +
+  'elif has("disabled") and (.disabled | type != "array") then error("disabled must be an array") ';
+
+/**
+ * Read disabled project names. Best-effort: a missing or malformed state file
+ * yields [] (nothing disabled — the safe default, nothing is hidden without
+ * intent).
+ */
+export async function readDisabledProjects(
+  command: SettingsCommand,
+  disabledPath: string,
+): Promise<string[]> {
+  const result = await command(
+    `DISABLED=${JSON.stringify(disabledPath)}; ` +
+    `if [ -e "$DISABLED" ]; then ` +
+    `jq -e -c 'if type == "object" then (.disabled // []) | map(select(type == "string")) else error("disabled list must be an object") end' "$DISABLED" ` +
+    `2>/dev/null || printf '%s\\n' '[]'; else printf '%s\\n' '[]'; fi`,
+    DISABLED_TIMEOUT_MS,
+  );
+  try {
+    const parsed: unknown = JSON.parse(result.stdout);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((n): n is string => typeof n === "string");
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Add ("disable") or remove ("enable") one project name from the disabled
+ * list with the same shape-guarded, atomic (mktemp + mv) write used for
+ * settings.json. A malformed state file fails safely: the original file is
+ * left untouched.
+ */
+export async function mergeDisabledProject(
+  command: SettingsCommand,
+  disabledPath: string,
+  name: string,
+  action: DisabledAction,
+): Promise<MergeResult> {
+  const program =
+    DISABLED_SHAPE_GUARD +
+    (action === "disable"
+      ? 'else .disabled = ((.disabled // []) | map(select(type == "string")) + [$name] | unique) end'
+      : 'else .disabled = ((.disabled // []) | map(select(type == "string" and . != $name))) end');
+  const verify =
+    action === "disable"
+      ? 'type == "object" and ((.disabled // []) | index($name)) != null'
+      : 'type == "object" and ((.disabled // []) | index($name)) == null';
+  const commandString =
+    `DISABLED=${JSON.stringify(disabledPath)}; ` +
+    `mkdir -p "$(dirname \"$DISABLED\")" && ` +
+    `if [ ! -e "$DISABLED" ]; then printf '%s\\n' '{}' > "$DISABLED"; fi && ` +
+    `umask 077; TMP="$(mktemp \"$DISABLED.tmp.XXXXXX\")" && ` +
+    `jq -e --arg name ${JSON.stringify(name)} '${program}' "$DISABLED" > "$TMP" || { rm -f "$TMP"; exit 1; }; ` +
+    `jq -e --arg name ${JSON.stringify(name)} '${verify}' "$TMP" > /dev/null || { rm -f "$TMP"; exit 1; }; ` +
+    `mv "$TMP" "$DISABLED"`;
+  const result = await command(commandString, DISABLED_TIMEOUT_MS);
+  if (result.exitCode !== 0) {
+    return { ok: false, error: result.stderr.trim() || "Could not update disabled projects" };
+  }
+  return { ok: true };
+}

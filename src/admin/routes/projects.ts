@@ -2,8 +2,10 @@ import { Hono } from "hono";
 import { execInAiDev, type ExecResult } from "../lib/docker";
 import {
   isValidProjectName,
+  mergeDisabledProject,
   mergeOpenChamberProject,
   projectId,
+  readDisabledProjects,
 } from "../lib/openchamber-projects";
 import { createProjectSyncRoutes } from "./project-sync";
 import { ProjectsPage } from "../views/projects";
@@ -16,15 +18,18 @@ export type ProjectCommand = (command: string, timeoutMs: number) => Promise<Exe
 export interface ProjectRoutesOptions {
   command?: ProjectCommand;
   settingsPath?: string;
+  disabledPath?: string;
   workspaceRoot?: string;
 }
 
 const DEFAULT_WORKSPACE_ROOT = "/home/devuser/workspace";
 const DEFAULT_OPENCHAMBER_SETTINGS = "/home/devuser/.config/openchamber/settings.json";
+const DEFAULT_OPENCHAMBER_DISABLED = "/home/devuser/.config/openchamber/disabled-projects.json";
 
 export function createProjectRoutes(options: ProjectRoutesOptions = {}) {
   const command = options.command ?? execInAiDev;
   const settingsPath = options.settingsPath ?? DEFAULT_OPENCHAMBER_SETTINGS;
+  const disabledPath = options.disabledPath ?? DEFAULT_OPENCHAMBER_DISABLED;
   const workspaceRoot = options.workspaceRoot ?? DEFAULT_WORKSPACE_ROOT;
 
   const projects = new Hono();
@@ -52,6 +57,7 @@ export function createProjectRoutes(options: ProjectRoutesOptions = {}) {
 
   projects.get("/api/projects/overview", async (c) => {
     const names = await listProjects();
+    const disabled = new Set(await readDisabledProjects(command, disabledPath));
     const results = await Promise.allSettled(names.map(async (name) => {
       const [feats, gitRemote] = await Promise.all([
         Promise.all([
@@ -65,11 +71,18 @@ export function createProjectRoutes(options: ProjectRoutesOptions = {}) {
         name,
         features: feats,
         remote: gitRemote.stdout.trim() || null,
+        disabled: disabled.has(name),
       };
     }));
-    const data: Record<string, { features: { knowledge: boolean; maintenance: boolean; openspec: boolean }; remote: string | null }> = {};
+    const data: Record<string, { features: { knowledge: boolean; maintenance: boolean; openspec: boolean }; remote: string | null; disabled: boolean }> = {};
     for (const r of results) {
-      if (r.status === "fulfilled") data[r.value.name] = { features: r.value.features, remote: r.value.remote };
+      if (r.status === "fulfilled") {
+        data[r.value.name] = {
+          features: r.value.features,
+          remote: r.value.remote,
+          disabled: r.value.disabled,
+        };
+      }
     }
     return c.json(data);
   });
@@ -144,6 +157,13 @@ export function createProjectRoutes(options: ProjectRoutesOptions = {}) {
       if (createResult.exitCode !== 0) {
         return c.json({ error: createResult.stderr || "Failed to create directory" }, 500);
       }
+    }
+
+    // Recreating a project clears any previous disabled state so the disabled
+    // list never masks a project the user just created.
+    const reenabled = await mergeDisabledProject(command, disabledPath, name, "enable");
+    if (!reenabled.ok) {
+      return c.json({ error: `Project created, but its disabled state could not be cleared: ${reenabled.error}` }, 500);
     }
 
     // Register in OpenChamber so it appears automatically without manual "Add project".
@@ -251,7 +271,61 @@ export function createProjectRoutes(options: ProjectRoutesOptions = {}) {
     return c.json({ ok: true });
   });
 
-  projects.route("/", createProjectSyncRoutes({ command, settingsPath, workspaceRoot, listProjects }));
+  projects.route("/", createProjectSyncRoutes({ command, settingsPath, disabledPath, workspaceRoot, listProjects }));
+
+  projects.post("/api/projects/:name/disable", async (c) => {
+    const name = c.req.param("name");
+    if (!isValidProjectName(name)) return c.json({ error: "Invalid project name" }, 400);
+
+    const exists = await command(`test -d ${projectDir(name)} && echo yes`, 5_000);
+    if (exists.stdout.trim() !== "yes") return c.json({ error: "Project not found" }, 404);
+
+    const marked = await mergeDisabledProject(command, disabledPath, name, "disable");
+    if (!marked.ok) {
+      return c.json({ error: `Could not disable project: ${marked.error}` }, 500);
+    }
+
+    const fullPath = `${workspaceRoot}/${name}`;
+    const removed = await mergeOpenChamberProject(command, settingsPath, {
+      kind: "remove",
+      id: projectId(fullPath),
+      path: fullPath,
+    });
+    if (!removed.ok) {
+      // Roll the disabled mark back so the state file stays consistent with
+      // OpenChamber: the project remains visible and a retry is safe.
+      await mergeDisabledProject(command, disabledPath, name, "enable");
+      return c.json({ error: `Could not unregister project from OpenChamber: ${removed.error}`, partial: true }, 500);
+    }
+    return c.json({ ok: true });
+  });
+
+  projects.post("/api/projects/:name/enable", async (c) => {
+    const name = c.req.param("name");
+    if (!isValidProjectName(name)) return c.json({ error: "Invalid project name" }, 400);
+
+    const exists = await command(`test -d ${projectDir(name)} && echo yes`, 5_000);
+    if (exists.stdout.trim() !== "yes") return c.json({ error: "Project not found" }, 404);
+
+    const unmarked = await mergeDisabledProject(command, disabledPath, name, "enable");
+    if (!unmarked.ok) {
+      return c.json({ error: `Could not enable project: ${unmarked.error}` }, 500);
+    }
+
+    const fullPath = `${workspaceRoot}/${name}`;
+    const registered = await mergeOpenChamberProject(command, settingsPath, {
+      kind: "add",
+      id: projectId(fullPath),
+      path: fullPath,
+      now: Date.now(),
+    });
+    if (!registered.ok) {
+      // The project is enabled but unregistered; the next reconcile pass
+      // re-adds it automatically, so no rollback is needed.
+      return c.json({ error: `Project enabled, but OpenChamber registration failed: ${registered.error}`, partial: true }, 500);
+    }
+    return c.json({ ok: true });
+  });
 
   projects.get("/projects", async (c) => {
     const list = await listProjects();
