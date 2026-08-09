@@ -66,6 +66,16 @@ Bun's JSX transform checks `tsconfig.json` (or `jsconfig.json`) starting from th
 - If the tsconfig is in a parent directory, `working_dir` must be adjusted accordingly, or use an absolute symlink.
 - Alternative: add `"bun": { "jsx": "...", "jsxImportSource": "..." }` to `package.json` in the project root, but that couples the admin config to the workspace root.
 
+## Test Run Consequence (same root cause)
+
+The same CWD rule bites `bun test`: the repo root has **no** `tsconfig.json`, so a `.tsx` under `src/admin` compiled from a repo-root cwd uses React's runtime even though `src/admin/tsconfig.json` carries the Hono config. A view test asserting on `String(page)` then fails with `Expected to contain: "..." / Received: "[object Object]"` — the exact production symptom, but only in the test run.
+
+- Always run admin tests from `src/admin`: `cd src/admin && bun test` (matches `src/admin/package.json`'s `scripts.test = "bun test"`).
+- A failing view test from the repo root is **not** evidence of a real bug — re-run from `src/admin` before debugging.
+- `bunfig.toml`'s `[jsx] jsxImportSource` did **not** change the compiled runtime (verified empirically) — the tsconfig CWD rule governs.
+
+Evidence: `providers.test.tsx` failed 1/46 from the repo root (`[object Object]`); the same suite passes 46/46 from `src/admin`.
+
 ## Detection
 
 From inside the admin container:
