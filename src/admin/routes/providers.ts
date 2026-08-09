@@ -13,6 +13,7 @@ import {
   addProviderKey,
   deleteProviderKey,
   setActiveProviderKey,
+  updateProviderKeyNote,
   deleteProviderKeys,
   maskKey,
 } from "../lib/provider-keys";
@@ -41,7 +42,7 @@ interface ProviderMeta {
   registry: {
     keyCount: number;
     activeKeyId: string | null;
-    keys: Array<{ id: string; masked: string; active: boolean }>;
+    keys: Array<{ id: string; masked: string; note: string; active: boolean }>;
   };
 }
 
@@ -78,6 +79,7 @@ async function collectProvidersMeta(): Promise<{
           keys: keyEntry.keys.map((k) => ({
             id: k.id,
             masked: maskKey(k.value),
+            note: k.note ?? "",
             active: k.id === keyEntry.activeKeyId,
           })),
         }
@@ -109,6 +111,7 @@ async function collectProvidersMeta(): Promise<{
           keys: keyEntry.keys.map((k) => ({
             id: k.id,
             masked: maskKey(k.value),
+            note: k.note ?? "",
             active: k.id === keyEntry.activeKeyId,
           })),
         }
@@ -198,6 +201,7 @@ providers.post("/api/providers/:name/keys", async (c) => {
   const name = c.req.param("name");
   const body = await c.req.json();
   const value = typeof body.value === "string" ? body.value.trim() : "";
+  const note = typeof body.note === "string" ? body.note.trim() : "";
   if (!value) return c.json({ error: "Key must be a non-empty string" }, 400);
 
   const file = readProviderKeys();
@@ -215,7 +219,7 @@ providers.post("/api/providers/:name/keys", async (c) => {
     }
   }
 
-  const key = addProviderKey(name, value);
+  const key = addProviderKey(name, value, note);
 
   if (wasFirstKey && isKeyProviderSupported(name)) {
     try {
@@ -230,6 +234,17 @@ providers.post("/api/providers/:name/keys", async (c) => {
   }
 
   return c.json({ ok: true, key: { id: key.id, masked: maskKey(key.value) } });
+});
+
+providers.put("/api/providers/:name/keys/:keyId", async (c) => {
+  const { name, keyId } = c.req.param();
+  const body = await c.req.json();
+  const note = typeof body.note === "string" ? body.note.trim() : null;
+  if (note === null) return c.json({ error: "Note must be a string" }, 400);
+  if (!updateProviderKeyNote(name, keyId, note)) {
+    return c.json({ error: "Key not found" }, 404);
+  }
+  return c.json({ ok: true });
 });
 
 providers.get("/api/providers/:name/keys/:keyId/value", (c) => {

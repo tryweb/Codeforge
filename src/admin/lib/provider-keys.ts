@@ -9,9 +9,14 @@ import { dirname, join } from "node:path";
 
 export const KEYS_PATH = "/opt/ai-engkit/provider-state/provider-keys.json";
 
+function providerKeysPath(): string {
+  return Bun.env.PROVIDER_KEYS_PATH || KEYS_PATH;
+}
+
 export interface ProviderKey {
   id: string;
   value: string;
+  note?: string;
   createdAt: string;
 }
 
@@ -27,9 +32,10 @@ export interface ProviderKeysFile {
 const EMPTY: ProviderKeysFile = { providers: {} };
 
 export function readProviderKeys(): ProviderKeysFile {
-  if (!existsSync(KEYS_PATH)) return EMPTY;
+  const path = providerKeysPath();
+  if (!existsSync(path)) return EMPTY;
   try {
-    const parsed: unknown = JSON.parse(readFileSync(KEYS_PATH, "utf-8"));
+    const parsed: unknown = JSON.parse(readFileSync(path, "utf-8"));
     if (typeof parsed === "object" && parsed !== null) {
       const file = parsed as ProviderKeysFile;
       if (file.providers && typeof file.providers === "object") return file;
@@ -41,14 +47,15 @@ export function readProviderKeys(): ProviderKeysFile {
 }
 
 export function writeProviderKeys(file: ProviderKeysFile): void {
+  const path = providerKeysPath();
   // Docker auto-creates a missing bind source as a directory; writing to it
   // would throw EISDIR. Fail with a clear message instead.
-  if (existsSync(KEYS_PATH) && !statSync(KEYS_PATH).isFile()) {
-    throw new Error(`provider-keys.json is not a regular file: ${KEYS_PATH}`);
+  if (existsSync(path) && !statSync(path).isFile()) {
+    throw new Error(`provider-keys.json is not a regular file: ${path}`);
   }
-  const tmp = join(dirname(KEYS_PATH), `.provider-keys.json.tmp`);
+  const tmp = join(dirname(path), `.provider-keys.json.tmp`);
   writeFileSync(tmp, JSON.stringify(file, null, 2) + "\n", { mode: 0o600 });
-  renameSync(tmp, KEYS_PATH);
+  renameSync(tmp, path);
 }
 
 /** Mask a key for display: first 4 + last 4 chars. */
@@ -58,12 +65,13 @@ export function maskKey(value: string): string {
   return `${v.slice(0, 4)}…${v.slice(-4)}`;
 }
 
-export function addProviderKey(provider: string, value: string): ProviderKey {
+export function addProviderKey(provider: string, value: string, note = ""): ProviderKey {
   const file = readProviderKeys();
   const entry: ProviderKeyEntry = file.providers[provider] ?? { keys: [], activeKeyId: null };
   const key: ProviderKey = {
     id: `k-${Date.now().toString(36)}`,
     value,
+    note,
     createdAt: new Date().toISOString(),
   };
   entry.keys.push(key);
@@ -71,6 +79,17 @@ export function addProviderKey(provider: string, value: string): ProviderKey {
   file.providers[provider] = entry;
   writeProviderKeys(file);
   return key;
+}
+
+export function updateProviderKeyNote(provider: string, keyId: string, note: string): boolean {
+  const file = readProviderKeys();
+  const entry = file.providers[provider];
+  if (!entry) return false;
+  const key = entry.keys.find((candidate) => candidate.id === keyId);
+  if (!key) return false;
+  key.note = note;
+  writeProviderKeys(file);
+  return true;
 }
 
 /** Delete a key; the next key in the list is promoted when the active one goes. */
