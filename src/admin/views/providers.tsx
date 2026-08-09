@@ -4,6 +4,7 @@ import { Layout } from "./layout";
 interface RegistryKeyView {
   id: string;
   masked: string;
+  note: string;
   active: boolean;
 }
 
@@ -39,7 +40,7 @@ export function ProvidersPage({
   const reveal = html`
     <script>
       var providersEntries = ${raw(JSON.stringify(entries))};
-      var providersMeta = ${raw(JSON.stringify(meta.providers))};
+      var providersMeta = ${raw(JSON.stringify(meta.providers).replace(/</g, '\\u003c'))};
       var editName = null;
       var editState = null;
       var editApiKey = null;
@@ -136,21 +137,42 @@ export function ProvidersPage({
 
       function addKey(name) {
         var input = providerCard(name).querySelector('.key-add-input');
+        var noteInput = providerCard(name).querySelector('.key-add-note-input');
         var value = input.value;
         if (!value) { input.focus(); return; }
+        var note = noteInput.value.trim();
         var pm = providerMeta(name);
         var first = pm && pm.registry.keyCount === 0;
         if (first && !confirm('This is the first key for ' + name + ' — it will be applied to the auth store and ai-dev will restart. Continue?')) return;
         fetch('/api/providers/' + name + '/keys', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ value: value }),
+          body: JSON.stringify({ value: value, note: note }),
         })
           .then(function (r) { return r.json(); })
           .then(function (j) {
             if (j.ok) return location.reload();
             alert('Add key failed: ' + (j.error || 'unknown error'));
           });
+      }
+
+      function saveKeyNote(name, keyId, input, button) {
+        button.disabled = true;
+        fetch('/api/providers/' + name + '/keys/' + keyId, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ note: input.value }),
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (j) {
+            if (!j.ok) { alert('Save note failed: ' + (j.error || 'unknown error')); return; }
+            button.textContent = 'Saved';
+            setTimeout(function () { button.textContent = 'Save'; }, 1200);
+          })
+          .catch(function (err) {
+            alert('Save note failed: ' + (err && err.message ? err.message : 'network error'));
+          })
+          .finally(function () { button.disabled = false; });
       }
 
       function deleteKey(name, keyId) {
@@ -281,6 +303,16 @@ export function ProvidersPage({
                     <span class="masked">{k.masked}</span>
                     <span class="revealed"></span>
                   </span>
+                  <input
+                    type="text"
+                    class="key-note-input"
+                    value={k.note}
+                    placeholder="Note"
+                    aria-label={`Note for ${k.masked}`}
+                  />
+                  <button class="btn-outline" onclick={`saveKeyNote('${p.name}', '${k.id}', this.previousElementSibling, this)`}>
+                    Save
+                  </button>
                   <button class="btn-outline" onclick={`toggleKeyValue('${p.name}', '${k.id}', this)`} style="margin-left: auto;">
                     Show
                   </button>
@@ -289,6 +321,7 @@ export function ProvidersPage({
               ))}
               <div class="flex" style="gap: 8px; align-items: center;">
                 <input type="password" class="key-add-input" placeholder="New API key" autocomplete="new-password" />
+                <input type="text" class="key-add-note-input" placeholder="Note (optional)" />
                 <button class="btn-outline" onclick={`addKey('${p.name}')`}>Add key</button>
                 {p.registry.keyCount === 0 && (
                   <button class="btn-outline" onclick={`importKey('${p.name}')`}>Import from auth store</button>
