@@ -93,6 +93,24 @@ const ProjectsContent: FC<{ projects: string[] }> = ({ projects }) => (
             info.innerHTML = '<span class="text-muted" style="cursor:pointer;" onclick="setGitRemote(this)">[set remote]</span>';
           }
           nameCell.appendChild(info);
+          const disabled = !!data.disabled;
+          const stateWrap = document.createElement("span");
+          stateWrap.style.cssText = "display:flex;align-items:center;gap:6px;margin-top:2px;";
+          if (disabled) {
+            const badge = document.createElement("span");
+            badge.className = "badge badge-warning";
+            badge.style.fontSize = "0.75rem";
+            badge.textContent = "Disabled";
+            stateWrap.appendChild(badge);
+          }
+          const toggle = document.createElement("button");
+          toggle.className = "btn-outline";
+          toggle.style.cssText = "padding:2px 8px;font-size:0.75rem;";
+          toggle.textContent = disabled ? "Enable" : "Disable";
+          toggle.title = "Show or hide this project in OpenChamber. Project files are never deleted.";
+          toggle.onclick = () => toggleProjectState(name, disabled);
+          stateWrap.appendChild(toggle);
+          nameCell.appendChild(stateWrap);
         });
       }
 
@@ -112,6 +130,15 @@ const ProjectsContent: FC<{ projects: string[] }> = ({ projects }) => (
           try { const d = await res.json(); msg = d.error || msg; } catch (e) { msg = res.status + " " + res.statusText; }
           alert(msg);
         }
+      }
+
+      async function toggleProjectState(name, currentlyDisabled) {
+        const action = currentlyDisabled ? "enable" : "disable";
+        const res = await fetch("/api/projects/" + encodeURIComponent(name) + "/" + action, { method: "POST" });
+        if (res.ok) { location.reload(); return; }
+        let msg = "Failed to " + action;
+        try { const d = await res.json(); msg = d.error || msg; } catch (e) { msg = res.status + " " + res.statusText; }
+        alert(msg);
       }
 
       async function enableFeature(btn) {
