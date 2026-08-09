@@ -1,5 +1,6 @@
 services:
   ai-dev:
+    image: ai-engkit-ai-dev
     build:
       context: .
       dockerfile: Dockerfile
@@ -36,6 +37,8 @@ services:
   ai-admin:
     image: ai-engkit-ai-dev
     container_name: ai-engkit-admin-dev
+    depends_on:
+      - ai-dev
     working_dir: /opt/admin
     env_file:
       - .env
