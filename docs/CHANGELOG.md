@@ -1,6 +1,12 @@
 ## [Unreleased]
 
 
+## [1.12.1] - 2026-08-09
+
+### Added
+- Add provider key note controls
+- Add provider key note endpoints
+
 ## [1.12.0] - 2026-08-09
 
 ### Added
@@ -1179,7 +1185,7 @@
 
 ## Format
 
-[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.12.0...HEAD
+[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.12.1...HEAD
 [0.3.0]: https://github.com/tryweb/ai-engkit/releases/tag/v0.3.0
 [0.3.3]: https://github.com/tryweb/ai-engkit/compare/v0.3.0...v0.3.3
 [0.5.0]: https://github.com/tryweb/ai-engkit/compare/v0.3.3...v0.5.0
@@ -1303,3 +1309,4 @@
 [1.11.7]: https://github.com/tryweb/ai-engkit/compare/v1.11.6...v1.11.7
 [1.11.8]: https://github.com/tryweb/ai-engkit/compare/v1.11.7...v1.11.8
 [1.12.0]: https://github.com/tryweb/ai-engkit/compare/v1.11.8...v1.12.0
+[1.12.1]: https://github.com/tryweb/ai-engkit/compare/v1.12.0...v1.12.1
