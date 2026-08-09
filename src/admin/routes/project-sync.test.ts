@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createProjectRoutes, type ProjectCommand } from "./projects";
@@ -14,15 +14,16 @@ async function shellCommand(source: string): Promise<{ exitCode: number; stdout:
   return { exitCode, stdout, stderr };
 }
 
-/** Runs the real settings-merge shell locally; fakes every other ai-dev command. */
+/** Runs the real settings/disabled-state merge shell locally; fakes every other ai-dev command. */
 function createCommand(): ProjectCommand {
-  return async (source) => source.includes("SETTINGS=")
+  return async (source) => source.includes("SETTINGS=") || source.includes("DISABLED=")
     ? shellCommand(source)
     : { exitCode: 0, stdout: "", stderr: "" };
 }
 
 interface Fixture {
   settingsPath: string;
+  disabledPath: string;
   workspaceRoot: string;
   cleanup: () => Promise<void>;
 }
@@ -31,13 +32,14 @@ async function fixture(): Promise<Fixture> {
   const directory = await mkdtemp(join(tmpdir(), "project-sync-"));
   return {
     settingsPath: join(directory, "settings.json"),
+    disabledPath: join(directory, "disabled-projects.json"),
     workspaceRoot: join(directory, "workspace"),
     cleanup: () => rm(directory, { recursive: true, force: true }),
   };
 }
 
 function appFor(f: Fixture, command: ProjectCommand = createCommand()) {
-  return createProjectRoutes({ command, settingsPath: f.settingsPath, workspaceRoot: f.workspaceRoot });
+  return createProjectRoutes({ command, settingsPath: f.settingsPath, disabledPath: f.disabledPath, workspaceRoot: f.workspaceRoot });
 }
 
 function syncProjects(app: ReturnType<typeof createProjectRoutes>, payload: unknown) {
@@ -198,6 +200,49 @@ describe("POST /api/projects/sync", () => {
       expect(invoked).toHaveLength(1);
       expect(invoked[0]).toContain("--arg path");
       expect(invoked[0]).not.toContain('select(.path == "');
+    } finally {
+      await f.cleanup();
+    }
+  });
+});
+
+describe("GET /api/projects/sync", () => {
+  /** Runs the real directory listing and both state files locally. */
+  function realCommand(): ProjectCommand {
+    return async (source) => source.includes("jq") || source.includes("find ")
+      ? shellCommand(source)
+      : { exitCode: 0, stdout: "", stderr: "" };
+  }
+
+  test("excludes disabled projects from missingInOC", async () => {
+    const f = await fixture();
+    try {
+      await mkdir(join(f.workspaceRoot, "registered"), { recursive: true });
+      await mkdir(join(f.workspaceRoot, "disabled-proj"), { recursive: true });
+      await writeFile(f.settingsPath, JSON.stringify({
+        projects: [{ id: projectId(`${f.workspaceRoot}/registered`), path: `${f.workspaceRoot}/registered`, addedAt: 1, lastOpenedAt: 1 }],
+      }) + "\n");
+      await writeFile(f.disabledPath, JSON.stringify({ disabled: ["disabled-proj"] }) + "\n");
+
+      const response = await appFor(f, realCommand()).request("http://localhost/api/projects/sync");
+      expect(response.status).toBe(200);
+      const body = await response.json() as { missingInOC: string[]; staleInOC: string[] };
+      expect(body.missingInOC).toEqual([]);
+      expect(body.staleInOC).toEqual([]);
+    } finally {
+      await f.cleanup();
+    }
+  });
+
+  test("reports unregistered non-disabled projects as missing", async () => {
+    const f = await fixture();
+    try {
+      await mkdir(join(f.workspaceRoot, "plain"), { recursive: true });
+
+      const response = await appFor(f, realCommand()).request("http://localhost/api/projects/sync");
+      expect(response.status).toBe(200);
+      const body = await response.json() as { missingInOC: string[]; staleInOC: string[] };
+      expect(body.missingInOC).toEqual(["plain"]);
     } finally {
       await f.cleanup();
     }

@@ -3,6 +3,7 @@ import {
   isValidProjectName,
   mergeOpenChamberProject,
   projectId,
+  readDisabledProjects,
   readOpenChamberProjects,
   type SettingsCommand,
 } from "../lib/openchamber-projects";
@@ -10,23 +11,27 @@ import {
 export interface ProjectSyncRoutesOptions {
   command: SettingsCommand;
   settingsPath: string;
+  disabledPath: string;
   workspaceRoot: string;
   listProjects: () => Promise<string[]>;
 }
 
 export function createProjectSyncRoutes(options: ProjectSyncRoutesOptions) {
-  const { command, settingsPath, workspaceRoot, listProjects } = options;
+  const { command, settingsPath, disabledPath, workspaceRoot, listProjects } = options;
   const sync = new Hono();
 
   sync.get("/api/projects/sync", async (c) => {
-    const [workspaceDirs, ocProjects] = await Promise.all([
+    const [workspaceDirs, ocProjects, disabledProjects] = await Promise.all([
       listProjects(),
       readOpenChamberProjects(command, settingsPath, workspaceRoot),
+      readDisabledProjects(command, disabledPath),
     ]);
     const workspaceSet = new Set(workspaceDirs);
     const ocSet = new Set(ocProjects);
+    const disabledSet = new Set(disabledProjects);
 
-    const missingInOC = workspaceDirs.filter(d => !ocSet.has(d));
+    // Disabled projects stay out of missingInOC so "Fix All" cannot re-add them.
+    const missingInOC = workspaceDirs.filter(d => !ocSet.has(d) && !disabledSet.has(d));
     const staleInOC = ocProjects.filter(d => !workspaceSet.has(d));
 
     return c.json({ missingInOC, staleInOC });
