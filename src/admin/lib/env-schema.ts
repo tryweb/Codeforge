@@ -18,6 +18,12 @@ export const ENV_SCHEMA: EnvSchemaEntry[] = [
   { key: "APT_PACKAGES", type: "text", description: "Extra apt packages installed at container startup" },
   { key: "BREW_PACKAGES", type: "text", description: "Extra Homebrew packages installed at container startup" },
   { key: "BUN_PACKAGES", type: "text", description: "Extra global bun packages installed at container startup" },
+  { key: "CENTER_URL", type: "text", description: "Center server WebSocket URL (enables agent mode)" },
+  { key: "CENTER_TOKEN", type: "password", description: "Pre-shared token for center registration (fallback when no ?token= in CENTER_URL)" },
+  { key: "AGENT_ID", type: "text", description: "Agent identifier reported in hello handshake (default: container hostname)" },
+  { key: "CENTER_CA_CERT", type: "text", description: "Path to mTLS CA certificate" },
+  { key: "CENTER_CLIENT_CERT", type: "text", description: "Path to mTLS client certificate" },
+  { key: "CENTER_CLIENT_KEY", type: "text", description: "Path to mTLS client private key" },
 ];
 
 export const PASSWORD_KEYS: string[] = ENV_SCHEMA.filter((entry) => entry.type === "password").map(

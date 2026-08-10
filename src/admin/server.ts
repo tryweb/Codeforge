@@ -5,6 +5,7 @@ import { logger } from "hono/logger";
 import { readFileSync } from "fs";
 import { validateSession, isConfigured } from "./lib/auth";
 import { readEnvFile } from "./lib/env";
+import { startAgent } from "./agent";
 
 import authRoutes from "./routes/auth";
 import versionRoutes from "./routes/versions";
@@ -230,3 +231,12 @@ export default {
   port: PORT,
   fetch: app.fetch,
 };
+
+// Bun binds the declarative server after module evaluation; defer the agent until the next event-loop turn.
+setTimeout(() => {
+  try {
+    startAgent();
+  } catch (error: unknown) {
+    console.error("Agent startup failed:", error instanceof Error ? error.message : String(error));
+  }
+}, 0);
