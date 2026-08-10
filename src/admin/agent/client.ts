@@ -1,6 +1,8 @@
 import { collectStatus } from "../lib/status";
 import type { StatusResponse } from "../lib/status";
-import { getState } from "../lib/upgrade";
+import { getState, subscribe } from "../lib/upgrade";
+import type { UpgradeEvent } from "../lib/upgrade";
+import { createUpgradeEventBridge } from "../lib/upgrade-event-bridge";
 import { resolveAgentId, redactTokenForLogging, resolveRegistrationToken } from "./auth";
 import { createBackoff } from "./backoff";
 import {
@@ -17,6 +19,7 @@ import {
 } from "./heartbeat";
 import {
   buildError,
+  buildEvent,
   buildHeartbeat,
   buildHello,
   ERROR_CODES,
@@ -73,6 +76,11 @@ export interface AgentRuntimeDeps {
   getUpgradeState: () => string;
   createDispatcher: (sender: CommandSender, deps: CommandDeps) => CommandDispatcher;
   createRealDeps: () => CommandDeps;
+  createEventBridge: (deps: {
+    subscribe: (subscriber: (event: UpgradeEvent) => void) => () => void;
+    send: (event: UpgradeEvent) => void;
+  }) => { attach(): void; detach(): void; isAttached(): boolean };
+  subscribeUpgrade: (subscriber: (event: UpgradeEvent) => void) => () => void;
   heartbeatMs: () => number;
   logger: (level: string, msg: string) => void;
 }
@@ -84,6 +92,8 @@ const DEFAULT_DEPS: AgentRuntimeDeps = {
   getUpgradeState: getState,
   createDispatcher: createCommandDispatcher,
   createRealDeps: createRealCommandDeps,
+  createEventBridge: createUpgradeEventBridge,
+  subscribeUpgrade: subscribe,
   heartbeatMs: heartbeatIntervalMs,
   logger: (_level, message) => console.log(message),
 };
@@ -139,6 +149,18 @@ export function createAgentRuntime(overrides: Partial<AgentRuntimeDeps> = {}): A
     }
   };
 
+  let eventTarget: AgentWebSocket | null = null;
+  const eventBridge = deps.createEventBridge({
+    subscribe: deps.subscribeUpgrade,
+    send: (event) => {
+      if (eventTarget !== null) sendEnvelope(eventTarget, buildEvent("upgrade", event));
+    },
+  });
+
+  const setEventSender = (target: AgentWebSocket): void => {
+    eventTarget = target;
+  };
+
   const scheduleReconnect = (): void => {
     if (!active || reconnectTimer !== null) return;
     const delay = backoff.nextDelayMs();
@@ -154,6 +176,8 @@ export function createAgentRuntime(overrides: Partial<AgentRuntimeDeps> = {}): A
     socket = null;
     connecting = false;
     clearHeartbeat();
+    eventBridge.detach();
+    eventTarget = null;
     state = "disconnected";
     log("warn", message);
     scheduleReconnect();
@@ -268,6 +292,8 @@ export function createAgentRuntime(overrides: Partial<AgentRuntimeDeps> = {}): A
             handshakeComplete = true;
             backoff.reset();
             log("info", "Agent: handshake complete");
+            setEventSender(target);
+            eventBridge.attach();
             startHeartbeat(target);
           } else {
             disconnectAndClose(target, "Agent: disconnected before hello_ack");
@@ -339,6 +365,8 @@ export function createAgentRuntime(overrides: Partial<AgentRuntimeDeps> = {}): A
         reconnectTimer = null;
       }
       clearHeartbeat();
+      eventBridge.detach();
+      eventTarget = null;
       const currentSocket = socket;
       socket = null;
       if (currentSocket !== null) {

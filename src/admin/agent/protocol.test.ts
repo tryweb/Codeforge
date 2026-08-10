@@ -5,13 +5,16 @@ import {
   PROTOCOL_VERSION,
   buildAck,
   buildError,
+  buildEvent,
   buildHeartbeat,
   buildHello,
   buildHelloAck,
+  buildResult,
   createEnvelope,
   extractTokenFromUrl,
   isHelloAck,
   parseCommandName,
+  parseCommandType,
   parseEnvelope,
 } from "./protocol";
 
@@ -24,6 +27,8 @@ describe("agent protocol", () => {
       ack: "ack",
       command: "command",
       error: "error",
+      result: "result",
+      event: "event",
     });
     expect(ERROR_CODES).toEqual({
       malformed_message: "malformed_message",
@@ -89,6 +94,36 @@ describe("agent protocol", () => {
     expect(helloAck).toMatchObject({ type: "hello_ack", id: "hello-1", payload: {} });
   });
 
+  it("builds a correlated result envelope", () => {
+    const payload = { container_status: "running" };
+
+    const result = buildResult("query-1", payload);
+
+    expect(result).toMatchObject({ type: "result", id: "query-1", payload });
+    expect(Number.isNaN(Date.parse(result.timestamp))).toBe(false);
+  });
+
+  it("builds event envelopes with fresh identifiers", () => {
+    const payload = { step: "download", status: "running" };
+
+    const first = buildEvent("upgrade.progress", payload);
+    const second = buildEvent("upgrade.progress", payload);
+
+    expect(first.type).toBe("event");
+    expect(first.id).toStartWith("agent-msg-");
+    expect(second.id).not.toBe(first.id);
+    expect(first.payload).toEqual({ name: "upgrade.progress", data: payload });
+  });
+
+  it("round-trips a correlated result through JSON", () => {
+    const result = buildResult("query-2", { providers: [] });
+
+    const parsed = parseEnvelope(JSON.stringify(result));
+
+    expect(parsed).toEqual(result);
+    expect(parsed).toMatchObject({ type: "result", id: "query-2", payload: { providers: [] } });
+  });
+
   it("builds hello and heartbeat envelopes", () => {
     const hello = buildHello("agent-7");
     const heartbeatPayload = { uptime_seconds: 42 };
@@ -121,5 +156,27 @@ describe("agent protocol", () => {
     expect(parseCommandName({})).toBeNull();
     expect(parseCommandName(null)).toBeNull();
     expect(parseCommandName("upgrade")).toBeNull();
+  });
+
+  it("parses action and query command types", () => {
+    const commandTypes = [
+      "upgrade",
+      "reconfigure",
+      "restart",
+      "status",
+      "env.get",
+      "projects.list",
+      "providers.list",
+    ];
+
+    for (const commandType of commandTypes) {
+      expect(parseCommandType({ type: commandType })).toBe(commandType);
+    }
+
+    expect(parseCommandType({ type: "delete" })).toBeNull();
+    expect(parseCommandType({ type: "unknown" })).toBeNull();
+    expect(parseCommandType("status")).toBeNull();
+    expect(parseCommandType(["status"])).toBeNull();
+    expect(parseCommandName({ type: "status" })).toBeNull();
   });
 });

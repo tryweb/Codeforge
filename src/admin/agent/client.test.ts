@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, jest, test } from "bun:test";
 import type { StatusResponse } from "../lib/status";
+import type { UpgradeEvent } from "../lib/upgrade";
 import { createAgentRuntime, type AgentRuntime, type AgentRuntimeDeps } from "./client";
 import {
   buildHelloAck,
@@ -72,6 +73,28 @@ const VERSIONS = { "AI-EngKit": "1.2.3" };
 const runtimes: AgentRuntime[] = [];
 let originalRandom: () => number;
 
+interface UpgradeEventSource {
+  readonly subscribe: (subscriber: (event: UpgradeEvent) => void) => () => void;
+  readonly emit: (event: UpgradeEvent) => void;
+  readonly activeCount: () => number;
+}
+
+function createUpgradeEventSource(): UpgradeEventSource {
+  const subscribers = new Set<(event: UpgradeEvent) => void>();
+  return {
+    subscribe: (subscriber) => {
+      subscribers.add(subscriber);
+      return () => {
+        subscribers.delete(subscriber);
+      };
+    },
+    emit: (event) => {
+      for (const subscriber of subscribers) subscriber(event);
+    },
+    activeCount: () => subscribers.size,
+  };
+}
+
 function socketAt(index: number): FakeWebSocket {
   const socket = FakeWebSocket.instances[index];
   if (socket === undefined) throw new RangeError(`Missing fake socket ${index}`);
@@ -103,6 +126,19 @@ function makeRuntime(
       restartContainer: async () => ({ success: true }),
       upsertEnvVar: () => undefined,
       now: () => "2026-08-10T00:00:00.000Z",
+      readStatus: async () => ({
+        container_status: STATUS.container_status,
+        uptime_seconds: STATUS.uptime_seconds,
+        versions: VERSIONS,
+        gh_auth: STATUS.gh_auth,
+        glab_auth: STATUS.glab_auth,
+        admin_version: STATUS.admin_version,
+        admin_version_mismatch: STATUS.admin_version_mismatch,
+        upgrade_state: "idle",
+      }),
+      readEnv: () => ({}),
+      readProjects: async () => ({}),
+      readProviders: async () => ({}),
     }),
     createDispatcher: () => ({
       handle: (env) => handled.push(env),
@@ -228,6 +264,85 @@ describe("agent WebSocket runtime", () => {
     socket.message(command);
 
     expect(handled).toEqual([command]);
+  });
+
+  test("forwards upgrade events after hello_ack and detaches after a terminal event", () => {
+    const source = createUpgradeEventSource();
+    const runtime = makeRuntime([], [], { subscribeUpgrade: source.subscribe });
+    runtime.start({ centerUrl: "ws://center.test/agent", env: {} });
+    const socket = socketAt(0);
+    socket.open();
+    const running: UpgradeEvent = {
+      id: 1,
+      step: "backup",
+      status: "running",
+      message: "Backing up",
+      timestamp: "2026-08-10T00:00:00.000Z",
+    };
+
+    source.emit(running);
+    expect(socket.sent).toHaveLength(1);
+
+    socket.message(buildHelloAck(envelopeAt(socket, 0).id));
+    source.emit(running);
+    expect(envelopeAt(socket, 1)).toMatchObject({
+      type: MESSAGE_TYPES.event,
+      payload: { name: "upgrade", data: running },
+    });
+
+    const terminal: UpgradeEvent = {
+      id: 2,
+      step: "cleanup",
+      status: "success",
+      message: "Upgrade complete",
+      timestamp: "2026-08-10T00:00:01.000Z",
+    };
+    source.emit(terminal);
+
+    expect(envelopeAt(socket, 2)).toMatchObject({
+      type: MESSAGE_TYPES.event,
+      payload: { name: "upgrade", data: terminal },
+    });
+    expect(source.activeCount()).toBe(0);
+  });
+
+  test("reuses one upgrade bridge across reconnect and sends through the current socket", () => {
+    const source = createUpgradeEventSource();
+    const runtime = makeRuntime([], [], { subscribeUpgrade: source.subscribe });
+    runtime.start({ centerUrl: "ws://center.test/agent", env: {} });
+    const first = socketAt(0);
+    first.open();
+    first.message(buildHelloAck(envelopeAt(first, 0).id));
+    expect(source.activeCount()).toBe(1);
+
+    first.closeFromCenter();
+    expect(source.activeCount()).toBe(0);
+    jest.advanceTimersByTime(1_000);
+
+    const second = socketAt(1);
+    second.open();
+    const helloAck = buildHelloAck(envelopeAt(second, 0).id);
+    second.message(helloAck);
+    second.message(helloAck);
+    expect(source.activeCount()).toBe(1);
+
+    const event: UpgradeEvent = {
+      id: 3,
+      step: "recreate",
+      status: "running",
+      message: "Recreating",
+      timestamp: "2026-08-10T00:00:02.000Z",
+    };
+    source.emit(event);
+
+    expect(first.sent).toHaveLength(1);
+    expect(envelopeAt(second, 1)).toMatchObject({
+      type: MESSAGE_TYPES.event,
+      payload: { name: "upgrade", data: event },
+    });
+
+    runtime.stop();
+    expect(source.activeCount()).toBe(0);
   });
 
   test("reconnects after close and resets backoff only after a successful handshake", () => {

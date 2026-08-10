@@ -12,6 +12,8 @@ export const MESSAGE_TYPES = Object.freeze({
   ack: "ack",
   command: "command",
   error: "error",
+  result: "result",
+  event: "event",
 });
 
 export const ERROR_CODES = Object.freeze({
@@ -22,9 +24,16 @@ export const ERROR_CODES = Object.freeze({
   auth_failed: "auth_failed",
 });
 
+// Result and event are additive message types within protocol version 1.
 export const PROTOCOL_VERSION = 1;
 
 export type CommandName = "upgrade" | "reconfigure" | "restart";
+
+/** Supported read-only query command names. */
+export type QueryName = "status" | "env.get" | "projects.list" | "providers.list";
+
+/** Supported action and query command types. */
+export type CommandType = CommandName | QueryName;
 
 let messageSequence = 0;
 
@@ -91,6 +100,16 @@ export function buildAck(
   return createAcknowledgement(MESSAGE_TYPES.ack, outcome, acknowledgesId);
 }
 
+/** Build a query result correlated to the query command. */
+export function buildResult(acknowledgesId: string, payload: unknown): Envelope {
+  return createAcknowledgement(MESSAGE_TYPES.result, payload, acknowledgesId);
+}
+
+/** Build a fire-and-forget event carrying its name and data in a fresh envelope. */
+export function buildEvent(name: string, payload: unknown): Envelope {
+  return createEnvelope(MESSAGE_TYPES.event, { name, data: payload });
+}
+
 /** Build a hello acknowledgement correlated to the hello message. */
 export function buildHelloAck(acknowledgesId: string): Envelope {
   return createAcknowledgement(MESSAGE_TYPES.hello_ack, {}, acknowledgesId);
@@ -134,6 +153,25 @@ export function parseCommandName(payload: unknown): CommandName | null {
     case "reconfigure":
     case "restart":
       return commandName;
+    default:
+      return null;
+  }
+}
+
+/** Parse a supported action or query command type from an unknown payload. */
+export function parseCommandType(payload: unknown): CommandType | null {
+  if (typeof payload !== "object" || payload === null || Array.isArray(payload)) return null;
+
+  const commandType = Reflect.get(payload, "type");
+  switch (commandType) {
+    case "upgrade":
+    case "reconfigure":
+    case "restart":
+    case "status":
+    case "env.get":
+    case "projects.list":
+    case "providers.list":
+      return commandType;
     default:
       return null;
   }
