@@ -1,14 +1,20 @@
 ## Purpose
 
 Defines command dispatch on the ai-admin agent: parsing and routing of `command` messages from the Center Server to the `upgrade`, `reconfigure`, and `restart` handlers, and the in-memory FIFO deferral queue that holds commands blocked by an in-progress upgrade or a dropped connection.
-
 ## Requirements
 
 > **Container naming.** The agent module operates in the production environment only. Compose services `ai-dev` and `ai-admin` correspond to the production containers `ai-engkit` and `ai-engkit-admin`. The test/dev containers (`ai-engkit-dev`, `ai-engkit-admin-dev`) are used only while developing or testing the module itself; the existing sibling-name convention (`getSiblingDevContainerName`) derives the correct container from the admin container's own name, so a development run targets the dev containers and never production.
 
 ### Requirement: Commands are parsed and routed to handlers
 
-The agent SHALL accept `command` messages from the Center Server and route each to the handler named by the `type` field in the command payload. Action command types are `upgrade`, `reconfigure`, and `restart`; action outcomes SHALL be reported with `ack`. Query command types are `status`, `env.get`, `projects.list`, and `providers.list`; query outcomes SHALL be reported with `result` and SHALL NOT produce an `ack`. Any other command type SHALL be rejected with an `error` using code `unknown_command` and SHALL have no side effects.
+The agent SHALL accept `command` messages from the Center Server and route each
+to the handler named by the `type` field in the command payload. Action command
+types are `upgrade`, `reconfigure`, and `restart`; action outcomes SHALL be
+reported with `ack`. Query command types are `status`, `env.get`,
+`projects.list`, and `providers.list`; query outcomes SHALL be reported with
+`result` and SHALL NOT produce an `ack`. Any other command type SHALL be
+rejected with an `error` using code `unknown_command` and SHALL have no side
+effects.
 
 #### Scenario: Known action command is routed
 - **WHEN** a `command` message whose payload type is `upgrade`, `reconfigure`, or `restart` is received
@@ -119,3 +125,4 @@ A command that cannot execute immediately — because an upgrade is in progress 
 #### Scenario: Queue is lost on process restart
 - **WHEN** the admin process restarts
 - **THEN** any in-memory queued commands are discarded
+
