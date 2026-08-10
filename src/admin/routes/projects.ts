@@ -1,19 +1,24 @@
 import { Hono } from "hono";
-import { execInAiDev, type ExecResult } from "../lib/docker";
+import { execInAiDev } from "../lib/docker";
 import {
   isValidProjectName,
   mergeDisabledProject,
   mergeOpenChamberProject,
   projectId,
-  readDisabledProjects,
 } from "../lib/openchamber-projects";
+import {
+  checkFeature,
+  collectProjectOverviews,
+  listProjects,
+  type ProjectCommand,
+} from "../lib/projects-overview";
 import { createProjectSyncRoutes } from "./project-sync";
 import { ProjectsPage } from "../views/projects";
 
+export type { ProjectCommand };
+
 const FEATURES = ["knowledge", "maintenance", "openspec"] as const;
 type Feature = (typeof FEATURES)[number];
-
-export type ProjectCommand = (command: string, timeoutMs: number) => Promise<ExecResult>;
 
 export interface ProjectRoutesOptions {
   command?: ProjectCommand;
@@ -35,54 +40,20 @@ export function createProjectRoutes(options: ProjectRoutesOptions = {}) {
   const projects = new Hono();
   const projectDir = (name: string) => JSON.stringify(`${workspaceRoot}/${name}`);
 
-  async function listProjects(): Promise<string[]> {
-    const root = JSON.stringify(`${workspaceRoot}/`);
-    const result = await command(`find ${root} -maxdepth 1 -type d ! -path ${root} ! -name '.*' -exec basename {} \\; 2>/dev/null || true`, 10_000);
-    if (result.exitCode !== 0 || !result.stdout) return [];
-    return result.stdout.split("\n").filter(Boolean);
-  }
-
-  async function checkFeature(name: string, markerCmd: string): Promise<boolean> {
-    const r = await command(
-      `test -e ${projectDir(name)}/${markerCmd} && echo yes`,
-      5_000,
-    );
-    return r.stdout.trim() === "yes";
-  }
-
   projects.get("/api/projects", async (c) => {
-    const list = await listProjects();
+    const list = await listProjects(command, workspaceRoot);
     return c.json(list);
   });
 
   projects.get("/api/projects/overview", async (c) => {
-    const names = await listProjects();
-    const disabled = new Set(await readDisabledProjects(command, disabledPath));
-    const results = await Promise.allSettled(names.map(async (name) => {
-      const [feats, gitRemote] = await Promise.all([
-        Promise.all([
-          checkFeature(name, "docs/knowledge/README.md"),
-          checkFeature(name, "docs/knowledge/maintenance/README.md"),
-          checkFeature(name, "openspec"),
-        ]).then(([knowledge, maintenance, openspec]) => ({ knowledge, maintenance, openspec })),
-        command(`cd ${projectDir(name)} && git remote get-url origin 2>/dev/null || true`, 10_000),
-      ]);
-      return {
-        name,
-        features: feats,
-        remote: gitRemote.stdout.trim() || null,
-        disabled: disabled.has(name),
-      };
-    }));
+    const overviews = await collectProjectOverviews(command, workspaceRoot, settingsPath, disabledPath);
     const data: Record<string, { features: { knowledge: boolean; maintenance: boolean; openspec: boolean }; remote: string | null; disabled: boolean }> = {};
-    for (const r of results) {
-      if (r.status === "fulfilled") {
-        data[r.value.name] = {
-          features: r.value.features,
-          remote: r.value.remote,
-          disabled: r.value.disabled,
-        };
-      }
+    for (const overview of overviews) {
+      data[overview.name] = {
+        features: overview.features,
+        remote: overview.remote,
+        disabled: overview.disabled,
+      };
     }
     return c.json(data);
   });
@@ -96,9 +67,9 @@ export function createProjectRoutes(options: ProjectRoutesOptions = {}) {
     if (exists.stdout.trim() !== "yes") return c.json({ error: "Project not found" }, 404);
 
     const [knowledge, maintenance, openspec] = await Promise.all([
-      checkFeature(name, "docs/knowledge/README.md"),
-      checkFeature(name, "docs/knowledge/maintenance/README.md"),
-      checkFeature(name, "openspec"),
+      checkFeature(command, workspaceRoot, name, "docs/knowledge/README.md"),
+      checkFeature(command, workspaceRoot, name, "docs/knowledge/maintenance/README.md"),
+      checkFeature(command, workspaceRoot, name, "openspec"),
     ]);
     return c.json({ knowledge, maintenance, openspec });
   });
@@ -271,7 +242,7 @@ export function createProjectRoutes(options: ProjectRoutesOptions = {}) {
     return c.json({ ok: true });
   });
 
-  projects.route("/", createProjectSyncRoutes({ command, settingsPath, disabledPath, workspaceRoot, listProjects }));
+  projects.route("/", createProjectSyncRoutes({ command, settingsPath, disabledPath, workspaceRoot, listProjects: () => listProjects(command, workspaceRoot) }));
 
   projects.post("/api/projects/:name/disable", async (c) => {
     const name = c.req.param("name");
@@ -328,7 +299,7 @@ export function createProjectRoutes(options: ProjectRoutesOptions = {}) {
   });
 
   projects.get("/projects", async (c) => {
-    const list = await listProjects();
+    const list = await listProjects(command, workspaceRoot);
     return c.html(ProjectsPage(list));
   });
 
