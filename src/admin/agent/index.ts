@@ -1,3 +1,4 @@
+import { readEnvFile } from "../lib/env";
 import { createAgentRuntime } from "./client";
 import type { AgentConnectionState, AgentRuntime } from "./client";
 
@@ -39,6 +40,18 @@ export function stopAgent(): void {
   runtime.stop();
   started = false;
   stopped = true;
+}
+
+/**
+ * Restart the singleton agent runtime with the current env-file configuration.
+ * Merges /opt/ai-engkit/.env over process.env so vars edited in the admin UI
+ * (CENTER_URL, AGENT_ID, mTLS paths, token) take effect without a container restart.
+ */
+export function reloadAgent(): AgentStatus {
+  const mergedEnv: Record<string, string | undefined> = { ...process.env, ...readEnvFile() };
+  stopAgent();
+  startAgent({ env: mergedEnv });
+  return getAgentStatus();
 }
 
 /** Return the current singleton agent status. */
