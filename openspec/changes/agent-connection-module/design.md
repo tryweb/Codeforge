@@ -25,13 +25,17 @@ Rationale:
 **Decision:** All messages between agent and center use a JSON envelope:
 
 ```typescript
-interface AgentMessage {
-  type: "heartbeat" | "command" | "ack" | "error";
+interface Envelope {
+  type: string;
   payload: unknown;
   id: string;
   timestamp: string;
 }
 ```
+
+The allowed `type` values are defined by the `center-protocol` Message catalog.
+Later protocol changes may extend that catalog additively; transport code SHALL
+not maintain a second hard-coded list of message types.
 
 Rationale:
 - Simple to implement and debug
@@ -94,23 +98,39 @@ Rationale:
 | Command execution during upgrade | Queue commands during upgrade, execute after completion |
 | Certificate rotation | Agent reads cert files at connect time, not at startup — supports hot-reload |
 
-### D6: Command types
+### D6: Action command types
 
-**Decision:** Support three command types:
+**Decision:** Support three action command types. Payloads name the compose services
+`ai-dev` / `ai-admin`; the agent resolves them to production containers via the
+D9 convention (dev-safe in development runs).
 
 | Command | Handler | Description |
 |---------|---------|-------------|
 | `upgrade` | `runUpgrade()` | Pull latest image, recreate ai-dev |
-| `reconfigure` | env write + restart | Update .env, restart affected container |
-| `restart` | `docker restart` | Restart specified container |
+| `reconfigure` | env write + restart | Update `.env`, restart the ai-dev container |
+| `restart` | `docker restart` | Restart the container named in the payload (`ai-dev` or `ai-admin`) |
 
 Rationale:
 - Reuses existing functions from `upgrade.ts` and `env.ts`
-- restart uses response-first pattern to avoid connection drop (see `src/admin/routes/admin.ts`)
+- Self-restart (`ai-admin`) sends its `ack` before restarting — response-first
+  pattern — so the outcome is not lost when the connection drops (see
+  `src/admin/routes/admin.ts`)
+- The `agent-command` spec is the authoritative command semantics
 
-### D7: Offline command queue
+### D7: Command deferral and offline queues
 
-**Decision:** Commands received while disconnected are buffered in memory and executed on reconnect.
+**Decision:** Command deferral has two tiers; a disconnected agent can never
+"receive while disconnected", so the agent-side queue only holds commands that
+were received but could not execute yet.
+
+1. **Agent-side deferral queue** — a command received while an upgrade is in
+   progress (or otherwise not immediately executable) is held in an in-memory
+   FIFO queue and executed once the blocking condition clears. Queued commands
+   survive a brief disconnection and execute after reconnect; the queue is lost
+   on process restart.
+2. **Center-side queue** — the Center Server may queue commands for an agent
+   with no live connection and flush them only after the agent's `hello_ack`
+   (see `center-protocol` spec).
 
 ```typescript
 interface QueuedCommand {
@@ -122,9 +142,9 @@ interface QueuedCommand {
 ```
 
 Rationale:
-- Ensures commands aren't lost during brief disconnections
+- Ensures commands aren't lost during an in-progress upgrade or a brief disconnection
 - In-memory queue (not persistent) — acceptable for admin dashboard use case
-- Queue drained in FIFO order after successful reconnect
+- Queue drained in FIFO order once the blocking condition clears
 
 ### D8: Status report payload
 
@@ -146,3 +166,30 @@ interface StatusReport {
 Rationale:
 - Reuses fields from existing `/api/status` endpoint
 - `admin_version_mismatch` enables Center Server to trigger restart
+
+### D9: Container naming convention
+
+**Decision:** The agent module operates in the production environment only. Compose service names `ai-dev` and `ai-admin` correspond to the production containers `ai-engkit` and `ai-engkit-admin`:
+
+| Compose service | Production container |
+|-----------------|----------------------|
+| `ai-dev` | `ai-engkit` |
+| `ai-admin` | `ai-engkit-admin` |
+
+The test/dev containers (`ai-engkit-dev`, `ai-engkit-admin-dev`) are used only while developing or testing the module itself. The agent resolves the target container from its own container name via the existing `getSiblingDevContainerName()` convention in `src/admin/lib/docker.ts`, so a development run in the test environment targets the dev containers and can never touch production.
+
+Rationale:
+- `ai-admin` and `ai-engkit-admin` are easily confused; pinning the mapping avoids targeting the wrong container
+- Sibling resolution is free safety: a dev-phase run automatically targets `ai-engkit-dev`/`ai-engkit-admin-dev` instead of production
+
+### D10: Agent registration flow
+
+**Decision:** Registration is token-based and happens at connection time, in two steps:
+
+1. **Authenticated handshake** — the agent connects to the Center URL carrying its registration token. The token is embedded in `CENTER_URL` (e.g., `wss://center.example.com/ws?token=<token>`) or, when not embedded, taken from `CENTER_TOKEN`. The Center Server validates the token during the WebSocket upgrade; a valid token establishes the registered, authenticated channel.
+2. **Hello handshake** — immediately after connect, the agent sends `hello` with `agent_id` (from `AGENT_ID`, falling back to the container hostname) and `protocol_version` (`1`). The Center Server replies `hello_ack`; only then does heartbeat/command traffic begin.
+
+Rationale:
+- A single URL input with an embedded token matches the operator workflow — one value to enter to register an agent
+- The hello handshake decouples authentication (token, at handshake) from identification (`agent_id`, in-band)
+- `AGENT_ID` keeps fleet identity stable across container recreations; the hostname fallback is for development

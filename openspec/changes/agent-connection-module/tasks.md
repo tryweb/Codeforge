@@ -16,7 +16,7 @@
 - [ ] 3.2 Implement "upgrade" command handler (calls existing `runUpgrade()`)
 - [ ] 3.3 Implement "reconfigure" command handler (calls env write + restart)
 - [ ] 3.4 Implement "restart" command handler (calls docker restart)
-- [ ] 3.5 Implement offline command queue (buffer commands while disconnected, execute on reconnect)
+- [ ] 3.5 Implement command deferral queue (hold commands blocked by an in-progress upgrade; retain across brief disconnects; execute in FIFO order once clear)
 
 ## 4. Security (Capability: agent-security)
 
@@ -27,5 +27,12 @@
 ## 5. Integration
 
 - [ ] 5.1 Wire agent module into server startup (start after HTTP server)
-- [ ] 5.2 Add `CENTER_URL` + cert vars to `.env.example` and env schema
+- [ ] 5.2 Add `CENTER_URL`, `AGENT_ID`, `CENTER_TOKEN` + cert vars to `.env.example` and env schema
 - [ ] 5.3 Add agent status to `/api/status` response
+
+## 6. Protocol (Capability: center-protocol)
+
+- [ ] 6.1 Extract registration token from `CENTER_URL` (query param) or `CENTER_TOKEN` and present it during the WebSocket handshake
+- [ ] 6.2 Implement `hello`/`hello_ack` handshake (agent_id from `AGENT_ID`, fallback container hostname; `protocol_version` = 1)
+- [ ] 6.3 Correlate `ack`/`error` by envelope id, preserving the id through the agent-side deferral queue
+- [ ] 6.4 Implement command outcome acks (`status`/`message`/`started_at`/`finished_at`) and the reserved error codes
