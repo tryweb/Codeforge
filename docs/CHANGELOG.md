@@ -1,6 +1,41 @@
 ## [Unreleased]
 
 
+## [1.13.0] - 2026-08-10
+
+### Added
+- Add agent settings page, API, and env-file reload
+- Apply URL-bootstrapped CA to the agent WebSocket
+- Extract CA certificate from center registration URL
+- Add query and event channels to agent protocol
+- Add outbound agent connection module
+- Add upgrade event lifecycle bridge
+- Exclude disabled projects from sync
+- Add disable/enable toggle to projects page
+- Add project disable/enable API
+
+### Fixed
+- Point ai-admin at updated image in dependency-update CI
+- Declare shared ai-dev image and order ai-admin after it
+- Skip disabled projects in boot reconcile
+
+### Documentation
+- Capture OMO v5 upgrade impact pattern
+- Add agent-center protocol specification
+- Document CA-in-URL agent connection bootstrap
+- Archive center-query-protocol change
+- Sync center-query-protocol delta specs to main specs
+- Archive agent-connection-module change
+- Sync agent-connection-module delta specs to main specs
+- Add center-query-protocol change proposal
+- Revise agent-connection-module planning artifacts
+- Capture disable/enable, JSX test-run, and typecheck-gap knowledge
+
+### Changed
+- Delegate routes to shared lib modules
+- Extract shared read paths with tests
+- Extract env redaction helper with tests
+
 ## [1.12.1] - 2026-08-09
 
 ### Added
@@ -1185,7 +1220,7 @@
 
 ## Format
 
-[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.12.1...HEAD
+[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.13.0...HEAD
 [0.3.0]: https://github.com/tryweb/ai-engkit/releases/tag/v0.3.0
 [0.3.3]: https://github.com/tryweb/ai-engkit/compare/v0.3.0...v0.3.3
 [0.5.0]: https://github.com/tryweb/ai-engkit/compare/v0.3.3...v0.5.0
@@ -1310,3 +1345,4 @@
 [1.11.8]: https://github.com/tryweb/ai-engkit/compare/v1.11.7...v1.11.8
 [1.12.0]: https://github.com/tryweb/ai-engkit/compare/v1.11.8...v1.12.0
 [1.12.1]: https://github.com/tryweb/ai-engkit/compare/v1.12.0...v1.12.1
+[1.13.0]: https://github.com/tryweb/ai-engkit/compare/v1.12.1...v1.13.0
