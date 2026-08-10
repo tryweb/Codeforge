@@ -11,6 +11,7 @@ import {
   buildHelloAck,
   buildResult,
   createEnvelope,
+  extractCaFromUrl,
   extractTokenFromUrl,
   isHelloAck,
   parseCommandName,
@@ -141,6 +142,22 @@ describe("agent protocol", () => {
     expect(extractTokenFromUrl("wss://center.example.com/ws?token=abc")).toBe("abc");
     expect(extractTokenFromUrl("wss://center.example.com/ws")).toBeNull();
     expect(extractTokenFromUrl("not a url")).toBeNull();
+  });
+
+  it("extracts a base64url-encoded PEM CA from the registration URL", () => {
+    const pem = "-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----";
+    const encoded = Buffer.from(pem, "utf-8").toString("base64url");
+
+    expect(extractCaFromUrl(`wss://center.example.com/ws?token=t&ca=${encoded}`)).toBe(pem);
+    expect(extractCaFromUrl("wss://center.example.com/ws?token=t")).toBeNull();
+    expect(extractCaFromUrl("wss://center.example.com/ws")).toBeNull();
+    expect(extractCaFromUrl("not a url")).toBeNull();
+  });
+
+  it("returns null when the ca parameter is not a PEM certificate", () => {
+    const notPem = Buffer.from("just some text", "utf-8").toString("base64url");
+
+    expect(extractCaFromUrl(`wss://center.example.com/ws?ca=${notPem}`)).toBeNull();
   });
 
   it("recognizes hello acknowledgements", () => {

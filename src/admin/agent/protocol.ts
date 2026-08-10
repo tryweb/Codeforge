@@ -138,6 +138,31 @@ export function extractTokenFromUrl(url: string): string | null {
   }
 }
 
+/**
+ * Extract a CA certificate bootstrapped from a center WebSocket URL.
+ * The center embeds the PEM certificate base64url-encoded in the `ca` query
+ * parameter, so a single registration URL carries both token and trust anchor.
+ * Returns null when the parameter is absent or cannot be decoded to PEM.
+ */
+export function extractCaFromUrl(url: string): string | null {
+  let encoded: string | null;
+  try {
+    encoded = new URL(url).searchParams.get("ca");
+  } catch (error: unknown) {
+    if (error instanceof TypeError) return null;
+    throw error;
+  }
+  if (encoded === null || encoded === "") return null;
+
+  try {
+    const pem = Buffer.from(encoded, "base64url").toString("utf-8");
+    if (!pem.includes("BEGIN CERTIFICATE") || !pem.includes("END CERTIFICATE")) return null;
+    return pem;
+  } catch {
+    return null;
+  }
+}
+
 /** Return whether an envelope acknowledges an agent hello. */
 export function isHelloAck(env: Envelope): boolean {
   return env.type === MESSAGE_TYPES.hello_ack;
