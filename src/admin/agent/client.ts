@@ -23,6 +23,7 @@ import {
   buildHeartbeat,
   buildHello,
   ERROR_CODES,
+  extractCaFromUrl,
   isHelloAck,
   MESSAGE_TYPES,
   parseEnvelope,
@@ -32,9 +33,9 @@ import { readTlsFiles, resolveTlsConfig } from "./tls";
 
 // allow: SIZE_OK — the required single-file WebSocket lifecycle is one cohesive state machine.
 interface AgentWebSocketTlsOptions {
-  ca: string;
-  cert: string;
-  key: string;
+  ca?: string;
+  cert?: string;
+  key?: string;
 }
 
 interface AgentWebSocketOptions {
@@ -241,10 +242,12 @@ export function createAgentRuntime(overrides: Partial<AgentRuntimeDeps> = {}): A
       if (registrationToken !== null) {
         redactedUrl.searchParams.set("token", redactTokenForLogging(registrationToken));
       }
+      redactedUrl.searchParams.delete("ca");
 
-      const tlsConfig = resolveTlsConfig(configuredEnv);
-      if (tlsConfig.configured) {
-        const tls = await readTlsFiles(tlsConfig);
+      const tlsEnv = resolveTlsConfig(configuredEnv);
+      const tlsFromUrl = extractCaFromUrl(url.toString());
+      if (tlsEnv.configured) {
+        const tls = await readTlsFiles(tlsEnv);
         if (tls.ca === null || tls.clientCert === null || tls.clientKey === null) {
           throw new TypeError("Configured TLS files could not be read");
         }
@@ -254,6 +257,14 @@ export function createAgentRuntime(overrides: Partial<AgentRuntimeDeps> = {}): A
         }
         attemptSocket = new deps.WebSocketCtor(url.toString(), undefined, {
           tls: { ca: tls.ca, cert: tls.clientCert, key: tls.clientKey },
+        });
+      } else if (tlsFromUrl !== null) {
+        if (!active) {
+          connecting = false;
+          return;
+        }
+        attemptSocket = new deps.WebSocketCtor(url.toString(), undefined, {
+          tls: { ca: tlsFromUrl },
         });
       } else {
         attemptSocket = new deps.WebSocketCtor(url.toString());

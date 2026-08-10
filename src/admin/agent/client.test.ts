@@ -200,6 +200,23 @@ describe("agent WebSocket runtime", () => {
     expect(socketAt(0).url).toBe("ws://center.test/agent?token=from-env");
   });
 
+  test("passes a URL-bootstrapped CA to the socket and redacts it from logs", () => {
+    const logs: string[] = [];
+    const runtime = makeRuntime(logs);
+    const pem = "-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----";
+    const encoded = Buffer.from(pem, "utf-8").toString("base64url");
+
+    runtime.start({
+      centerUrl: `ws://center.test/agent?token=abc&ca=${encoded}`,
+      env: {},
+    });
+    const socket = socketAt(0);
+    socket.open();
+
+    expect(socket.options).toEqual({ tls: { ca: pem } });
+    expect(logs.some((message) => message.includes(pem))).toBe(false);
+  });
+
   test("sends hello with the configured agent identity on open", () => {
     const runtime = makeRuntime([]);
     runtime.start({ centerUrl: "ws://center.test/agent", env: { AGENT_ID: "agent-7" } });
