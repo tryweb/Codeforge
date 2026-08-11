@@ -1,13 +1,13 @@
 /**
  * Provider API key registry — per-provider key lists plus the active selection.
- * Stored in /opt/ai-engkit/provider-state/provider-keys.json (directory-mounted
+ * Stored in /opt/ai-engkit/admin-data/provider-keys.json (directory-mounted
  * in production, the admin-data-dev named volume in dev), deliberately NOT in .env: keys must
  * not leak via `docker inspect` and env changes cannot apply in dev/DooD mode.
  */
 import { readFileSync, writeFileSync, renameSync, existsSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 
-export const KEYS_PATH = "/opt/ai-engkit/provider-state/provider-keys.json";
+export const KEYS_PATH = "/opt/ai-engkit/admin-data/provider-keys.json";
 
 function providerKeysPath(): string {
   return Bun.env.PROVIDER_KEYS_PATH || KEYS_PATH;

@@ -2,6 +2,7 @@ import { execInAiDev, composeCommand, dockerCommand, getAiDevContainerRef, getCo
 import { readFileSync, writeFileSync, existsSync, mkdirSync, cpSync, rmSync, statSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { readEnvFile, writeEnvFile, type EnvVars } from "./env";
+import { KEYS_PATH } from "./provider-keys";
 
 const BACKUP_DIR = "/opt/ai-engkit/backups";
 const COMPOSE_FILE = "/opt/ai-engkit/compose.yml";
@@ -192,6 +193,9 @@ export async function runUpgrade(): Promise<boolean> {
         const st = statSync(COMPOSE_FILE);
         if (!st.isDirectory()) cpSync(COMPOSE_FILE, join(backupPath, "compose.yml"));
       } catch {}
+    }
+    if (existsSync(KEYS_PATH)) {
+      cpSync(KEYS_PATH, join(backupPath, "provider-keys.json"));
     }
     const backupNotes: string[] = [];
     // Snapshot the registration list while the old image still runs; the new
