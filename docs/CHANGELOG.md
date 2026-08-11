@@ -1,6 +1,17 @@
 ## [Unreleased]
 
 
+## [1.13.1] - 2026-08-11
+
+### Added
+- Expose split agent credentials in settings
+- Split agent registration credentials
+- Bump OpenCode 1.18.15 → 1.18.16, OpenChamber 1.18.1 → 1.18.2
+
+### Changed
+- Upgrade OpenCode from 1.18.15 to 1.18.16.
+- Upgrade OpenChamber from 1.18.1 to 1.18.2.
+
 ## [1.13.0] - 2026-08-10
 
 ### Added
@@ -1220,7 +1231,7 @@
 
 ## Format
 
-[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.13.0...HEAD
+[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.13.1...HEAD
 [0.3.0]: https://github.com/tryweb/ai-engkit/releases/tag/v0.3.0
 [0.3.3]: https://github.com/tryweb/ai-engkit/compare/v0.3.0...v0.3.3
 [0.5.0]: https://github.com/tryweb/ai-engkit/compare/v0.3.3...v0.5.0
@@ -1346,3 +1357,4 @@
 [1.12.0]: https://github.com/tryweb/ai-engkit/compare/v1.11.8...v1.12.0
 [1.12.1]: https://github.com/tryweb/ai-engkit/compare/v1.12.0...v1.12.1
 [1.13.0]: https://github.com/tryweb/ai-engkit/compare/v1.12.1...v1.13.0
+[1.13.1]: https://github.com/tryweb/ai-engkit/compare/v1.13.0...v1.13.1
