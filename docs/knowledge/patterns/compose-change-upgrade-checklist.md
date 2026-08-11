@@ -9,7 +9,7 @@ ai-engkit has **two independent upgrade paths** that must be checked separately 
 | `upgrade.sh` | host shell (`curl \| bash` or `./upgrade.sh`) | **all services** (`docker compose up -d --force-recreate`) | resolved against the host install dir (script `cd`s there) |
 | Admin UI upgrade (`src/admin/lib/upgrade.ts` `runUpgrade()`) | inside the `ai-admin` container via `/var/run/docker.sock` | **only `ai-dev`** (`up -d --force-recreate ai-dev`) | **not applied** — `ai-admin` is never recreated |
 
-Adding a new **directory bind mount** (e.g. `./provider-state:/opt/ai-engkit/provider-state:rw`) to a service therefore has different blast radius per path.
+Adding a new **directory bind mount** (e.g. `./admin-data:/opt/ai-engkit/admin-data:rw`) to a service therefore has different blast radius per path.
 
 ## Problem
 
@@ -32,27 +32,30 @@ Whenever a compose change adds a host-file bind mount, cover **all** paths that 
 
 ```bash
 ensure_provider_state() {
-    mkdir -p provider-state
+    mkdir -p admin-data
     if [ -d provider-state/provider-keys.json ]; then
         mv provider-state/provider-keys.json provider-state/provider-keys.json.legacy.<timestamp>
     fi
-    if [ -f provider-keys.json ] && [ ! -e provider-state/provider-keys.json ]; then
-        mv provider-keys.json provider-state/provider-keys.json
+    if [ -f provider-state/provider-keys.json ] && [ ! -e admin-data/provider-keys.json ]; then
+        mv provider-state/provider-keys.json admin-data/provider-keys.json
+    fi
+    if [ -f provider-keys.json ] && [ ! -e admin-data/provider-keys.json ]; then
+        mv provider-keys.json admin-data/provider-keys.json
     elif [ -d provider-keys.json ]; then
         mv provider-keys.json provider-keys.json.legacy.<timestamp>
     fi
-    if [ ! -f provider-state/provider-keys.json ]; then
-        printf '{"providers":{}}\n' > provider-state/provider-keys.json
+    if [ ! -f admin-data/provider-keys.json ]; then
+        printf '{"providers":{}}\n' > admin-data/provider-keys.json
     fi
-    chown 1000:1000 provider-state provider-state/provider-keys.json 2>/dev/null || true
-    chmod 700 provider-state
-    chmod 600 provider-state/provider-keys.json
+    chown 1000:1000 admin-data admin-data/provider-keys.json 2>/dev/null || true
+    chmod 700 admin-data
+    chmod 600 admin-data/provider-keys.json
 }
 ```
 
-2. **entrypoint.d/00-fix-perms.sh** — use `fix_perms /opt/ai-engkit/provider-state` so the mounted directory and its file are writable by `devuser`.
+2. **entrypoint.d/00-fix-perms.sh** — use `fix_perms /opt/ai-engkit/admin-data` so the mounted directory and its file are writable by `devuser`.
 
-3. **Write side** — retain temp-file plus rename, with `KEYS_PATH` set to `/opt/ai-engkit/provider-state/provider-keys.json`; the rename now occurs inside the directory mount.
+3. **Write side** — retain temp-file plus rename, with `KEYS_PATH` set to `/opt/ai-engkit/admin-data/provider-keys.json`; the rename now occurs inside the directory mount.
 
 4. **Admin UI path** — no script change needed while `runUpgrade()` only recreates `ai-dev` (the mount lives on `ai-admin`). If a future change recreates `ai-admin`, add the same ensure step before the compose command in `runUpgrade()`.
 
@@ -78,10 +81,10 @@ ensure_provider_state() {
 
 ## Related Files
 
-- `docker-compose.yml` — `./provider-state:/opt/ai-engkit/provider-state:rw` on `ai-admin`
+- `docker-compose.yml` — `./admin-data:/opt/ai-engkit/admin-data:rw` on `ai-admin`
 - `install.sh` / `upgrade.sh` — `ensure_provider_state()` in `prepare_volumes()`
-- `entrypoint.d/00-fix-perms.sh` — `fix_perms /opt/ai-engkit/provider-state`
-- `src/admin/lib/provider-keys.ts` — `KEYS_PATH` under the provider-state directory
+- `entrypoint.d/00-fix-perms.sh` — `fix_perms /opt/ai-engkit/admin-data`
+- `src/admin/lib/provider-keys.ts` — `KEYS_PATH` under the admin-data directory
 - `src/admin/lib/upgrade.ts` — admin UI upgrade path (recreate ai-dev only)
 - `docs/knowledge/troubleshooting/dood-bindmount-admin-override.md` — root cause (DooD bind source resolution / auto-created dirs)
 - `docs/knowledge/troubleshooting/bindmount-env-ownership-admin-save.md` — the ownership variant (EACCES)
