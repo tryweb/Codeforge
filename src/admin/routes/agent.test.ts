@@ -85,7 +85,7 @@ describe("applyAgentConfig", () => {
 
     expect(ctx.store.CENTER_URL).toBe("wss://center.example.com/agent");
     expect(ctx.store.CENTER_TOKEN).toBe("secret-token");
-    expect(ctx.store.CENTER_CA_CERT).toBe("/opt/ai-engkit/center-ca.pem");
+    expect(ctx.store.CENTER_CA_CERT).toBe("/opt/ai-engkit/admin-data/center-ca.pem");
     expect(ctx.caFile.content).toBe(pem);
   });
 

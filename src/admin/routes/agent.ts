@@ -6,7 +6,7 @@ import { extractCaFromUrl, extractTokenFromUrl } from "../agent/protocol";
 import { AgentSettingsPage, type AgentSettingsState } from "../views/agent";
 
 const AGENT_KEYS = ["CENTER_URL", "CENTER_TOKEN", "AGENT_ID", "CENTER_CA_CERT"] as const;
-const CENTER_CA_PATH = "/opt/ai-engkit/center-ca.pem";
+const CENTER_CA_PATH = "/opt/ai-engkit/admin-data/center-ca.pem";
 
 export interface AgentConfigInput {
   CENTER_URL?: string;

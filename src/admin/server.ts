@@ -237,7 +237,7 @@ export default {
 // Bun binds the declarative server after module evaluation; defer the agent until the next event-loop turn.
 setTimeout(() => {
   try {
-    startAgent();
+    startAgent({ env: { ...process.env, ...readEnvFile() } });
   } catch (error: unknown) {
     console.error("Agent startup failed:", error instanceof Error ? error.message : String(error));
   }
