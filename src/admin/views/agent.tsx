@@ -16,7 +16,13 @@ const AGENT_FIELDS: Array<{ key: string; secret: boolean; placeholder: string; h
   { key: "CENTER_URL", secret: false, placeholder: "wss://center.example.com/ws?token=...&ca=...", help: "Center registration URL. Token and CA certificate are read from it automatically. Leave empty to disable agent mode." },
   { key: "CENTER_TOKEN", secret: true, placeholder: "", help: "Pre-shared token fallback when the URL carries no token." },
   { key: "AGENT_ID", secret: false, placeholder: "(container hostname)", help: "Agent identifier reported in the hello handshake." },
+  { key: "CENTER_CA_CERT", secret: false, placeholder: "/opt/ai-engkit/center-ca.pem", help: "CA certificate path. When a registration URL includes CA data, it is extracted and stored here automatically." },
 ];
+
+function formatAgentError(state: AgentSettingsState["state"], error: string | null): string {
+  if (error === null) return "";
+  return `${state === "connected" ? "Previous connection error (resolved)" : "Last error"}: ${error}`;
+}
 
 const AgentSettingsContent: FC<AgentSettingsProps> = ({ status, env }) => (
   <div>
@@ -29,7 +35,7 @@ const AgentSettingsContent: FC<AgentSettingsProps> = ({ status, env }) => (
       <h3 style="margin-bottom:12px;">Connection Status</h3>
       <div class="flex" style="gap:24px;align-items:center;flex-wrap:wrap;">
         <span id="agent-state-badge" class={`badge ${status.state === "connected" ? "badge-success" : status.state === "disabled" ? "" : "badge-warning"}`}>{status.state}</span>
-        <span id="agent-last-error" class="text-sm text-muted">{status.last_error ? `Last error: ${status.last_error}` : ""}</span>
+        <span id="agent-last-error" class="text-sm text-muted">{formatAgentError(status.state, status.last_error)}</span>
         <button class="btn-outline" style="padding:4px 10px;font-size:0.75rem;margin-left:auto;" onclick="refreshStatus()">↻ Refresh</button>
       </div>
       <p class="text-sm text-muted" style="margin-top:12px;">
@@ -50,7 +56,7 @@ const AgentSettingsContent: FC<AgentSettingsProps> = ({ status, env }) => (
             <label for={fieldId}>{field.key}</label>
             <div class="flex" style="gap:4px;align-items:center;">
               <input type={field.secret ? "password" : "text"} id={fieldId} value={value} placeholder={field.placeholder} autocomplete={field.secret ? "new-password" : "off"} style="flex:1;" />
-              {field.secret && value !== "" && <button type="button" class="btn-outline" style="padding:4px 10px;font-size:0.75rem;" onclick={`toggleSecret('${field.key}')`}>Show</button>}
+              {field.secret && <button type="button" class="btn-outline" style="padding:4px 10px;font-size:0.75rem;" onclick={`toggleSecret('${field.key}')`} disabled={value === ""}>Show</button>}
             </div>
             <div class="text-sm text-muted" style="margin-top:4px;">{field.help}</div>
           </div>
@@ -75,12 +81,27 @@ const AgentSettingsContent: FC<AgentSettingsProps> = ({ status, env }) => (
         badge.className = "badge" + (state === "connected" ? " badge-success" : state === "disabled" ? "" : " badge-warning");
       }
 
+      function setError(state, error) {
+        document.getElementById("agent-last-error").textContent = error
+          ? (state === "connected" ? "Previous connection error (resolved): " : "Last error: ") + error
+          : "";
+      }
+
+      function setConfig(config) {
+        Object.keys(config || {}).forEach(function (key) {
+          const input = document.getElementById("ag-" + key);
+          if (input) input.value = config[key] || "";
+          const toggle = input && input.parentElement.querySelector("button");
+          if (toggle) toggle.disabled = !input.value;
+        });
+      }
+
       async function refreshStatus() {
         try {
           const res = await fetch("/api/agent/status");
           const data = await res.json();
           setBadge(data.state);
-          document.getElementById("agent-last-error").textContent = data.last_error ? "Last error: " + data.last_error : "";
+          setError(data.state, data.last_error);
         } catch (e) {
           document.getElementById("agent-last-error").textContent = "Status refresh failed: " + e.message;
         }
@@ -105,8 +126,9 @@ const AgentSettingsContent: FC<AgentSettingsProps> = ({ status, env }) => (
           const data = await res.json();
           if (res.ok) {
             status.textContent = "Saved — agent " + data.agent_status.state + " ✔";
+            setConfig(data.agent_config);
             setBadge(data.agent_status.state);
-            document.getElementById("agent-last-error").textContent = data.agent_status.last_error ? "Last error: " + data.agent_status.last_error : "";
+            setError(data.agent_status.state, data.agent_status.last_error);
           } else {
             status.textContent = "Error: " + (data.error || "unknown");
           }
