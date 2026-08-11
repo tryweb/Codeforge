@@ -39,7 +39,7 @@ services:
     volumes:
       - ./.env:/opt/ai-engkit/.env:rw
       - ./docker-compose.yml:/opt/ai-engkit/compose.yml:rw
-      - ./provider-state:/opt/ai-engkit/provider-state:rw
+      - ./admin-data:/opt/ai-engkit/admin-data:rw
       - ./backups:/opt/ai-engkit/backups:rw
       - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:

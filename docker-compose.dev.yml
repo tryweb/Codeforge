@@ -51,11 +51,12 @@ services:
         mkdir -p /opt/ai-engkit/backups
         [ -f /opt/ai-engkit/VERSION ] || echo dev > /opt/ai-engkit/VERSION
         [ -f /opt/ai-engkit/.env ] || env | grep -v -E '^(HOME|PATH|BUN_|NODE_|npm_|HOSTNAME|PWD|SHLVL|TERM|TZ|LS_COLORS|LESS[ _]|PAGER|EDITOR|LC_|LANG|SHELL|USER|SUDO_|TMPDIR|OLDPWD|_|LOGNAME|PLAYWRIGHT_|DEBIAN_|CLAUDE_)' > /opt/ai-engkit/.env
-        mkdir -p /opt/ai-engkit/provider-state
+        mkdir -p /opt/ai-engkit/admin-data
         if [ -d /opt/ai-engkit/provider-state/provider-keys.json ]; then mv /opt/ai-engkit/provider-state/provider-keys.json /opt/ai-engkit/provider-state/provider-keys.json.legacy.$$(date +%s); fi
-        if [ -f /opt/ai-engkit/provider-keys.json ] && [ ! -e /opt/ai-engkit/provider-state/provider-keys.json ]; then mv /opt/ai-engkit/provider-keys.json /opt/ai-engkit/provider-state/provider-keys.json; fi
+        if [ -f /opt/ai-engkit/provider-state/provider-keys.json ] && [ ! -e /opt/ai-engkit/admin-data/provider-keys.json ]; then mv /opt/ai-engkit/provider-state/provider-keys.json /opt/ai-engkit/admin-data/provider-keys.json; fi
+        if [ -f /opt/ai-engkit/provider-keys.json ] && [ ! -e /opt/ai-engkit/admin-data/provider-keys.json ]; then mv /opt/ai-engkit/provider-keys.json /opt/ai-engkit/admin-data/provider-keys.json; fi
         if [ -d /opt/ai-engkit/provider-keys.json ]; then mv /opt/ai-engkit/provider-keys.json /opt/ai-engkit/provider-keys.json.legacy.$$(date +%s); fi
-        [ -f /opt/ai-engkit/provider-state/provider-keys.json ] || printf '%s\n' '{"providers":{}}' > /opt/ai-engkit/provider-state/provider-keys.json
+        [ -f /opt/ai-engkit/admin-data/provider-keys.json ] || printf '%s\n' '{"providers":{}}' > /opt/ai-engkit/admin-data/provider-keys.json
         bun run /opt/admin/server.ts
     ports:
       - "${ADMIN_DEV_PORT:-8081}:8080"
