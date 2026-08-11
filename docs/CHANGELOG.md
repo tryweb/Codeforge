@@ -1,6 +1,22 @@
 ## [Unreleased]
 
 
+## [1.13.2] - 2026-08-11
+
+### Fixed
+- Load agent settings from the persisted admin-data environment at boot.
+- Store provider registry and upgrade backups in admin-data.
+- Migrate legacy provider-state data into admin-data during install and upgrade.
+- Initialize admin-data persistence and permissions in dev containers.
+
+### Documentation
+- Document admin-data persistence and upgrade behavior.
+- Sync admin-data persistence requirements to the main specs.
+- Archive the admin-data-volume-and-agent-boot OpenSpec change.
+
+### Changed
+- Update the admin UI integration test to use the admin-data provider registry path.
+
 ## [1.13.1] - 2026-08-11
 
 ### Added
@@ -1231,7 +1247,7 @@
 
 ## Format
 
-[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.13.1...HEAD
+[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.13.2...HEAD
 [0.3.0]: https://github.com/tryweb/ai-engkit/releases/tag/v0.3.0
 [0.3.3]: https://github.com/tryweb/ai-engkit/compare/v0.3.0...v0.3.3
 [0.5.0]: https://github.com/tryweb/ai-engkit/compare/v0.3.3...v0.5.0
@@ -1358,3 +1374,4 @@
 [1.12.1]: https://github.com/tryweb/ai-engkit/compare/v1.12.0...v1.12.1
 [1.13.0]: https://github.com/tryweb/ai-engkit/compare/v1.12.1...v1.13.0
 [1.13.1]: https://github.com/tryweb/ai-engkit/compare/v1.13.0...v1.13.1
+[1.13.2]: https://github.com/tryweb/ai-engkit/compare/v1.13.1...v1.13.2
