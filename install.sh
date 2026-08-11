@@ -266,12 +266,22 @@ setup_env() {
 }
 
 ensure_provider_state() {
-    local state_dir="provider-state"
+    local state_dir="admin-data"
     local state_file="${state_dir}/provider-keys.json"
+    local legacy_dir="provider-state"
+    local legacy_file="${legacy_dir}/provider-keys.json"
     mkdir -p "$state_dir"
 
-    if [ -d "$state_file" ]; then
-        mv "$state_file" "${state_file}.legacy.${TIMESTAMP}"
+    # Migrate the legacy provider-state registry (preserve, never delete)
+    if [ -d "$legacy_file" ]; then
+        mv "$legacy_file" "${legacy_file}.legacy.${TIMESTAMP}"
+    fi
+    if [ -f "$legacy_file" ] && [ ! -e "$state_file" ]; then
+        mv "$legacy_file" "$state_file"
+        echo "  ✅ migrated provider-keys.json from ${legacy_dir}/ into ${state_dir}/"
+    elif [ -e "$legacy_file" ]; then
+        mv "$legacy_file" "${legacy_file}.legacy.${TIMESTAMP}"
+        echo "  ⚠️  preserved legacy provider-keys.json as ${legacy_file}.legacy.${TIMESTAMP}"
     fi
     if [ -e provider-keys.json ]; then
         if [ -f provider-keys.json ] && [ ! -e "$state_file" ]; then
