@@ -4,16 +4,21 @@ import { createAgentSettingsRoutes, validateAgentConfig, applyAgentConfig, type 
 function memoryDeps(initial: Record<string, string> = {}): {
   deps: AgentSettingsDeps;
   store: Record<string, string>;
+  caFile: { content: string | null };
   reloads: number;
 } {
   const store: Record<string, string> = { ...initial };
+  const caFile = { content: null as string | null };
   let reloads = 0;
   return {
     store,
+    caFile,
     deps: {
       readEnv: () => ({ ...store }),
       upsert: (key, value) => { store[key] = value; },
       remove: (key) => { delete store[key]; },
+      writeCa: (content) => { caFile.content = content; },
+      removeCa: () => { caFile.content = null; },
       reload: () => { reloads++; return { state: "disabled", last_error: null }; },
       status: () => ({ state: "disabled", last_error: null }),
     },
@@ -59,7 +64,7 @@ describe("applyAgentConfig", () => {
   test("upserts non-empty values and deletes empty ones", () => {
     const { deps, store } = memoryDeps({ AGENT_ID: "old-id" });
     applyAgentConfig(deps, { CENTER_URL: "ws://c:9000", AGENT_ID: "", CENTER_TOKEN: undefined });
-    expect(store.CENTER_URL).toBe("ws://c:9000");
+    expect(store.CENTER_URL).toBe("ws://c:9000/");
     expect(store.AGENT_ID).toBeUndefined();
   });
 
@@ -67,6 +72,21 @@ describe("applyAgentConfig", () => {
     const { deps, store } = memoryDeps();
     applyAgentConfig(deps, { AGENT_ID: "  my-agent  " });
     expect(store.AGENT_ID).toBe("my-agent");
+  });
+
+  test("extracts embedded token and CA before storing the connection settings", () => {
+    const ctx = memoryDeps();
+    const pem = "-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----";
+    const encoded = Buffer.from(pem, "utf-8").toString("base64url");
+
+    applyAgentConfig(ctx.deps, {
+      CENTER_URL: `wss://center.example.com/agent?token=secret-token&ca=${encoded}`,
+    });
+
+    expect(ctx.store.CENTER_URL).toBe("wss://center.example.com/agent");
+    expect(ctx.store.CENTER_TOKEN).toBe("secret-token");
+    expect(ctx.store.CENTER_CA_CERT).toBe("/opt/ai-engkit/center-ca.pem");
+    expect(ctx.caFile.content).toBe(pem);
   });
 
   test("reloads after applying", () => {
@@ -94,7 +114,16 @@ describe("createAgentSettingsRoutes", () => {
       body: JSON.stringify({ CENTER_URL: "wss://center.example.com/ws" }),
     });
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true, agent_status: { state: "disabled", last_error: null } });
+    expect(await res.json()).toEqual({
+      ok: true,
+      agent_status: { state: "disabled", last_error: null },
+      agent_config: {
+        CENTER_URL: "wss://center.example.com/ws",
+        CENTER_TOKEN: "",
+        AGENT_ID: "",
+        CENTER_CA_CERT: "",
+      },
+    });
     expect(store.CENTER_URL).toBe("wss://center.example.com/ws");
   });
 
@@ -120,5 +149,31 @@ describe("createAgentSettingsRoutes", () => {
     expect(html).toContain("wss://c.example.com/ws");
     expect(html).toContain("my-agent");
     expect(html).toContain("CENTER_TOKEN");
+  });
+
+  test("GET /agent separates embedded credentials in the rendered settings", async () => {
+    const ctx = memoryDeps({ CENTER_URL: "wss://c.example.com/agent?token=secret-token&ca=encoded" });
+    const app = createAgentSettingsRoutes(ctx.deps);
+
+    const res = await app.request("http://localhost/agent");
+    const html = await res.text();
+
+    expect(html).toContain('id="ag-CENTER_URL" value="wss://c.example.com/agent"');
+    expect(html).toContain('id="ag-CENTER_TOKEN"');
+    expect(html).toContain('type="password"');
+    expect(html).toContain('value="secret-token"');
+    expect(html).not.toContain('id="ag-CENTER_URL" value="wss://c.example.com/agent?token=');
+  });
+
+  test("GET /agent marks a retained error as resolved when connected", async () => {
+    const ctx = memoryDeps();
+    ctx.deps.status = () => ({ state: "connected", last_error: "Expected 101 status code" });
+    const app = createAgentSettingsRoutes(ctx.deps);
+
+    const res = await app.request("http://localhost/agent");
+    const html = await res.text();
+
+    expect(html).toContain("Previous connection error (resolved): Expected 101 status code");
+    expect(html).not.toContain("Last error: Expected 101 status code");
   });
 });
