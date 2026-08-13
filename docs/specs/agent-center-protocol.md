@@ -1,7 +1,7 @@
 # Agent ↔ Center 通訊規格 v1
 
 > 本文件由 `src/admin/agent/` 的程式碼實作逆向整理,作為 center 端實作對照。
-> 對應來源:`protocol.ts`、`client.ts`、`auth.ts`、`heartbeat.ts`、`commands.ts`、`upgrade-event-bridge.ts`、`lib/upgrade.ts`、`lib/status.ts`。
+> 對應來源:`protocol.ts`、`client.ts`、`auth.ts`、`heartbeat.ts`、`commands.ts`、`upgrade-event-bridge.ts`、`lib/upgrade.ts`、`lib/status.ts`、`lib/provider-keys.ts`。
 
 ## 1. Transport
 
@@ -51,10 +51,22 @@
 | `env.get` | `{}` | 回 result:redacted env(§6) |
 | `projects.list` | `{}` | 回 result:projects map(§6) |
 | `providers.list` | `{}` | 回 result:providers meta(§6) |
+| `providers.key.add` | `{"provider", "value", "note"?, "mode"?}` | 新增 key;第一把 key 會 apply + restart;先 ack `"adding provider key"` 再 ack 結果 |
+| `providers.key.set-active` | `{"provider", "keyId", "mode"?}` | 切換 active key → apply → restart per mode;已 active 為 no-op;先 ack `"setting active provider key"` 再 ack 結果 |
+| `providers.key.delete` | `{"provider", "keyId", "mode"?}` | 刪除 key;刪到 active 時 promote 下一把,或(最後一把)移除 auth entry + restart;先 ack `"deleting provider key"` 再 ack 結果 |
+| `providers.key.update-note` | `{"provider", "keyId", "note"}` | 只更新 registry note,不 restart;先 ack `"updating provider key note"` 再 ack 結果 |
 
-**重要語意**:upgrade/reconfigure/restart 會對**同一個 command id 送兩次 ack** — 第一次 = accepted/starting(此時 `status` 恆為 `"success"`),第二次 = 最終 outcome。center 端必須處理「同 id 兩次 ack」。
+**重要語意**:所有 action command(`upgrade`/`reconfigure`/`restart` 與四個 provider-key command)都會對**同一個 command id 送兩次 ack** — 第一次 = accepted/starting(此時 `status` 恆為 `"success"`),第二次 = 最終 outcome。center 端必須處理「同 id 兩次 ack」。
 
-**Deferral**:upgrade 執行中(`isUpgradeRunning()`)時,收到的 command 進 FIFO queue,upgrade 結束後一次 drain 10 個。
+**Deferral**:upgrade 執行中(`isUpgradeRunning()`)時,收到的 command 進 FIFO queue;收到終態 upgrade 事件(`cleanup` + `success|failure`,經 event bridge 轉發)後才 drain 執行。center 送出的 command 在 upgrade 期間不會立刻得到 ack。
+
+**Restart mode**(`set-active`/`delete` 的 `mode` 欄位,省略時預設 `graceful`):
+- `graceful`:先等所有 session idle(`waitForIdleSessions`,10 分鐘 deadline、15s 間隔),再 `docker stop`(SIGTERM)→ `compose up -d` recreate;最終 ack 標記 `"(graceful restart)"`。
+- `force`:直接 `--force-recreate`;最終 ack 標記 `"(force restart)"`。
+- graceful 等待逾時或 idle 檢查 API 失敗 → 自動 fallback 到 force,最終 ack 標記 `"(force restart after ...)"`。
+- 最終 ack 的 message 一律載明**實際使用的** restart mode。
+
+**Key-material containment**:`providers.key.add` 的 `value` 只存在於 command payload 中;任何 `ack`/`result`/`event`/`error` 都**不得**包含明文 key — 回應只帶 key id,或經 `maskKey`(前4+後4字元)遮罩。log 與 error message 也不得含 key 值。
 
 **Ack payload 範例**:
 
