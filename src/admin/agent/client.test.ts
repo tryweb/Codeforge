@@ -171,12 +171,21 @@ describe("agent WebSocket runtime", () => {
   test("stays disabled when CENTER_URL is unset", () => {
     const logs: string[] = [];
     const runtime = makeRuntime(logs);
+    const previousCenterUrl = process.env["CENTER_URL"];
+    delete process.env["CENTER_URL"];
+    try {
+      runtime.start({ env: {} });
 
-    runtime.start({ env: {} });
-
-    expect(runtime.getState()).toBe("disabled");
-    expect(FakeWebSocket.instances).toHaveLength(0);
-    expect(logs).toContain("Agent: CENTER_URL not set, agent mode disabled");
+      expect(runtime.getState()).toBe("disabled");
+      expect(FakeWebSocket.instances).toHaveLength(0);
+      expect(logs).toContain("Agent: CENTER_URL not set, agent mode disabled");
+    } finally {
+      if (previousCenterUrl === undefined) {
+        delete process.env["CENTER_URL"];
+      } else {
+        process.env["CENTER_URL"] = previousCenterUrl;
+      }
+    }
   });
 
   test("reuses a URL registration token without logging the raw URL", () => {

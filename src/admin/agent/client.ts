@@ -151,10 +151,25 @@ export function createAgentRuntime(overrides: Partial<AgentRuntimeDeps> = {}): A
   };
 
   let eventTarget: AgentWebSocket | null = null;
+  let currentDispatcher: CommandDispatcher | null = null;
+
+  const isTerminalUpgradeEvent = (event: UpgradeEvent): boolean =>
+    event.status === "failure" || (event.step === "cleanup" && event.status === "success");
+
+  const flushDeferredCommands = (): void => {
+    if (currentDispatcher === null) return;
+    for (let guard = 0; guard < 100 && currentDispatcher.pendingCount() > 0; guard += 1) {
+      currentDispatcher.drain();
+    }
+  };
+
   const eventBridge = deps.createEventBridge({
     subscribe: deps.subscribeUpgrade,
     send: (event) => {
       if (eventTarget !== null) sendEnvelope(eventTarget, buildEvent("upgrade", event));
+      // runUpgrade flips state to completed/failed synchronously right after the
+      // terminal emit, so a microtask is the earliest safe drain point.
+      if (isTerminalUpgradeEvent(event)) queueMicrotask(flushDeferredCommands);
     },
   });
 
@@ -179,6 +194,7 @@ export function createAgentRuntime(overrides: Partial<AgentRuntimeDeps> = {}): A
     clearHeartbeat();
     eventBridge.detach();
     eventTarget = null;
+    currentDispatcher = null;
     state = "disconnected";
     log("warn", message);
     scheduleReconnect();
@@ -276,6 +292,7 @@ export function createAgentRuntime(overrides: Partial<AgentRuntimeDeps> = {}): A
         { send: (env) => { sendEnvelope(target, env); } },
         deps.createRealDeps(),
       );
+      currentDispatcher = dispatcher;
       let handshakeComplete = false;
 
       target.onopen = (): void => {
@@ -339,6 +356,7 @@ export function createAgentRuntime(overrides: Partial<AgentRuntimeDeps> = {}): A
       };
     } catch (error: unknown) {
       if (socket === attemptSocket) socket = null;
+      currentDispatcher = null;
       if (attemptSocket !== null) {
         try {
           attemptSocket.close();
@@ -378,6 +396,7 @@ export function createAgentRuntime(overrides: Partial<AgentRuntimeDeps> = {}): A
       clearHeartbeat();
       eventBridge.detach();
       eventTarget = null;
+      currentDispatcher = null;
       const currentSocket = socket;
       socket = null;
       if (currentSocket !== null) {
