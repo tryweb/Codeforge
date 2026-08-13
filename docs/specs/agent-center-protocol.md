@@ -7,8 +7,8 @@
 
 - **協定**:WebSocket(`ws://` 或 `wss://`),agent **outbound** 主動連到 center。
 - **URL 格式**:`wss://<center>/agent?token=<registration-token>[&ca=<base64url-PEM>]`
-  - `token`:優先取 URL 內嵌(`extractTokenFromUrl`);URL 無 `?token=` 時改用環境變數 `CENTER_TOKEN`(`auth.ts:9` 的 `resolveRegistrationToken`)。
-  - `ca`:center 端把 PEM 憑證 base64url 編碼放進 query param;agent 解出後作為 TLS CA(`protocol.ts:147` 的 `extractCaFromUrl`)。`ca` 參數會**保留在實際連線 URL 上**。
+  - `token`:優先取 URL 內嵌(`extractTokenFromUrl`);URL 無 `?token=` 時改用環境變數 `CENTER_TOKEN`(`auth.ts:5` 的 `resolveRegistrationToken`)。
+  - `ca`:center 端把 PEM 憑證 base64url 編碼放進 query param;agent 解出後作為 TLS CA(`protocol.ts:154` 的 `extractCaFromUrl`)。`ca` 參數會**保留在實際連線 URL 上**。
 - 每則訊息 = 單一 JSON text frame。
 
 ## 2. Envelope(所有訊息共用的外殼)
@@ -58,15 +58,20 @@
 
 **重要語意**:所有 action command(`upgrade`/`reconfigure`/`restart` 與四個 provider-key command)都會對**同一個 command id 送兩次 ack** — 第一次 = accepted/starting(此時 `status` 恆為 `"success"`),第二次 = 最終 outcome。center 端必須處理「同 id 兩次 ack」。
 
-**Deferral**:upgrade 執行中(`isUpgradeRunning()`)時,收到的 command 進 FIFO queue;收到終態 upgrade 事件(`cleanup` + `success|failure`,經 event bridge 轉發)後才 drain 執行。center 送出的 command 在 upgrade 期間不會立刻得到 ack。
+**Deferral**:upgrade 執行中(`isUpgradeRunning()`)時,收到的 command 進 FIFO queue;收到終態 upgrade 事件(任一 step 的 `failure`,或 `cleanup` 的 `success`,經 event bridge 轉發)後才 drain 執行。center 送出的 command 在 upgrade 期間不會立刻得到 ack。
 
-**Restart mode**(`set-active`/`delete` 的 `mode` 欄位,省略時預設 `graceful`):
+**Restart mode**(`add`/`set-active`/`delete` 的 `mode` 欄位,省略時預設 `graceful`):
 - `graceful`:先等所有 session idle(`waitForIdleSessions`,10 分鐘 deadline、15s 間隔),再 `docker stop`(SIGTERM)→ `compose up -d` recreate;最終 ack 標記 `"(graceful restart)"`。
 - `force`:直接 `--force-recreate`;最終 ack 標記 `"(force restart)"`。
 - graceful 等待逾時或 idle 檢查 API 失敗 → 自動 fallback 到 force,最終 ack 標記 `"(force restart after ...)"`。
 - 最終 ack 的 message 一律載明**實際使用的** restart mode。
 
 **Key-material containment**:`providers.key.add` 的 `value` 只存在於 command payload 中;任何 `ack`/`result`/`event`/`error` 都**不得**包含明文 key — 回應只帶 key id,或經 `maskKey`(前4+後4字元)遮罩。log 與 error message 也不得含 key 值。
+
+**Key-command 失敗與 rollback 語意**:
+- `key.add` 的第一把 key 會先檢查 auth store:該 provider 已存在 key 時回 failure(`"already holds a key in the ai-dev auth store; remove it before adding a registry key"`)且**不寫入 registry**。
+- apply/restart 失敗自動 rollback:`add` 移除剛寫入的 key;`set-active` 還原為先前的 active key。`delete` 不回滾。
+- `set-active` 目標已是 active key 時仍回兩次 ack,第二次 message 為 `"provider key <id> is already active"`(no-op 仍會回應)。
 
 **Ack payload 範例**:
 
