@@ -1,11 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { PASSWORD_KEYS } from "../lib/env-schema";
 import { readEnvFile } from "../lib/env";
+import { KEY_MANAGED_PROVIDERS } from "../lib/opencode-auth";
 import { collectProjectOverviews } from "../lib/projects-overview";
 import { collectProvidersMeta } from "../lib/provider-meta";
+import type { ProviderKey, ProviderKeysFile } from "../lib/provider-keys";
 import { collectStatus } from "../lib/status";
-import type { CommandDeps, CommandSender } from "./commands";
-import { createCommandDispatcher, createRealCommandDeps } from "./commands";
+import type { CommandDeps, CommandSender, IdleWaitOutcome } from "./commands";
+import { createCommandDispatcher, createRealCommandDeps, waitForIdleSessions } from "./commands";
 import type { StatusReport } from "./heartbeat";
 import { ERROR_CODES, MESSAGE_TYPES, type Envelope, type QueryName } from "./protocol";
 
@@ -27,7 +29,17 @@ interface Fixture {
   restartServices: string[];
   upserts: Array<[string, string]>;
   queryReads: string[];
+  registry: ProviderKeysFile;
+  keyAdds: Array<{ provider: string; value: string; note: string }>;
+  setActiveCalls: Array<[string, string]>;
+  deleteCalls: Array<[string, string]>;
+  noteUpdates: Array<[string, string, string]>;
+  authApplies: Array<[string, string]>;
+  authRemovals: string[];
+  idleWaits: string[];
+  gracefulRestarts: string[];
   setUpgradeRunning: (running: boolean) => void;
+  cacheClears: () => number;
 }
 
 const STATUS_REPORT: StatusReport = {
@@ -61,8 +73,11 @@ function deferred<T>(): Deferred<T> {
 }
 
 async function flushAsyncWork(): Promise<void> {
-  await Promise.resolve();
-  await Promise.resolve();
+  // Key-command chains run 4+ awaits deep (auth-store read, apply, idle wait,
+  // restart); flush enough microtask turns to drain the deepest chain.
+  for (let turn = 0; turn < 8; turn += 1) {
+    await Promise.resolve();
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -83,12 +98,23 @@ function expectSingleQueryResult(sent: Envelope[], id: string): unknown {
 
 function createFixture(overrides: Partial<CommandDeps> = {}): Fixture {
   let upgradeRunning = false;
+  let cacheClearsCount = 0;
+  let keySequence = 1;
   const sent: Envelope[] = [];
   const upgradeCalls: string[] = [];
   const restartAiDevCalls: string[] = [];
   const restartServices: string[] = [];
   const upserts: Array<[string, string]> = [];
   const queryReads: string[] = [];
+  const registry: ProviderKeysFile = { providers: {} };
+  const keyAdds: Array<{ provider: string; value: string; note: string }> = [];
+  const setActiveCalls: Array<[string, string]> = [];
+  const deleteCalls: Array<[string, string]> = [];
+  const noteUpdates: Array<[string, string, string]> = [];
+  const authApplies: Array<[string, string]> = [];
+  const authRemovals: string[] = [];
+  const idleWaits: string[] = [];
+  const gracefulRestarts: string[] = [];
   const deps: CommandDeps = Object.assign(
     {
       isUpgradeRunning: () => upgradeRunning,
@@ -108,6 +134,63 @@ function createFixture(overrides: Partial<CommandDeps> = {}): Fixture {
         upserts.push([key, value]);
       },
       now: () => FIXED_TIME,
+      isKeyProviderSupported: (provider: string) =>
+        (KEY_MANAGED_PROVIDERS as readonly string[]).includes(provider),
+      readProviderKeys: () => registry,
+      addProviderKey: (provider: string, value: string, note = "") => {
+        keyAdds.push({ provider, value, note });
+        const entry = registry.providers[provider] ?? { keys: [], activeKeyId: null };
+        const key: ProviderKey = { id: `k-${keySequence++}`, value, note, createdAt: FIXED_TIME };
+        entry.keys.push(key);
+        if (entry.activeKeyId === null) entry.activeKeyId = key.id;
+        registry.providers[provider] = entry;
+        return key;
+      },
+      setActiveProviderKey: (provider: string, keyId: string) => {
+        setActiveCalls.push([provider, keyId]);
+        const entry = registry.providers[provider];
+        if (!entry || !entry.keys.some((candidate) => candidate.id === keyId)) return false;
+        entry.activeKeyId = keyId;
+        return true;
+      },
+      deleteProviderKey: (provider: string, keyId: string) => {
+        deleteCalls.push([provider, keyId]);
+        const entry = registry.providers[provider];
+        if (!entry) return false;
+        const idx = entry.keys.findIndex((candidate) => candidate.id === keyId);
+        if (idx === -1) return false;
+        entry.keys.splice(idx, 1);
+        if (entry.activeKeyId === keyId) {
+          entry.activeKeyId = entry.keys[Math.min(idx, entry.keys.length - 1)]?.id ?? null;
+        }
+        if (entry.keys.length === 0) delete registry.providers[provider];
+        return true;
+      },
+      updateProviderKeyNote: (provider: string, keyId: string, note: string) => {
+        noteUpdates.push([provider, keyId, note]);
+        const key = registry.providers[provider]?.keys.find((candidate) => candidate.id === keyId);
+        if (key === undefined) return false;
+        key.note = note;
+        return true;
+      },
+      applyActiveKey: async (provider: string, key: string) => {
+        authApplies.push([provider, key]);
+      },
+      removeAuthKey: async (provider: string) => {
+        authRemovals.push(provider);
+      },
+      clearProviderCache: async () => {
+        cacheClearsCount += 1;
+      },
+      readProviderAuthKey: async () => null,
+      waitForIdleSessions: async (): Promise<IdleWaitOutcome> => {
+        idleWaits.push("idle");
+        return "idle";
+      },
+      gracefulRestartAiDev: async () => {
+        gracefulRestarts.push("graceful");
+        return { success: true, message: "ai-dev gracefully restarted" };
+      },
     },
     {
       readStatus: async () => {
@@ -138,9 +221,19 @@ function createFixture(overrides: Partial<CommandDeps> = {}): Fixture {
     restartServices,
     upserts,
     queryReads,
+    registry,
+    keyAdds,
+    setActiveCalls,
+    deleteCalls,
+    noteUpdates,
+    authApplies,
+    authRemovals,
+    idleWaits,
+    gracefulRestarts,
     setUpgradeRunning: (running) => {
       upgradeRunning = running;
     },
+    cacheClears: () => cacheClearsCount,
   };
 }
 
@@ -430,6 +523,618 @@ describe("command dispatcher", () => {
     expect(fixture.sent).toEqual([
       expect.objectContaining({ type: "result", id: "queued-status", payload: STATUS_REPORT }),
     ]);
+  });
+});
+
+function seedKey(
+  registry: ProviderKeysFile,
+  provider: string,
+  id: string,
+  value: string,
+  note = "main",
+): void {
+  const entry = registry.providers[provider] ?? { keys: [], activeKeyId: null };
+  entry.keys.push({ id, value, note, createdAt: FIXED_TIME });
+  if (entry.activeKeyId === null) entry.activeKeyId = id;
+  registry.providers[provider] = entry;
+}
+
+describe("provider key commands", () => {
+  test("rejects provider key commands for unsupported providers without side effects", () => {
+    const unsupportedPayloads: unknown[] = [
+      { type: "providers.key.add", provider: "anthropic", value: "sk-other" },
+      { type: "providers.key.set-active", provider: "anthropic", keyId: "k-1" },
+      { type: "providers.key.delete", provider: "anthropic", keyId: "k-1" },
+      { type: "providers.key.update-note", provider: "anthropic", keyId: "k-1", note: "x" },
+    ];
+
+    for (const [index, payload] of unsupportedPayloads.entries()) {
+      const fixture = createFixture();
+      const dispatcher = createCommandDispatcher(fixture.sender, fixture.deps);
+      const id = `unsupported-${index}`;
+
+      dispatcher.handle(commandEnvelope(id, payload));
+
+      expect(fixture.sent).toHaveLength(1);
+      expect(fixture.sent[0]).toMatchObject({
+        type: MESSAGE_TYPES.error,
+        id,
+        payload: { code: ERROR_CODES.malformed_command, message: "Malformed command payload" },
+      });
+    }
+
+    const fixture = createFixture();
+    expect(fixture.keyAdds).toEqual([]);
+    expect(fixture.setActiveCalls).toEqual([]);
+    expect(fixture.deleteCalls).toEqual([]);
+    expect(fixture.noteUpdates).toEqual([]);
+    expect(fixture.authApplies).toEqual([]);
+    expect(fixture.restartAiDevCalls).toEqual([]);
+  });
+
+  test("rejects malformed provider key payloads without side effects", () => {
+    const malformedPayloads: unknown[] = [
+      { type: "providers.key.add", provider: "opencode-go" },
+      { type: "providers.key.add", provider: "opencode-go", value: "" },
+      { type: "providers.key.add", provider: "opencode-go", value: "  " },
+      { type: "providers.key.add", provider: "opencode-go", value: "sk-1", note: 42 },
+      { type: "providers.key.add", provider: "opencode-go", value: "sk-1", mode: "warp" },
+      { type: "providers.key.add", provider: "", value: "sk-1" },
+      { type: "providers.key.set-active", provider: "opencode-go" },
+      { type: "providers.key.set-active", provider: "opencode-go", keyId: "" },
+      { type: "providers.key.delete", provider: "opencode-go", keyId: 42 },
+      { type: "providers.key.update-note", provider: "opencode-go", keyId: "k-1" },
+      { type: "providers.key.update-note", provider: "opencode-go", keyId: "k-1", note: 42 },
+    ];
+
+    for (const [index, payload] of malformedPayloads.entries()) {
+      const fixture = createFixture();
+      const dispatcher = createCommandDispatcher(fixture.sender, fixture.deps);
+      const id = `malformed-key-${index}`;
+
+      dispatcher.handle(commandEnvelope(id, payload));
+
+      expect(fixture.sent).toHaveLength(1);
+      expect(fixture.sent[0]).toMatchObject({
+        type: MESSAGE_TYPES.error,
+        id,
+        payload: { code: ERROR_CODES.malformed_command, message: "Malformed command payload" },
+      });
+    }
+
+    const fixture = createFixture();
+    expect(fixture.keyAdds).toEqual([]);
+    expect(fixture.setActiveCalls).toEqual([]);
+    expect(fixture.deleteCalls).toEqual([]);
+    expect(fixture.noteUpdates).toEqual([]);
+    expect(fixture.authApplies).toEqual([]);
+    expect(fixture.restartAiDevCalls).toEqual([]);
+  });
+
+  test("adds a second key without applying or restarting", async () => {
+    const fixture = createFixture();
+    seedKey(fixture.registry, "opencode-go", "seed-1", "sk-ant-seed-one");
+    const dispatcher = createCommandDispatcher(fixture.sender, fixture.deps);
+
+    dispatcher.handle(commandEnvelope("add-second", {
+      type: "providers.key.add",
+      provider: "opencode-go",
+      value: RAW_KEY_MATERIAL,
+      note: "backup",
+    }));
+
+    expect(fixture.sent[0]).toMatchObject({
+      type: MESSAGE_TYPES.ack,
+      id: "add-second",
+      payload: { status: "success", message: "adding provider key" },
+    });
+    await flushAsyncWork();
+
+    expect(fixture.sent).toHaveLength(2);
+    expect(fixture.sent[1]).toMatchObject({
+      type: MESSAGE_TYPES.ack,
+      id: "add-second",
+      payload: { status: "success", message: "provider key k-1 added" },
+    });
+    expect(fixture.keyAdds).toEqual([
+      { provider: "opencode-go", value: RAW_KEY_MATERIAL, note: "backup" },
+    ]);
+    expect(fixture.registry.providers["opencode-go"]?.keys).toHaveLength(2);
+    expect(fixture.registry.providers["opencode-go"]?.activeKeyId).toBe("seed-1");
+    expect(fixture.authApplies).toEqual([]);
+    expect(fixture.restartAiDevCalls).toEqual([]);
+    expect(fixture.gracefulRestarts).toEqual([]);
+    expect(JSON.stringify(fixture.sent)).not.toContain(RAW_KEY_MATERIAL);
+  });
+
+  test("applies and gracefully restarts when adding the provider's first key", async () => {
+    const fixture = createFixture();
+    const dispatcher = createCommandDispatcher(fixture.sender, fixture.deps);
+
+    dispatcher.handle(commandEnvelope("add-first", {
+      type: "providers.key.add",
+      provider: "opencode-go",
+      value: RAW_KEY_MATERIAL,
+      note: "primary",
+    }));
+    await flushAsyncWork();
+
+    expect(fixture.sent).toHaveLength(2);
+    expect(fixture.sent[1]).toMatchObject({
+      type: MESSAGE_TYPES.ack,
+      id: "add-first",
+      payload: {
+        status: "success",
+        message: "provider key k-1 added and applied (graceful restart)",
+      },
+    });
+    expect(fixture.authApplies).toEqual([["opencode-go", RAW_KEY_MATERIAL]]);
+    expect(fixture.idleWaits).toEqual(["idle"]);
+    expect(fixture.gracefulRestarts).toEqual(["graceful"]);
+    expect(fixture.restartAiDevCalls).toEqual([]);
+    expect(fixture.registry.providers["opencode-go"]?.activeKeyId).toBe("k-1");
+    expect(JSON.stringify(fixture.sent)).not.toContain(RAW_KEY_MATERIAL);
+  });
+
+  test("force mode recreates ai-dev immediately for a first key", async () => {
+    const fixture = createFixture();
+    const dispatcher = createCommandDispatcher(fixture.sender, fixture.deps);
+
+    dispatcher.handle(commandEnvelope("add-force", {
+      type: "providers.key.add",
+      provider: "opencode-go",
+      value: RAW_KEY_MATERIAL,
+      mode: "force",
+    }));
+    await flushAsyncWork();
+
+    expect(fixture.sent).toHaveLength(2);
+    expect(fixture.sent[1]).toMatchObject({
+      type: MESSAGE_TYPES.ack,
+      id: "add-force",
+      payload: {
+        status: "success",
+        message: "provider key k-1 added and applied (force restart)",
+      },
+    });
+    expect(fixture.restartAiDevCalls).toEqual(["ai-dev"]);
+    expect(fixture.gracefulRestarts).toEqual([]);
+    expect(fixture.idleWaits).toEqual([]);
+  });
+
+  test("rejects a first key when the auth store already holds one", async () => {
+    const fixture = createFixture({
+      readProviderAuthKey: async () => "sk-ant-existing",
+    });
+    const dispatcher = createCommandDispatcher(fixture.sender, fixture.deps);
+
+    dispatcher.handle(commandEnvelope("add-collision", {
+      type: "providers.key.add",
+      provider: "opencode-go",
+      value: RAW_KEY_MATERIAL,
+    }));
+    await flushAsyncWork();
+
+    expect(fixture.sent).toHaveLength(2);
+    expect(fixture.sent[1]).toMatchObject({
+      type: MESSAGE_TYPES.ack,
+      id: "add-collision",
+      payload: {
+        status: "failure",
+        message: "provider opencode-go already holds a key in the ai-dev auth store; remove it before adding a registry key",
+      },
+    });
+    expect(fixture.keyAdds).toEqual([]);
+    expect(fixture.authApplies).toEqual([]);
+    expect(fixture.restartAiDevCalls).toEqual([]);
+    expect(JSON.stringify(fixture.sent)).not.toContain("sk-ant-existing");
+  });
+
+  test("rolls back the added key when applying the first key fails", async () => {
+    const fixture = createFixture({
+      applyActiveKey: async () => {
+        throw new Error("auth store write failed");
+      },
+    });
+    const dispatcher = createCommandDispatcher(fixture.sender, fixture.deps);
+
+    dispatcher.handle(commandEnvelope("add-rollback", {
+      type: "providers.key.add",
+      provider: "opencode-go",
+      value: RAW_KEY_MATERIAL,
+    }));
+    await flushAsyncWork();
+
+    expect(fixture.sent).toHaveLength(2);
+    expect(fixture.sent[1]).toMatchObject({
+      type: MESSAGE_TYPES.ack,
+      id: "add-rollback",
+      payload: { status: "failure", message: "auth store write failed" },
+    });
+    expect(fixture.deleteCalls).toEqual([["opencode-go", "k-1"]]);
+    expect(fixture.registry.providers["opencode-go"]).toBeUndefined();
+    expect(fixture.restartAiDevCalls).toEqual([]);
+    expect(JSON.stringify(fixture.sent)).not.toContain(RAW_KEY_MATERIAL);
+  });
+
+  test("persists the selection and restarts when setting an active key", async () => {
+    const fixture = createFixture();
+    seedKey(fixture.registry, "opencode-go", "seed-1", "sk-ant-seed-one");
+    seedKey(fixture.registry, "opencode-go", "seed-2", "sk-ant-seed-two");
+    const dispatcher = createCommandDispatcher(fixture.sender, fixture.deps);
+
+    dispatcher.handle(commandEnvelope("set-active", {
+      type: "providers.key.set-active",
+      provider: "opencode-go",
+      keyId: "seed-2",
+      mode: "force",
+    }));
+
+    expect(fixture.sent[0]).toMatchObject({
+      type: MESSAGE_TYPES.ack,
+      id: "set-active",
+      payload: { status: "success", message: "setting active provider key" },
+    });
+    await flushAsyncWork();
+
+    expect(fixture.sent).toHaveLength(2);
+    expect(fixture.sent[1]).toMatchObject({
+      type: MESSAGE_TYPES.ack,
+      id: "set-active",
+      payload: { status: "success", message: "provider key seed-2 set active (force restart)" },
+    });
+    expect(fixture.setActiveCalls).toEqual([["opencode-go", "seed-2"]]);
+    expect(fixture.registry.providers["opencode-go"]?.activeKeyId).toBe("seed-2");
+    expect(fixture.authApplies).toEqual([["opencode-go", "sk-ant-seed-two"]]);
+    expect(fixture.restartAiDevCalls).toEqual(["ai-dev"]);
+  });
+
+  test("no-ops when the named key is already active", async () => {
+    const fixture = createFixture();
+    seedKey(fixture.registry, "opencode-go", "seed-1", "sk-ant-seed-one");
+    const dispatcher = createCommandDispatcher(fixture.sender, fixture.deps);
+
+    dispatcher.handle(commandEnvelope("set-active-again", {
+      type: "providers.key.set-active",
+      provider: "opencode-go",
+      keyId: "seed-1",
+    }));
+
+    expect(fixture.sent).toHaveLength(2);
+    expect(fixture.sent[0]).toMatchObject({
+      type: MESSAGE_TYPES.ack,
+      id: "set-active-again",
+      payload: { status: "success", message: "provider key already active" },
+    });
+    expect(fixture.sent[1]).toMatchObject({
+      type: MESSAGE_TYPES.ack,
+      id: "set-active-again",
+      payload: { status: "success", message: "provider key seed-1 is already active" },
+    });
+    expect(fixture.setActiveCalls).toEqual([]);
+    expect(fixture.authApplies).toEqual([]);
+    expect(fixture.restartAiDevCalls).toEqual([]);
+  });
+
+  test("restores the previous selection when applying the selected key fails", async () => {
+    const fixture = createFixture({
+      applyActiveKey: async () => {
+        throw new Error("auth store write failed");
+      },
+    });
+    seedKey(fixture.registry, "opencode-go", "seed-1", "sk-ant-seed-one");
+    seedKey(fixture.registry, "opencode-go", "seed-2", "sk-ant-seed-two");
+    const dispatcher = createCommandDispatcher(fixture.sender, fixture.deps);
+
+    dispatcher.handle(commandEnvelope("set-active-revert", {
+      type: "providers.key.set-active",
+      provider: "opencode-go",
+      keyId: "seed-2",
+      mode: "force",
+    }));
+    await flushAsyncWork();
+
+    expect(fixture.sent).toHaveLength(2);
+    expect(fixture.sent[1]).toMatchObject({
+      type: MESSAGE_TYPES.ack,
+      id: "set-active-revert",
+      payload: { status: "failure", message: "auth store write failed" },
+    });
+    expect(fixture.setActiveCalls).toEqual([
+      ["opencode-go", "seed-2"],
+      ["opencode-go", "seed-1"],
+    ]);
+    expect(fixture.registry.providers["opencode-go"]?.activeKeyId).toBe("seed-1");
+    expect(fixture.restartAiDevCalls).toEqual([]);
+  });
+
+  test("promotes and applies the next key when deleting the active key", async () => {
+    const fixture = createFixture();
+    seedKey(fixture.registry, "opencode-go", "seed-1", "sk-ant-seed-one");
+    seedKey(fixture.registry, "opencode-go", "seed-2", "sk-ant-seed-two");
+    const dispatcher = createCommandDispatcher(fixture.sender, fixture.deps);
+
+    dispatcher.handle(commandEnvelope("delete-active", {
+      type: "providers.key.delete",
+      provider: "opencode-go",
+      keyId: "seed-1",
+      mode: "force",
+    }));
+    await flushAsyncWork();
+
+    expect(fixture.sent).toHaveLength(2);
+    expect(fixture.sent[1]).toMatchObject({
+      type: MESSAGE_TYPES.ack,
+      id: "delete-active",
+      payload: {
+        status: "success",
+        message: "provider key seed-1 deleted, key seed-2 promoted (force restart)",
+      },
+    });
+    expect(fixture.deleteCalls).toEqual([["opencode-go", "seed-1"]]);
+    expect(fixture.registry.providers["opencode-go"]?.activeKeyId).toBe("seed-2");
+    expect(fixture.authApplies).toEqual([["opencode-go", "sk-ant-seed-two"]]);
+    expect(fixture.restartAiDevCalls).toEqual(["ai-dev"]);
+  });
+
+  test("removes the auth entry and cache when deleting the last key", async () => {
+    const fixture = createFixture();
+    seedKey(fixture.registry, "opencode-go", "seed-1", "sk-ant-seed-one");
+    const dispatcher = createCommandDispatcher(fixture.sender, fixture.deps);
+
+    dispatcher.handle(commandEnvelope("delete-last", {
+      type: "providers.key.delete",
+      provider: "opencode-go",
+      keyId: "seed-1",
+      mode: "force",
+    }));
+    await flushAsyncWork();
+
+    expect(fixture.sent).toHaveLength(2);
+    expect(fixture.sent[1]).toMatchObject({
+      type: MESSAGE_TYPES.ack,
+      id: "delete-last",
+      payload: {
+        status: "success",
+        message: "provider key seed-1 deleted, auth entry removed (force restart)",
+      },
+    });
+    expect(fixture.authRemovals).toEqual(["opencode-go"]);
+    expect(fixture.cacheClears()).toBe(1);
+    expect(fixture.restartAiDevCalls).toEqual(["ai-dev"]);
+    expect(fixture.registry.providers["opencode-go"]).toBeUndefined();
+  });
+
+  test("deletes a non-active key without applying or restarting", async () => {
+    const fixture = createFixture();
+    seedKey(fixture.registry, "opencode-go", "seed-1", "sk-ant-seed-one");
+    seedKey(fixture.registry, "opencode-go", "seed-2", "sk-ant-seed-two");
+    const dispatcher = createCommandDispatcher(fixture.sender, fixture.deps);
+
+    dispatcher.handle(commandEnvelope("delete-inactive", {
+      type: "providers.key.delete",
+      provider: "opencode-go",
+      keyId: "seed-2",
+      mode: "force",
+    }));
+    await flushAsyncWork();
+
+    expect(fixture.sent).toHaveLength(2);
+    expect(fixture.sent[1]).toMatchObject({
+      type: MESSAGE_TYPES.ack,
+      id: "delete-inactive",
+      payload: { status: "success", message: "provider key seed-2 deleted" },
+    });
+    expect(fixture.deleteCalls).toEqual([["opencode-go", "seed-2"]]);
+    expect(fixture.registry.providers["opencode-go"]?.activeKeyId).toBe("seed-1");
+    expect(fixture.registry.providers["opencode-go"]?.keys).toHaveLength(1);
+    expect(fixture.authApplies).toEqual([]);
+    expect(fixture.restartAiDevCalls).toEqual([]);
+  });
+
+  test("rejects set-active, delete, and update-note for unknown key ids", () => {
+    const unknownIdPayloads: unknown[] = [
+      { type: "providers.key.set-active", provider: "opencode-go", keyId: "seed-1" },
+      { type: "providers.key.delete", provider: "opencode-go", keyId: "seed-1" },
+      { type: "providers.key.update-note", provider: "opencode-go", keyId: "seed-1", note: "x" },
+    ];
+
+    for (const [index, payload] of unknownIdPayloads.entries()) {
+      const fixture = createFixture();
+      const dispatcher = createCommandDispatcher(fixture.sender, fixture.deps);
+      const id = `unknown-id-${index}`;
+
+      dispatcher.handle(commandEnvelope(id, payload));
+
+      expect(fixture.sent).toHaveLength(1);
+      expect(fixture.sent[0]).toMatchObject({
+        type: MESSAGE_TYPES.error,
+        id,
+        payload: { code: ERROR_CODES.malformed_command, message: "Malformed command payload" },
+      });
+    }
+  });
+
+  test("updates a key note without applying or restarting", async () => {
+    const fixture = createFixture();
+    seedKey(fixture.registry, "opencode-go", "seed-1", "sk-ant-seed-one");
+    const dispatcher = createCommandDispatcher(fixture.sender, fixture.deps);
+
+    dispatcher.handle(commandEnvelope("update-note", {
+      type: "providers.key.update-note",
+      provider: "opencode-go",
+      keyId: "seed-1",
+      note: "rotated 2026-08",
+    }));
+    await flushAsyncWork();
+
+    expect(fixture.sent).toHaveLength(2);
+    expect(fixture.sent[1]).toMatchObject({
+      type: MESSAGE_TYPES.ack,
+      id: "update-note",
+      payload: { status: "success", message: "note updated for provider key seed-1" },
+    });
+    expect(fixture.noteUpdates).toEqual([["opencode-go", "seed-1", "rotated 2026-08"]]);
+    expect(fixture.registry.providers["opencode-go"]?.keys[0]?.note).toBe("rotated 2026-08");
+    expect(fixture.authApplies).toEqual([]);
+    expect(fixture.restartAiDevCalls).toEqual([]);
+    expect(fixture.gracefulRestarts).toEqual([]);
+  });
+
+  test("defers provider key commands while upgrading and drains them in FIFO order", async () => {
+    const fixture = createFixture();
+    seedKey(fixture.registry, "opencode-go", "seed-1", "sk-ant-seed-one");
+    fixture.setUpgradeRunning(true);
+    const dispatcher = createCommandDispatcher(fixture.sender, fixture.deps);
+    const commands = [
+      commandEnvelope("queued-set-active", {
+        type: "providers.key.set-active",
+        provider: "opencode-go",
+        keyId: "seed-1",
+      }),
+      commandEnvelope("queued-note", {
+        type: "providers.key.update-note",
+        provider: "opencode-go",
+        keyId: "seed-1",
+        note: "primary",
+      }),
+      commandEnvelope("queued-add", {
+        type: "providers.key.add",
+        provider: "opencode-go",
+        value: RAW_KEY_MATERIAL,
+      }),
+    ];
+
+    for (const command of commands) dispatcher.handle(command);
+
+    expect(fixture.sent).toHaveLength(0);
+    expect(dispatcher.pendingCount()).toBe(3);
+
+    fixture.setUpgradeRunning(false);
+    dispatcher.drain();
+    await flushAsyncWork();
+
+    expect(dispatcher.pendingCount()).toBe(0);
+    expect(fixture.keyAdds).toEqual([{ provider: "opencode-go", value: RAW_KEY_MATERIAL, note: "" }]);
+    expect(fixture.noteUpdates).toEqual([["opencode-go", "seed-1", "primary"]]);
+    expect(fixture.setActiveCalls).toEqual([]);
+    expect(fixture.authApplies).toEqual([]);
+    expect(fixture.gracefulRestarts).toEqual([]);
+    for (const id of ["queued-set-active", "queued-note", "queued-add"]) {
+      const acks = fixture.sent.filter((env) => env.id === id);
+      expect(acks).toHaveLength(2);
+      expect(acks[0]).toMatchObject({ type: MESSAGE_TYPES.ack, id });
+      expect(acks[1]).toMatchObject({ type: MESSAGE_TYPES.ack, id });
+    }
+    expect(JSON.stringify(fixture.sent)).not.toContain(RAW_KEY_MATERIAL);
+  });
+});
+
+describe("graceful restart", () => {
+  test("returns idle immediately when the probe reports idle", async () => {
+    expect(await waitForIdleSessions(async () => true, 1_000, 1, 3)).toBe("idle");
+  });
+
+  test("keeps polling while sessions are busy", async () => {
+    const states = [false, true];
+    let index = 0;
+    const probe = async () => states[index++];
+
+    expect(await waitForIdleSessions(probe, 1_000, 1, 3)).toBe("idle");
+    expect(index).toBe(2);
+  });
+
+  test("times out when sessions stay busy past the deadline", async () => {
+    expect(await waitForIdleSessions(async () => false, 5, 1, 3)).toBe("timeout");
+  });
+
+  test("gives up early when the probe is unavailable", async () => {
+    expect(await waitForIdleSessions(async () => null, 60_000, 1, 3)).toBe("unavailable");
+  });
+
+  test("resets the failure counter when a probe recovers", async () => {
+    const states: Array<boolean | null> = [null, null, true];
+    let index = 0;
+    const probe = async () => states[index++];
+
+    expect(await waitForIdleSessions(probe, 60_000, 1, 3)).toBe("idle");
+    expect(index).toBe(3);
+  });
+
+  test("falls back to a force restart after a graceful-wait timeout", async () => {
+    const fixture = createFixture({
+      waitForIdleSessions: async () => "timeout",
+    });
+    const dispatcher = createCommandDispatcher(fixture.sender, fixture.deps);
+
+    dispatcher.handle(commandEnvelope("add-timeout", {
+      type: "providers.key.add",
+      provider: "opencode-go",
+      value: RAW_KEY_MATERIAL,
+    }));
+    await flushAsyncWork();
+
+    expect(fixture.sent).toHaveLength(2);
+    expect(fixture.sent[1]).toMatchObject({
+      type: MESSAGE_TYPES.ack,
+      id: "add-timeout",
+      payload: {
+        status: "success",
+        message: "provider key k-1 added and applied (force restart after graceful-wait timeout)",
+      },
+    });
+    expect(fixture.restartAiDevCalls).toEqual(["ai-dev"]);
+    expect(fixture.gracefulRestarts).toEqual([]);
+  });
+
+  test("falls back to a force restart when the control API is unavailable", async () => {
+    const fixture = createFixture({
+      waitForIdleSessions: async () => "unavailable",
+    });
+    const dispatcher = createCommandDispatcher(fixture.sender, fixture.deps);
+
+    dispatcher.handle(commandEnvelope("add-unavailable", {
+      type: "providers.key.add",
+      provider: "opencode-go",
+      value: RAW_KEY_MATERIAL,
+    }));
+    await flushAsyncWork();
+
+    expect(fixture.sent).toHaveLength(2);
+    expect(fixture.sent[1]).toMatchObject({
+      type: MESSAGE_TYPES.ack,
+      id: "add-unavailable",
+      payload: {
+        status: "success",
+        message: "provider key k-1 added and applied (force restart after unavailable control API)",
+      },
+    });
+    expect(fixture.restartAiDevCalls).toEqual(["ai-dev"]);
+    expect(fixture.gracefulRestarts).toEqual([]);
+  });
+
+  test("reports a failed graceful restart and rolls back the added key", async () => {
+    const fixture = createFixture({
+      gracefulRestartAiDev: async () => ({ success: false, message: "graceful restart failed" }),
+    });
+    const dispatcher = createCommandDispatcher(fixture.sender, fixture.deps);
+
+    dispatcher.handle(commandEnvelope("add-graceful-fail", {
+      type: "providers.key.add",
+      provider: "opencode-go",
+      value: RAW_KEY_MATERIAL,
+    }));
+    await flushAsyncWork();
+
+    expect(fixture.sent).toHaveLength(2);
+    expect(fixture.sent[1]).toMatchObject({
+      type: MESSAGE_TYPES.ack,
+      id: "add-graceful-fail",
+      payload: { status: "failure", message: "graceful restart failed" },
+    });
+    expect(fixture.deleteCalls).toEqual([["opencode-go", "k-1"]]);
+    expect(fixture.registry.providers["opencode-go"]).toBeUndefined();
+    expect(fixture.restartAiDevCalls).toEqual([]);
   });
 });
 
