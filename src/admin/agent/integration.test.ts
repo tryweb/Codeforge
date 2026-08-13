@@ -1,7 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import type { StatusResponse } from "../lib/status";
+import type { ProviderKey, ProviderKeysFile } from "../lib/provider-keys";
 import type { UpgradeEvent } from "../lib/upgrade";
 import { createAgentRuntime, type AgentRuntime, type AgentRuntimeDeps } from "./client";
+import type { CommandDeps } from "./commands";
 import type { StatusReport } from "./heartbeat";
 import { buildHelloAck, MESSAGE_TYPES, parseEnvelope, type Envelope } from "./protocol";
 
@@ -118,6 +120,61 @@ function createUpgradeEventSource(): UpgradeEventSource {
       for (const subscriber of subscribers) subscriber(event);
     },
     activeCount: () => subscribers.length,
+  };
+}
+
+function createKeyDeps(): CommandDeps {
+  let keySequence = 1;
+  const registry: ProviderKeysFile = { providers: {} };
+  return {
+    isUpgradeRunning: () => false,
+    runUpgrade: async () => ({ success: true }),
+    restartAiDev: async () => ({ success: true }),
+    restartContainer: async () => ({ success: true }),
+    upsertEnvVar: () => undefined,
+    now: () => "2026-08-10T00:00:00.000Z",
+    readStatus: async () => STATUS_REPORT,
+    readEnv: () => ({}),
+    readProjects: async () => ({}),
+    readProviders: async () => ({}),
+    isKeyProviderSupported: (provider) => provider === "anthropic",
+    readProviderKeys: () => registry,
+    addProviderKey: (provider, value, note = "") => {
+      const entry = registry.providers[provider] ?? { keys: [], activeKeyId: null };
+      const key: ProviderKey = { id: `k-${keySequence++}`, value, note, createdAt: "2026-08-10T00:00:00.000Z" };
+      entry.keys.push(key);
+      if (entry.activeKeyId === null) entry.activeKeyId = key.id;
+      registry.providers[provider] = entry;
+      return key;
+    },
+    setActiveProviderKey: (provider, keyId) => {
+      const entry = registry.providers[provider];
+      if (!entry || !entry.keys.some((candidate) => candidate.id === keyId)) return false;
+      entry.activeKeyId = keyId;
+      return true;
+    },
+    deleteProviderKey: (provider, keyId) => {
+      const entry = registry.providers[provider];
+      if (!entry) return false;
+      const index = entry.keys.findIndex((candidate) => candidate.id === keyId);
+      if (index === -1) return false;
+      entry.keys.splice(index, 1);
+      if (entry.activeKeyId === keyId) entry.activeKeyId = null;
+      return true;
+    },
+    updateProviderKeyNote: (provider, keyId, note) => {
+      const entry = registry.providers[provider];
+      const key = entry?.keys.find((candidate) => candidate.id === keyId);
+      if (key === undefined) return false;
+      key.note = note;
+      return true;
+    },
+    applyActiveKey: async () => {},
+    removeAuthKey: async () => {},
+    clearProviderCache: async () => {},
+    readProviderAuthKey: async () => null,
+    waitForIdleSessions: async () => "idle",
+    gracefulRestartAiDev: async () => ({ success: true, message: "restarted" }),
   };
 }
 
@@ -293,6 +350,117 @@ describe("agent stub-center integration", () => {
       () => second.messages.filter((envelope) => envelope.type === MESSAGE_TYPES.event).length === 1,
       "one post-reconnect event",
     );
+
+    runtime.stop();
+  }, 10_000);
+
+  it("round-trips the four provider-key commands with two acks and no raw key material", async () => {
+    const connectionIndex = connections.length;
+    const logs: string[] = [];
+    const runtime = createIntegrationRuntime(logs, { createRealDeps: createKeyDeps });
+    runtime.start({ env: { CENTER_URL: centerUrl } });
+    const connection = await waitForConnection(connectionIndex);
+    await waitForEnvelope(connection, (envelope) => envelope.type === MESSAGE_TYPES.heartbeat);
+
+    const acksFor = (id: string): Envelope[] =>
+      connection.messages.filter((envelope) => envelope.type === MESSAGE_TYPES.ack && envelope.id === id);
+    const sendCommand = (id: string, payload: Record<string, unknown>): void => {
+      connection.send({
+        type: MESSAGE_TYPES.command,
+        id,
+        payload,
+        timestamp: "2026-08-10T00:00:00.000Z",
+      });
+    };
+    const payloadOf = (envelope: Envelope): Record<string, unknown> =>
+      requireRecord(envelope.payload, "ack payload");
+
+    const rawFirst = "sk-ant-test-123";
+    sendCommand("key-add-1", { type: "providers.key.add", provider: "anthropic", value: rawFirst });
+    await waitUntil(() => acksFor("key-add-1").length >= 2, "two acks for first add");
+    expect(payloadOf(acksFor("key-add-1")[0])["message"]).toBe("adding provider key");
+    expect(payloadOf(acksFor("key-add-1")[1])["message"]).toBe("provider key k-1 added and applied (graceful restart)");
+
+    const rawSecond = "sk-ant-test-456";
+    sendCommand("key-add-2", { type: "providers.key.add", provider: "anthropic", value: rawSecond });
+    await waitUntil(() => acksFor("key-add-2").length >= 2, "two acks for second add");
+    expect(payloadOf(acksFor("key-add-2")[1])["message"]).toBe("provider key k-2 added");
+
+    sendCommand("key-set-1", { type: "providers.key.set-active", provider: "anthropic", keyId: "k-1" });
+    await waitUntil(() => acksFor("key-set-1").length >= 2, "two acks for already-active set");
+    expect(payloadOf(acksFor("key-set-1")[0])["message"]).toBe("provider key already active");
+    expect(payloadOf(acksFor("key-set-1")[1])["message"]).toBe("provider key k-1 is already active");
+
+    sendCommand("key-set-2", { type: "providers.key.set-active", provider: "anthropic", keyId: "k-2" });
+    await waitUntil(() => acksFor("key-set-2").length >= 2, "two acks for switching active");
+    expect(payloadOf(acksFor("key-set-2")[0])["message"]).toBe("setting active provider key");
+    expect(payloadOf(acksFor("key-set-2")[1])["message"]).toBe("provider key k-2 set active (graceful restart)");
+
+    sendCommand("key-note-1", { type: "providers.key.update-note", provider: "anthropic", keyId: "k-1", note: "primary" });
+    await waitUntil(() => acksFor("key-note-1").length >= 2, "two acks for note update");
+    expect(payloadOf(acksFor("key-note-1")[0])["message"]).toBe("updating provider key note");
+    expect(payloadOf(acksFor("key-note-1")[1])["message"]).toBe("note updated for provider key k-1");
+
+    sendCommand("key-del-1", { type: "providers.key.delete", provider: "anthropic", keyId: "k-1" });
+    await waitUntil(() => acksFor("key-del-1").length >= 2, "two acks for deleting inactive key");
+    expect(payloadOf(acksFor("key-del-1")[0])["message"]).toBe("deleting provider key");
+    expect(payloadOf(acksFor("key-del-1")[1])["message"]).toBe("provider key k-1 deleted");
+
+    sendCommand("key-del-2", { type: "providers.key.delete", provider: "anthropic", keyId: "k-2" });
+    await waitUntil(() => acksFor("key-del-2").length >= 2, "two acks for deleting last active key");
+    expect(payloadOf(acksFor("key-del-2")[0])["message"]).toBe("deleting provider key");
+    expect(payloadOf(acksFor("key-del-2")[1])["message"]).toBe("provider key k-2 deleted, auth entry removed (graceful restart)");
+
+    const serialized = JSON.stringify(connection.messages);
+    expect(serialized).not.toContain(rawFirst);
+    expect(serialized).not.toContain(rawSecond);
+
+    runtime.stop();
+  }, 10_000);
+
+  it("defers provider-key commands during an upgrade and drains them after the terminal event", async () => {
+    const source = createUpgradeEventSource();
+    const connectionIndex = connections.length;
+    const logs: string[] = [];
+    let upgradeRunning = false;
+    const runtime = createIntegrationRuntime(logs, {
+      subscribeUpgrade: source.subscribe,
+      createRealDeps: () => ({ ...createKeyDeps(), isUpgradeRunning: () => upgradeRunning }),
+    });
+    runtime.start({ env: { CENTER_URL: centerUrl } });
+    const connection = await waitForConnection(connectionIndex);
+    await waitUntil(() => source.activeCount() === 1, "upgrade subscription attached");
+
+    upgradeRunning = true;
+    connection.send({
+      type: MESSAGE_TYPES.command,
+      id: "key-add-deferred",
+      payload: { type: "providers.key.add", provider: "anthropic", value: "sk-ant-test-789" },
+      timestamp: "2026-08-10T00:00:00.000Z",
+    });
+    await Bun.sleep(150);
+    const deferred = connection.messages.filter(
+      (envelope) => envelope.type === MESSAGE_TYPES.ack && envelope.id === "key-add-deferred",
+    );
+    expect(deferred).toHaveLength(0);
+
+    upgradeRunning = false;
+    source.emit({ step: "cleanup", status: "success", message: "ok", timestamp: "2026-08-10T00:00:01.000Z" } as UpgradeEvent);
+    await waitUntil(
+      () =>
+        connection.messages.filter(
+          (envelope) => envelope.type === MESSAGE_TYPES.ack && envelope.id === "key-add-deferred",
+        ).length >= 2,
+      "two acks after drain",
+    );
+    const drained = connection.messages.filter(
+      (envelope) => envelope.type === MESSAGE_TYPES.ack && envelope.id === "key-add-deferred",
+    );
+    expect(requireRecord(drained[0].payload, "ack payload")["message"]).toBe("adding provider key");
+    expect(requireRecord(drained[1].payload, "ack payload")["message"]).toBe(
+      "provider key k-1 added and applied (graceful restart)",
+    );
+    expect(JSON.stringify(connection.messages)).not.toContain("sk-ant-test-789");
 
     runtime.stop();
   }, 10_000);
