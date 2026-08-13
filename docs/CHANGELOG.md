@@ -1,6 +1,26 @@
 ## [Unreleased]
 
 
+## [1.14.0] - 2026-08-13
+
+### Added
+- Bump opencode 1.18.17 → 1.18.18
+- Bump opencode 1.18.16 → 1.18.17, glab 1.112.0 → 1.113.0
+- Add provider-key commands to protocol catalog
+- Implement provider-key command handlers with restart modes
+- Drain deferred commands after terminal upgrade event
+
+### Documentation
+- Fix protocol doc citations and key-command semantics
+- Sync provider-key specs and archive change
+
+### Changed
+- Cover provider-key round-trip and deferral in integration tests
+
+### Changed
+- Upgrade OpenCode from 1.18.16 to 1.18.18.
+- Upgrade GitLab CLI from 1.112.0 to 1.113.0.
+
 ## [1.13.2] - 2026-08-11
 
 ### Fixed
@@ -1247,7 +1267,7 @@
 
 ## Format
 
-[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.13.2...HEAD
+[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.14.0...HEAD
 [0.3.0]: https://github.com/tryweb/ai-engkit/releases/tag/v0.3.0
 [0.3.3]: https://github.com/tryweb/ai-engkit/compare/v0.3.0...v0.3.3
 [0.5.0]: https://github.com/tryweb/ai-engkit/compare/v0.3.3...v0.5.0
@@ -1375,3 +1395,4 @@
 [1.13.0]: https://github.com/tryweb/ai-engkit/compare/v1.12.1...v1.13.0
 [1.13.1]: https://github.com/tryweb/ai-engkit/compare/v1.13.0...v1.13.1
 [1.13.2]: https://github.com/tryweb/ai-engkit/compare/v1.13.1...v1.13.2
+[1.14.0]: https://github.com/tryweb/ai-engkit/compare/v1.13.2...v1.14.0
