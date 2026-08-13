@@ -169,6 +169,10 @@ describe("agent protocol", () => {
     expect(parseCommandName({ type: "upgrade" })).toBe("upgrade");
     expect(parseCommandName({ type: "reconfigure" })).toBe("reconfigure");
     expect(parseCommandName({ type: "restart" })).toBe("restart");
+    expect(parseCommandName({ type: "providers.key.add" })).toBe("providers.key.add");
+    expect(parseCommandName({ type: "providers.key.set-active" })).toBe("providers.key.set-active");
+    expect(parseCommandName({ type: "providers.key.delete" })).toBe("providers.key.delete");
+    expect(parseCommandName({ type: "providers.key.update-note" })).toBe("providers.key.update-note");
     expect(parseCommandName({ type: "delete" })).toBeNull();
     expect(parseCommandName({})).toBeNull();
     expect(parseCommandName(null)).toBeNull();
@@ -180,6 +184,10 @@ describe("agent protocol", () => {
       "upgrade",
       "reconfigure",
       "restart",
+      "providers.key.add",
+      "providers.key.set-active",
+      "providers.key.delete",
+      "providers.key.update-note",
       "status",
       "env.get",
       "projects.list",

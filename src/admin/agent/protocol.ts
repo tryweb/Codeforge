@@ -27,7 +27,14 @@ export const ERROR_CODES = Object.freeze({
 // Result and event are additive message types within protocol version 1.
 export const PROTOCOL_VERSION = 1;
 
-export type CommandName = "upgrade" | "reconfigure" | "restart";
+export type CommandName =
+  | "upgrade"
+  | "reconfigure"
+  | "restart"
+  | "providers.key.add"
+  | "providers.key.set-active"
+  | "providers.key.delete"
+  | "providers.key.update-note";
 
 /** Supported read-only query command names. */
 export type QueryName = "status" | "env.get" | "projects.list" | "providers.list";
@@ -177,6 +184,10 @@ export function parseCommandName(payload: unknown): CommandName | null {
     case "upgrade":
     case "reconfigure":
     case "restart":
+    case "providers.key.add":
+    case "providers.key.set-active":
+    case "providers.key.delete":
+    case "providers.key.update-note":
       return commandName;
     default:
       return null;
@@ -192,6 +203,10 @@ export function parseCommandType(payload: unknown): CommandType | null {
     case "upgrade":
     case "reconfigure":
     case "restart":
+    case "providers.key.add":
+    case "providers.key.set-active":
+    case "providers.key.delete":
+    case "providers.key.update-note":
     case "status":
     case "env.get":
     case "projects.list":
