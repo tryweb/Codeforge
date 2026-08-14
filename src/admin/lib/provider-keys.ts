@@ -112,10 +112,10 @@ export function deleteProviderKey(provider: string, keyId: string): boolean {
   return true;
 }
 
-export function setActiveProviderKey(provider: string, keyId: string): boolean {
+export function setActiveProviderKey(provider: string, keyId: string | null): boolean {
   const file = readProviderKeys();
   const entry = file.providers[provider];
-  if (!entry || !entry.keys.some((k) => k.id === keyId)) return false;
+  if (!entry || (keyId !== null && !entry.keys.some((k) => k.id === keyId))) return false;
   entry.activeKeyId = keyId;
   file.providers[provider] = entry;
   writeProviderKeys(file);

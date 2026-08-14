@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import providers from "./providers";
@@ -7,16 +7,30 @@ import providers from "./providers";
 interface RegistryFixture {
   directory: string;
   registryPath: string;
+  binPath: string;
   cleanup: () => Promise<void>;
 }
 
 async function fixture(seed: string): Promise<RegistryFixture> {
   const directory = await mkdtemp(join(tmpdir(), "provider-keys-routes-"));
   const registryPath = join(directory, "provider-keys.json");
+  const binPath = join(directory, "bin");
+  await mkdir(binPath);
+  const dockerPath = join(binPath, "docker");
+  await writeFile(dockerPath, `#!/bin/sh
+case "$1" in
+  exec) printf '%s\n' "$FAKE_AUTH_JSON"; exit 0 ;;
+  inspect|restart) echo 'restart failed' >&2; exit 1 ;;
+  ps) exit 0 ;;
+  *) exit 1 ;;
+esac
+`);
+  await chmod(dockerPath, 0o755);
   await writeFile(registryPath, seed);
   return {
     directory,
     registryPath,
+    binPath,
     cleanup: () => rm(directory, { recursive: true, force: true }),
   };
 }
@@ -89,6 +103,71 @@ describe("provider API-key note endpoints", () => {
     } finally {
       if (previousPath === undefined) delete Bun.env.PROVIDER_KEYS_PATH;
       else Bun.env.PROVIDER_KEYS_PATH = previousPath;
+      await f.cleanup();
+    }
+  });
+
+  test("POST rolls back the first registry key when applying it cannot restart ai-dev", async () => {
+    const f = await fixture(JSON.stringify({ providers: {} }));
+    const previousPath = Bun.env.PROVIDER_KEYS_PATH;
+    const previousExecutablePath = Bun.env.PATH;
+    const previousAuth = Bun.env.FAKE_AUTH_JSON;
+    Bun.env.PROVIDER_KEYS_PATH = f.registryPath;
+    Bun.env.PATH = `${f.binPath}:${previousExecutablePath ?? ""}`;
+    Bun.env.FAKE_AUTH_JSON = "{}";
+    try {
+      const response = await providers.request("http://localhost/api/providers/opencode-go/keys", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ value: "sk-new", note: "primary" }),
+      });
+
+      expect(response.status).toBe(500);
+      expect(await readRegistry(f.registryPath)).toEqual({ providers: {} });
+    } finally {
+      if (previousPath === undefined) delete Bun.env.PROVIDER_KEYS_PATH;
+      else Bun.env.PROVIDER_KEYS_PATH = previousPath;
+      if (previousExecutablePath === undefined) delete Bun.env.PATH;
+      else Bun.env.PATH = previousExecutablePath;
+      if (previousAuth === undefined) delete Bun.env.FAKE_AUTH_JSON;
+      else Bun.env.FAKE_AUTH_JSON = previousAuth;
+      await f.cleanup();
+    }
+  });
+
+  test("PUT active restores the previous registry selection when ai-dev restart fails", async () => {
+    const f = await fixture(JSON.stringify({
+      providers: {
+        "opencode-go": {
+          keys: [
+            { id: "old", value: "sk-old", createdAt: "2026-01-01T00:00:00.000Z" },
+            { id: "new", value: "sk-new", createdAt: "2026-01-02T00:00:00.000Z" },
+          ],
+          activeKeyId: "old",
+        },
+      },
+    }));
+    const previousPath = Bun.env.PROVIDER_KEYS_PATH;
+    const previousExecutablePath = Bun.env.PATH;
+    const previousAuth = Bun.env.FAKE_AUTH_JSON;
+    Bun.env.PROVIDER_KEYS_PATH = f.registryPath;
+    Bun.env.PATH = `${f.binPath}:${previousExecutablePath ?? ""}`;
+    Bun.env.FAKE_AUTH_JSON = JSON.stringify({ "opencode-go": { type: "api", key: "sk-old" } });
+    try {
+      const response = await providers.request("http://localhost/api/providers/opencode-go/keys/new/active", {
+        method: "PUT",
+      });
+
+      expect(response.status).toBe(500);
+      const registry = await readFile(f.registryPath, "utf8").then((value) => JSON.parse(value));
+      expect(registry.providers["opencode-go"].activeKeyId).toBe("old");
+    } finally {
+      if (previousPath === undefined) delete Bun.env.PROVIDER_KEYS_PATH;
+      else Bun.env.PROVIDER_KEYS_PATH = previousPath;
+      if (previousExecutablePath === undefined) delete Bun.env.PATH;
+      else Bun.env.PATH = previousExecutablePath;
+      if (previousAuth === undefined) delete Bun.env.FAKE_AUTH_JSON;
+      else Bun.env.FAKE_AUTH_JSON = previousAuth;
       await f.cleanup();
     }
   });

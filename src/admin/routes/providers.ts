@@ -20,14 +20,36 @@ import {
 import {
   isKeyProviderSupported,
   readProviderAuthKey,
+  readProviderAuthSnapshot,
   applyActiveKey,
   removeAuthKey,
   clearProviderCache,
 } from "../lib/opencode-auth";
-import { restartAiDev } from "./env";
+import { restartAiDev } from "../lib/restart-ai-dev";
 import { ProvidersPage } from "../views/providers";
 
 const providers = new Hono();
+
+async function restoreProviderAuth(name: string, previousAuthKey: string | null): Promise<string[]> {
+  const failures: string[] = [];
+  try {
+    if (previousAuthKey === null) {
+      await removeAuthKey(name);
+      await clearProviderCache();
+    } else {
+      await applyActiveKey(name, previousAuthKey);
+    }
+  } catch {
+    failures.push("runtime auth restore failed");
+  }
+  try {
+    const restart = await restartAiDev();
+    if (!restart.ok) failures.push("rollback restart failed");
+  } catch {
+    failures.push("rollback restart failed");
+  }
+  return failures;
+}
 
 function providerEntryFromBody(body: unknown): ProvidersMap[string] | null {
   const entry = (body as { provider?: unknown })?.provider;
@@ -105,7 +127,12 @@ providers.post("/api/providers/:name/keys", async (c) => {
   const wasFirstKey = !(file.providers[name]?.keys.length);
 
   if (wasFirstKey && isKeyProviderSupported(name)) {
-    const existingAuthKey = await readProviderAuthKey(name);
+    let existingAuthKey: string | null;
+    try {
+      existingAuthKey = await readProviderAuthSnapshot(name);
+    } catch {
+      return c.json({ error: "Could not read the current auth-store key" }, 500);
+    }
     if (existingAuthKey) {
       return c.json(
         {
@@ -124,9 +151,11 @@ providers.post("/api/providers/:name/keys", async (c) => {
       const restart = await restartAiDev();
       if (!restart.ok) throw new Error(restart.error ?? "Restart failed");
     } catch (err) {
-      deleteProviderKey(name, key.id);
       const message = err instanceof Error ? err.message : "Failed to apply key";
-      return c.json({ error: `Apply failed; key not saved: ${message}` }, 500);
+      const failures = deleteProviderKey(name, key.id) ? [] : ["registry key removal failed"];
+      failures.push(...await restoreProviderAuth(name, null));
+      const rollback = failures.length === 0 ? "" : `; rollback incomplete: ${failures.join(", ")}`;
+      return c.json({ error: `Apply failed; key not saved: ${message}${rollback}` }, 500);
     }
   }
 
@@ -190,6 +219,12 @@ providers.put("/api/providers/:name/keys/:keyId/active", async (c) => {
   }
 
   const previousActive = entry.activeKeyId;
+  let previousAuthKey: string | null;
+  try {
+    previousAuthKey = await readProviderAuthSnapshot(name);
+  } catch {
+    return c.json({ error: "Could not read the current auth-store key" }, 500);
+  }
   if (!setActiveProviderKey(name, keyId)) {
     return c.json({ error: "Failed to set active key" }, 500);
   }
@@ -200,9 +235,12 @@ providers.put("/api/providers/:name/keys/:keyId/active", async (c) => {
       const restart = await restartAiDev();
       if (!restart.ok) throw new Error(restart.error ?? "Restart failed");
     } catch (err) {
-      if (previousActive) setActiveProviderKey(name, previousActive);
+      const failures: string[] = [];
+      if (!setActiveProviderKey(name, previousActive)) failures.push("registry selection restore failed");
+      failures.push(...await restoreProviderAuth(name, previousAuthKey));
       const message = err instanceof Error ? err.message : "Failed to apply key";
-      return c.json({ error: `Apply failed; selection reverted: ${message}` }, 500);
+      const rollback = failures.length === 0 ? "" : `; rollback incomplete: ${failures.join(", ")}`;
+      return c.json({ error: `Apply failed; selection reverted: ${message}${rollback}` }, 500);
     }
   }
 

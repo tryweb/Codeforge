@@ -5,7 +5,7 @@
  * oh-my-opencode provider cache is cleared so the plugin re-probes.
  * Container restart is handled by the caller (restartAiDev).
  */
-import { execInAiDev } from "./docker";
+import { execInAiDev, type ExecResult } from "./docker";
 
 // $HOME expands inside the container shell; a bare "~" would not survive
 // parameter expansion and double quotes (POSIX tilde rules).
@@ -19,27 +19,59 @@ const CACHE_FILES = [
 /** Providers whose credentials are managed via the opencode auth store. */
 export const KEY_MANAGED_PROVIDERS = ["opencode-go"] as const;
 
+export interface AuthSnapshotDeps {
+  readonly execInAiDev: (command: string, timeoutMs: number) => Promise<ExecResult>;
+}
+
+class AuthStoreReadError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "AuthStoreReadError";
+  }
+}
+
+const REAL_AUTH_DEPS: AuthSnapshotDeps = { execInAiDev };
+
 export function isKeyProviderSupported(provider: string): boolean {
   return (KEY_MANAGED_PROVIDERS as readonly string[]).includes(provider);
 }
 
-/** Read the auth store JSON from the ai-dev container (or null on failure). */
-export async function readAuthStore(): Promise<Record<string, unknown> | null> {
-  const result = await execInAiDev(`cat ${AUTH_JSON_PATH} 2>/dev/null || echo '{}'`, 10_000);
-  if (result.exitCode !== 0) return null;
+async function loadAuthStore(deps: AuthSnapshotDeps): Promise<Record<string, unknown>> {
+  const result = await deps.execInAiDev(`cat ${AUTH_JSON_PATH} 2>/dev/null || echo '{}'`, 10_000);
+  if (result.exitCode !== 0) throw new AuthStoreReadError("Failed to read opencode auth store");
   try {
     const parsed: unknown = JSON.parse(result.stdout);
     if (typeof parsed === "object" && parsed !== null) return parsed as Record<string, unknown>;
-  } catch {
-    return null;
+  } catch (error: unknown) {
+    if (error instanceof SyntaxError) throw new AuthStoreReadError("Invalid opencode auth store JSON");
+    throw error;
   }
-  return null;
+  throw new AuthStoreReadError("Invalid opencode auth store JSON");
+}
+
+/** Read the auth store JSON from the ai-dev container (or null on failure). */
+export async function readAuthStore(): Promise<Record<string, unknown> | null> {
+  try {
+    return await loadAuthStore(REAL_AUTH_DEPS);
+  } catch (error: unknown) {
+    if (error instanceof AuthStoreReadError) return null;
+    throw error;
+  }
 }
 
 /** Read the existing key for a provider from the ai-dev auth store. */
 export async function readProviderAuthKey(provider: string): Promise<string | null> {
   const store = await readAuthStore();
   if (!store) return null;
+  const entry = store[provider] as { key?: unknown } | undefined;
+  return typeof entry?.key === "string" && entry.key.length > 0 ? entry.key : null;
+}
+
+export async function readProviderAuthSnapshot(
+  provider: string,
+  deps: AuthSnapshotDeps = REAL_AUTH_DEPS,
+): Promise<string | null> {
+  const store = await loadAuthStore(deps);
   const entry = store[provider] as { key?: unknown } | undefined;
   return typeof entry?.key === "string" && entry.key.length > 0 ? entry.key : null;
 }
