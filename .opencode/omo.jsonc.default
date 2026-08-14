@@ -2,7 +2,7 @@
   "$schema": "https://raw.githubusercontent.com/code-yeongyu/oh-my-openagent/v4.19.4/assets/omo.schema.json",
   "agents": {
     "plan": {
-      "fallback_models": [
+      "models": [
         {
           "model": "opencode-go/kimi-k3",
           "variant": "max"
@@ -17,15 +17,7 @@
       ]
     },
     "prometheus": {
-      "permission": {
-        "bash": "deny",
-        "glob": "deny",
-        "grep": "deny",
-        "read": "allow",
-        "edit": "deny",
-        "write": "deny"
-      },
-      "fallback_models": [
+      "models": [
         {
           "model": "opencode-go/kimi-k3",
           "variant": "max"
@@ -39,107 +31,15 @@
         }
       ]
     },
-    "explore": {
-      "permission": {
-        "bash": "allow",
-        "glob": "allow",
-        "grep": "allow",
-        "read": "allow",
-        "edit": "deny",
-        "write": "deny",
-        "apply_patch": "deny"
-      }
-    },
-    "oracle": {
-      "permission": {
-        "bash": "deny",
-        "glob": "deny",
-        "grep": "deny",
-        "read": "allow",
-        "edit": "deny",
-        "write": "deny"
-      }
-    },
-    "librarian": {
-      "permission": {
-        "bash": "deny",
-        "glob": "deny",
-        "grep": "deny",
-        "read": "allow",
-        "edit": "deny",
-        "write": "deny",
-        "webfetch": "allow"
-      }
-    },
-    "multimodal-looker": {
-      "permission": {
-        "bash": "deny",
-        "glob": "deny",
-        "grep": "deny",
-        "read": "allow",
-        "edit": "deny",
-        "write": "deny"
-      }
-    },
-    "metis": {
-      "permission": {
-        "bash": "deny",
-        "glob": "deny",
-        "grep": "deny",
-        "read": "allow",
-        "edit": "deny",
-        "write": "deny"
-      }
-    },
-    "momus": {
-      "permission": {
-        "bash": "deny",
-        "glob": "deny",
-        "grep": "deny",
-        "read": "allow",
-        "edit": "deny",
-        "write": "deny"
-      }
-    },
-    "sisyphus": {
-      "permission": {
-        "bash": "allow",
-        "glob": "allow",
-        "grep": "allow",
-        "read": "allow",
-        "edit": "allow",
-        "write": "allow"
-      }
-    },
-    "hephaestus": {
-      "permission": {
-        "bash": "allow",
-        "glob": "allow",
-        "grep": "allow",
-        "read": "allow",
-        "edit": "allow",
-        "write": "allow"
-      }
-    },
-    "atlas": {
-      "permission": {
-        "bash": "allow",
-        "glob": "allow",
-        "grep": "allow",
-        "read": "allow",
-        "edit": "allow",
-        "write": "allow"
-      }
-    },
-    "sisyphus-junior": {
-      "permission": {
-        "bash": "allow",
-        "glob": "allow",
-        "grep": "allow",
-        "read": "allow",
-        "edit": "allow",
-        "write": "allow"
-      }
-    }
+    "explore": {},
+    "oracle": {},
+    "librarian": {},
+    "multimodal-looker": {},
+    "metis": {},
+    "momus": {},
+    "sisyphus": {},
+    "hephaestus": {},
+    "atlas": {},
+    "sisyphus-junior": {}
   }
 }

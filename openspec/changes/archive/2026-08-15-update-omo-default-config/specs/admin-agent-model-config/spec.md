@@ -1,23 +1,4 @@
-## Purpose
-
-Lets the Admin interface read and write per-OMO-agent model configuration across two layers: the plugin's default (Resolved model) and fallback chains (Fallback chain via admin UI). The system provides live verification that writes land and the managed server recovers.
-
-## Model Resolution Architecture
-
-OMO agent model resolution follows a two-layer hierarchy:
-
-| Layer | Source | Configurable via Admin UI | Description |
-|---|---|---|---|
-| **Resolved model** | Plugin's `AGENT_MODEL_REQUIREMENTS` + connected providers | No (read-only) | The model the plugin assigns by default based on provider availability. Displayed in the "Resolved Model" column. Never reflects `fallback_models`. |
-| **Fallback chain** | `~/.omo/omo.jsonc` → `agents.<name>.fallback_models` | Yes (Edit button) | Ordered list of fallback models tried when the primary model is unavailable. Each entry has `{model, variant?}`. |
-
-**Note:** The plugin does not consume a user-specified primary `model` field on `agents.<name>` — verified empirically (writing `agents.<name>.model` and restarting leaves the session model unchanged). The only user-config override the plugin honors is `agents.<name>.fallback_models`.
-
-**Resolution order at runtime:**
-1. Use plugin's `AGENT_MODEL_REQUIREMENTS` default (Resolved model) as primary
-2. If primary fails → try models from `fallback_models` in order
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: List agent model configuration
 The system SHALL expose a read endpoint returning, for every OMO agent, its configured model chain (from `~/.omo/omo.jsonc`), its currently resolved model (from the managed opencode server `/agent` endpoint), and whether the resolved model is configured, inherited, or plugin-assigned. The response SHALL also indicate whether the connected-provider set makes the configured entries resolvable.
@@ -67,25 +48,3 @@ After writing and restarting, the system SHALL confirm that the write landed (th
 #### Scenario: Server unreachable after restart is reported without rollback
 - **WHEN** the restart succeeds but the managed opencode `/agent` endpoint cannot be reached afterwards
 - **THEN** the system reports the apply as confirmed-but-unverified without restoring the configuration
-
-### Requirement: Server password prerequisite for verification
-The live-verification and list-resolved-model behaviors SHALL require `OPENCODE_SERVER_PASSWORD` to be set in the mounted `.env` (the password OpenChamber uses to spawn the managed opencode server). When it is absent, the system SHALL expose the configuration read/write of `~/.omo/omo.jsonc` but SHALL NOT claim live verification: the UI SHALL show a prerequisite warning and the write endpoint SHALL refuse to apply-and-restart with an explanatory error.
-
-#### Scenario: Password present enables verification
-- **WHEN** `.env` sets `OPENCODE_SERVER_PASSWORD` and the managed opencode server accepts Basic auth with `opencode:<password>`
-- **THEN** the list endpoint returns live resolved models and the write endpoint performs apply-and-verify
-
-#### Scenario: Password absent degrades gracefully
-- **WHEN** `.env` does not set `OPENCODE_SERVER_PASSWORD`
-- **THEN** the UI shows a prerequisite warning, the list endpoint returns no live resolved model, and the write endpoint rejects apply with an error explaining the missing variable
-
-### Requirement: End-to-end regression test
-The test suite SHALL include an end-to-end script that (1) records the baseline `~/.omo/omo.jsonc` and the live `/agent` model for a target agent, (2) writes a valid fallback chain configuration, (3) restarts and confirms the managed server answers `/agent` again (config re-read) and the config file retains the target, and (4) restores the baseline and asserts the file is byte-identical and the server is reachable. Restoration SHALL be guaranteed even if confirmation fails (trap-based cleanup), and the script SHALL skip with a warning when `OPENCODE_SERVER_PASSWORD` is absent. The script SHALL NOT assert a model change via `/agent` — that endpoint never reflects `fallback_models`.
-
-#### Scenario: Test passes through set-confirm-restore
-- **WHEN** the test runs on an environment with `OPENCODE_SERVER_PASSWORD` set and a writable ai-dev
-- **THEN** it exits 0 only if the target is retained in config and the server answers `/agent` after restart, and the baseline is restored afterwards
-
-#### Scenario: Test skips without password
-- **WHEN** the test runs without `OPENCODE_SERVER_PASSWORD` in `.env`
-- **THEN** it exits non-zero with a warning naming the missing variable, or is skipped by the runner, and leaves `~/.omo/omo.jsonc` untouched

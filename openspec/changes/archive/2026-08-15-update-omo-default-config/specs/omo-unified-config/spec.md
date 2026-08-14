@@ -1,10 +1,4 @@
-# OMO unified config
-
-## Purpose
-
-Ship pinned OMO agent defaults in a unified config while preserving user customizations and preventing legacy migration failures.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Ship OMO defaults in omo.jsonc format
 AI-EngKit SHALL ship its OMO agent defaults as an omo.jsonc-format template (`.opencode/omo.jsonc.default`), baked into the image at `/etc/opencode/omo.jsonc.default`. The template SHALL contain the same 11 agent presets previously carried by `oh-my-openagent.json.default` (explore, oracle, librarian, multimodal-looker, metis, momus, prometheus as read-only/analysis; sisyphus, hephaestus, atlas, sisyphus-junior as execution). The template SHALL conform to the schema of the pinned oh-my-openagent release: agent entries SHALL NOT contain a `permission` key (unrecognized by the 4.19.4 `OmoAgentDefInputSchema`), and model chains SHALL use the `models` key (or `model` for a single entry) instead of the deprecated `fallback_models` key.
@@ -31,24 +25,6 @@ The entrypoint (`entrypoint.d/02-init-config.sh`) SHALL ensure `~/.omo/omo.jsonc
 #### Scenario: Idempotent repeated starts
 - **WHEN** the container starts twice in a row without user edits
 - **THEN** `~/.omo/omo.jsonc` content is byte-identical after both starts
-
-### Requirement: Schema pinned to release tag
-The `$schema` URL in the shipped omo.jsonc default SHALL reference the same verified tagged oh-my-openagent release as the runtime pin, not a floating branch such as `dev`.
-
-#### Scenario: Schema URL is tag-pinned
-- **WHEN** inspecting `/etc/opencode/omo.jsonc.default`
-- **THEN** the `$schema` value contains the pinned release tag and does not contain `/dev/`
-
-### Requirement: Coexistence with OMO legacy migration
-AI-EngKit SHALL archive, but not import or delete, every recognized legacy OMO config filename before OMO starts. The archive SHALL remain within `~/.config/opencode` so the rename does not cross Docker volumes. AI-EngKit SHALL then generate unified defaults directly, leaving OMO no recognized legacy migration source.
-
-#### Scenario: Existing legacy file auto-migrates once
-- **WHEN** a container with a pre-existing legacy `oh-my-openagent.json` starts on the new image
-- **THEN** the legacy file is present under an AI-EngKit backup suffix in `~/.config/opencode`, `~/.omo/omo.jsonc` contains the supported defaults, and OMO creates neither a migration journal nor an OMO migration backup
-
-#### Scenario: Legacy file is preserved for manual recovery
-- **WHEN** a container starts with a recognized legacy OMO config
-- **THEN** its original content is retained under an AI-EngKit backup suffix in `~/.config/opencode` and is not imported into unified config
 
 ### Requirement: OMO version pinned and declared at runtime
 The Dockerfile SHALL pin `OH_MY_OPENAGENT_VERSION` to the currently verified release (4.19.4). The entrypoint SHALL emit `oh-my-openagent@<pinned-version>` for an unset or bare `oh-my-openagent` plugin token; an explicitly versioned user token remains unchanged. The shipped omo.jsonc default `$schema` SHALL reference the same pinned version tag.
