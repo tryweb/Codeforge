@@ -185,6 +185,23 @@ function createKeyDeps(): CommandDeps {
     readProviderAuthSnapshot: async () => null,
     waitForIdleSessions: async () => "idle",
     gracefulRestartAiDev: async () => ({ success: true, message: "restarted" }),
+    setSecret: (key) => (key === "ADMIN_PASSWORD" ? "immediate" : "restart_required"),
+    sshAddKey: async () => ({ ok: true }),
+    sshDeleteKey: async () => ({ ok: true }),
+    sshListKeys: async () => [],
+    gitSetConfig: async () => ({ ok: true }),
+    gitGetConfig: async () => ({}),
+    ghStartDeviceFlow: async () => ({ device_code: "ABCD-1234", verification_uri: "https://github.com/login/device" }),
+    ghLogout: async () => {},
+    glabAddInstance: async () => ({ ok: true }),
+    glabRemoveInstance: async () => {},
+    glabListInstances: async () => [],
+    projectCreate: async () => ({ ok: true }),
+    projectSetRemote: async () => ({ ok: true }),
+    projectEnable: async () => ({ ok: true }),
+    projectDisable: async () => ({ ok: true }),
+    projectEnableFeature: async () => ({ ok: true }),
+    projectSync: async () => ({ ok: true, messages: [] }),
   };
 }
 
@@ -214,6 +231,35 @@ function createIntegrationRuntime(
       readEnv: () => ({}),
       readProjects: async () => ({}),
       readProviders: async () => ({}),
+      isKeyProviderSupported: () => false,
+      readProviderKeys: () => ({ providers: {} }),
+      addProviderKey: () => { throw new Error("not wired"); },
+      setActiveProviderKey: () => false,
+      deleteProviderKey: () => false,
+      updateProviderKeyNote: () => false,
+      applyActiveKey: async () => {},
+      removeAuthKey: async () => {},
+      clearProviderCache: async () => {},
+      readProviderAuthSnapshot: async () => null,
+      waitForIdleSessions: async () => "idle",
+      gracefulRestartAiDev: async () => ({ success: true, message: "restarted" }),
+      setSecret: () => "immediate",
+      sshAddKey: async () => ({ ok: true }),
+      sshDeleteKey: async () => ({ ok: true }),
+      sshListKeys: async () => [],
+      gitSetConfig: async () => ({ ok: true }),
+      gitGetConfig: async () => ({}),
+      ghStartDeviceFlow: async () => ({ device_code: "ABCD-1234", verification_uri: "https://github.com/login/device" }),
+      ghLogout: async () => {},
+      glabAddInstance: async () => ({ ok: true }),
+      glabRemoveInstance: async () => {},
+      glabListInstances: async () => [],
+      projectCreate: async () => ({ ok: true }),
+      projectSetRemote: async () => ({ ok: true }),
+      projectEnable: async () => ({ ok: true }),
+      projectDisable: async () => ({ ok: true }),
+      projectEnableFeature: async () => ({ ok: true }),
+      projectSync: async () => ({ ok: true, messages: [] }),
     }),
     heartbeatMs: () => 25,
     logger: (level, message) => logs.push(`${level}:${message}`),
@@ -481,6 +527,58 @@ describe("agent stub-center integration", () => {
       "provider key k-1 added and applied (graceful restart)",
     );
     expect(JSON.stringify(connection.messages)).not.toContain("sk-ant-test-789");
+
+    runtime.stop();
+  }, 10_000);
+
+  it("round-trips the six remote management domains over the wire", async () => {
+    const connectionIndex = connections.length;
+    const runtime = createIntegrationRuntime([], { createRealDeps: createKeyDeps });
+    runtime.start({ env: { CENTER_URL: centerUrl } });
+    const connection = await waitForConnection(connectionIndex);
+    await waitForEnvelope(connection, (envelope) => envelope.type === MESSAGE_TYPES.heartbeat);
+
+    const sendCommand = (id: string, payload: Record<string, unknown>): void => {
+      connection.send({
+        type: MESSAGE_TYPES.command,
+        id,
+        payload,
+        timestamp: "2026-08-10T00:00:00.000Z",
+      });
+    };
+    const ackFor = async (id: string, index: number): Promise<Envelope> => {
+      await waitUntil(
+        () => connection.messages.filter((env) => env.type === MESSAGE_TYPES.ack && env.id === id).length > index,
+        `ack ${id}[${index}]`,
+      );
+      return connection.messages.filter((env) => env.type === MESSAGE_TYPES.ack && env.id === id)[index];
+    };
+    const payloadOf = (env: Envelope): Record<string, unknown> => requireRecord(env.payload, "ack payload");
+
+    sendCommand("int-secrets", { type: "secrets.set", key: "OPENCHAMBER_UI_PASSWORD", value: "secret-abc" });
+    expect(payloadOf(await ackFor("int-secrets", 0))["message"]).toContain("OPENCHAMBER_UI_PASSWORD updated");
+
+    sendCommand("int-ssh", { type: "ssh.key.add", name: "ci", keyType: "ed25519" });
+    expect(payloadOf(await ackFor("int-ssh", 0))["message"]).toBe("SSH key ci added");
+
+    sendCommand("int-git", { type: "git.config.set", key: "user.email", value: "a@b.c" });
+    expect(payloadOf(await ackFor("int-git", 0))["message"]).toBe("git config user.email updated");
+
+    sendCommand("int-gh", { type: "gh.auth.start" });
+    expect(payloadOf(await ackFor("int-gh", 0))["data"]).toEqual({
+      device_code: "ABCD-1234",
+      verification_uri: "https://github.com/login/device",
+    });
+
+    sendCommand("int-glab", { type: "glab.instance.add", hostname: "gitlab.example.com", token: "glpat-int-token" });
+    expect(payloadOf(await ackFor("int-glab", 0))["message"]).toBe("GitLab instance gitlab.example.com connected");
+
+    sendCommand("int-proj", { type: "projects.create", name: "alpha", gitInit: true });
+    expect(payloadOf(await ackFor("int-proj", 1))["message"]).toBe("Project alpha created");
+
+    const serialized = JSON.stringify(connection.messages);
+    expect(serialized).not.toContain("secret-abc");
+    expect(serialized).not.toContain("glpat-int-token");
 
     runtime.stop();
   }, 10_000);

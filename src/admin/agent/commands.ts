@@ -6,6 +6,10 @@ import {
 } from "../lib/docker";
 import { PASSWORD_KEYS } from "../lib/env-schema";
 import { readEnvFile, upsertEnvVar as upsertRealEnvVar } from "../lib/env";
+import { KEY_MATERIAL_PATTERN, readSanitizedGlobalConfig, setGlobalConfig as realSetGlobalConfig } from "../lib/git-config";
+import { logoutGh as realLogoutGh, startDeviceFlow as realStartDeviceFlow, type DeviceFlowInfo } from "../lib/gh-auth";
+import { listGlabInstances as realListGlabInstances, loginGlabWithToken as realLoginGlabWithToken, logoutGlab as realLogoutGlab, type GlabInstance } from "../lib/glab-auth";
+import { isSecretKey as realIsSecretKey, setSecretValue as realSetSecretValue, type ActivationStatus } from "../lib/secrets";
 import { collectProjectOverviews, type ProjectFeatures } from "../lib/projects-overview";
 import { collectProvidersMeta } from "../lib/provider-meta";
 import {
@@ -18,6 +22,25 @@ import {
   type ProviderKey,
   type ProviderKeysFile,
 } from "../lib/provider-keys";
+import {
+  createProject as realCreateProject,
+  disableProject as realDisableProject,
+  enableProject as realEnableProject,
+  enableProjectFeature as realEnableProjectFeature,
+  isValidProjectName as realIsValidProjectName,
+  PROJECT_FEATURES,
+  setProjectRemote as realSetProjectRemote,
+  syncProjects as realSyncProjects,
+  type ProjectActionResult,
+  type ProjectFeature,
+} from "../lib/projects";
+import {
+  addKey as realSshAddKey,
+  deleteKey as realSshDeleteKey,
+  isValidKeyName,
+  listKeys as realSshListKeys,
+  type SshKey,
+} from "../lib/ssh-keys";
 import {
   applyActiveKey as realApplyActiveKey,
   clearProviderCache as realClearProviderCache,
@@ -52,7 +75,6 @@ const DEFAULT_WORKSPACE_ROOT = "/home/devuser/workspace";
 const DEFAULT_OPENCHAMBER_SETTINGS = "/home/devuser/.config/openchamber/settings.json";
 const DEFAULT_OPENCHAMBER_DISABLED = "/home/devuser/.config/openchamber/disabled-projects.json";
 const SECRET_MASK = "••••••";
-const KEY_MATERIAL_PATTERN = /(sk-|ghp_|glpat-|AIza|token=|secret)/i;
 
 /** Runtime operations used to execute commands and serve read-only queries. */
 export interface CommandDeps {
@@ -78,6 +100,23 @@ export interface CommandDeps {
   readProviderAuthSnapshot: (provider: string) => Promise<string | null>;
   waitForIdleSessions: () => Promise<IdleWaitOutcome>;
   gracefulRestartAiDev: () => Promise<{ success: boolean; message?: string }>;
+  setSecret: (key: string, value: string) => ActivationStatus;
+  sshAddKey: (name: string, type: string, passphrase: string) => Promise<{ ok: true } | { ok: false; error: string }>;
+  sshDeleteKey: (name: string) => Promise<{ ok: true } | { ok: false; error: string }>;
+  sshListKeys: () => Promise<SshKey[]>;
+  gitSetConfig: (key: string, value: string) => Promise<{ ok: true } | { ok: false; error: string }>;
+  gitGetConfig: () => Promise<Record<string, string>>;
+  ghStartDeviceFlow: () => Promise<DeviceFlowInfo>;
+  ghLogout: () => Promise<void>;
+  glabAddInstance: (hostname: string, token: string) => Promise<{ ok: true } | { ok: false; error: string }>;
+  glabRemoveInstance: (hostname: string) => Promise<void>;
+  glabListInstances: () => Promise<GlabInstance[]>;
+  projectCreate: (name: string, payload: { gitInit?: boolean; gitRemote?: string }) => Promise<ProjectActionResult>;
+  projectSetRemote: (name: string, remote: string) => Promise<ProjectActionResult>;
+  projectEnable: (name: string) => Promise<ProjectActionResult>;
+  projectDisable: (name: string) => Promise<ProjectActionResult>;
+  projectEnableFeature: (name: string, feature: string) => Promise<ProjectActionResult>;
+  projectSync: (add: string[], remove: string[]) => Promise<ProjectActionResult>;
 }
 
 /** Transport boundary for protocol envelopes emitted by the dispatcher. */
@@ -118,6 +157,55 @@ interface ProviderKeyNotePayload {
   provider: string;
   keyId: string;
   note: string;
+}
+
+interface SecretSetPayload {
+  key: string;
+  value: string;
+}
+
+interface SshKeyAddPayload {
+  name: string;
+  keyType: "ed25519" | "rsa";
+  passphrase: string;
+}
+
+interface SshKeyDeletePayload {
+  name: string;
+}
+
+interface GitConfigSetPayload {
+  key: string;
+  value: string;
+}
+
+interface GlabInstanceAddPayload {
+  hostname: string;
+  token: string;
+}
+
+interface GlabInstanceRemovePayload {
+  hostname: string;
+}
+
+interface ProjectCreatePayload {
+  name: string;
+  gitInit: boolean;
+  gitRemote: string;
+}
+
+interface ProjectNamePayload {
+  name: string;
+}
+
+interface ProjectFeaturePayload {
+  name: string;
+  feature: string;
+}
+
+interface ProjectSyncPayload {
+  add: string[];
+  remove: string[];
 }
 
 interface RedactedEnvironment {
@@ -190,6 +278,114 @@ function parseProviderKeyNote(payload: unknown): ProviderKeyNotePayload | null {
   if (typeof keyId !== "string" || keyId === "") return null;
   if (typeof note !== "string") return null;
   return { provider, keyId, note };
+}
+
+function parseSecretSet(payload: unknown): SecretSetPayload | null {
+  if (!isRecord(payload)) return null;
+  const key = payload["key"];
+  const value = payload["value"];
+  if (typeof key !== "string" || !realIsSecretKey(key)) return null;
+  if (typeof value !== "string" || value.trim() === "") return null;
+  return { key, value };
+}
+
+function parseSshKeyAdd(payload: unknown): SshKeyAddPayload | null {
+  if (!isRecord(payload)) return null;
+  const name = payload["name"];
+  if (name !== undefined && typeof name !== "string") return null;
+  const safeName = typeof name === "string" && name !== "" ? name : "id_ed25519";
+  if (!isValidKeyName(safeName)) return null;
+  const keyType = payload["keyType"];
+  if (keyType !== undefined && keyType !== "ed25519" && keyType !== "rsa") return null;
+  const passphrase = payload["passphrase"];
+  if (passphrase !== undefined && typeof passphrase !== "string") return null;
+  return { name: safeName, keyType: keyType === "rsa" ? "rsa" : "ed25519", passphrase: typeof passphrase === "string" ? passphrase : "" };
+}
+
+function parseSshKeyDelete(payload: unknown): SshKeyDeletePayload | null {
+  if (!isRecord(payload)) return null;
+  const name = payload["name"];
+  if (typeof name !== "string" || !isValidKeyName(name)) return null;
+  return { name };
+}
+
+function parseGitConfigSet(payload: unknown): GitConfigSetPayload | null {
+  if (!isRecord(payload)) return null;
+  const key = payload["key"];
+  const value = payload["value"];
+  if (typeof key !== "string" || key.trim() === "") return null;
+  if (typeof value !== "string" || value.trim() === "") return null;
+  return { key, value };
+}
+
+function parseGlabInstanceAdd(payload: unknown): GlabInstanceAddPayload | null {
+  if (!isRecord(payload)) return null;
+  const hostname = payload["hostname"];
+  const token = payload["token"];
+  if (typeof hostname !== "string" || hostname.trim() === "") return null;
+  if (typeof token !== "string" || token.trim() === "") return null;
+  return { hostname, token };
+}
+
+function parseGlabInstanceRemove(payload: unknown): GlabInstanceRemovePayload | null {
+  if (!isRecord(payload)) return null;
+  const hostname = payload["hostname"];
+  if (typeof hostname !== "string" || hostname.trim() === "") return null;
+  return { hostname };
+}
+
+function parseProjectCreate(payload: unknown): ProjectCreatePayload | null {
+  if (!isRecord(payload)) return null;
+  const name = payload["name"];
+  if (typeof name !== "string" || !realIsValidProjectName(name.trim())) return null;
+  const gitInit = payload["gitInit"];
+  if (gitInit !== undefined && typeof gitInit !== "boolean") return null;
+  const gitRemote = payload["gitRemote"];
+  if (gitRemote !== undefined && typeof gitRemote !== "string") return null;
+  return { name: name.trim(), gitInit: gitInit === true, gitRemote: typeof gitRemote === "string" ? gitRemote : "" };
+}
+
+function parseProjectName(payload: unknown): ProjectNamePayload | null {
+  if (!isRecord(payload)) return null;
+  const name = payload["name"];
+  if (typeof name !== "string" || !realIsValidProjectName(name.trim())) return null;
+  return { name: name.trim() };
+}
+
+function parseProjectSetRemote(payload: unknown): ProjectNamePayload & { remote: string } | null {
+  if (!isRecord(payload)) return null;
+  const name = payload["name"];
+  if (typeof name !== "string" || !realIsValidProjectName(name.trim())) return null;
+  const remote = payload["remote"];
+  if (remote !== undefined && typeof remote !== "string") return null;
+  return { name: name.trim(), remote: typeof remote === "string" ? remote : "" };
+}
+
+function parseProjectFeature(payload: unknown): ProjectFeaturePayload | null {
+  if (!isRecord(payload)) return null;
+  const name = payload["name"];
+  const feature = payload["feature"];
+  if (typeof name !== "string" || !realIsValidProjectName(name.trim())) return null;
+  if (typeof feature !== "string" || !PROJECT_FEATURES.includes(feature as ProjectFeature)) return null;
+  return { name: name.trim(), feature };
+}
+
+function parseProjectSync(payload: unknown): ProjectSyncPayload | null {
+  if (!isRecord(payload)) return null;
+  const toNames = (value: unknown): string[] | null => {
+    if (value === undefined) return [];
+    if (!Array.isArray(value)) return null;
+    const names: string[] = [];
+    for (const item of value) {
+      if (typeof item !== "string" || !realIsValidProjectName(item.trim())) return null;
+      names.push(item.trim());
+    }
+    return names;
+  };
+  const add = toNames(payload["add"]);
+  const remove = toNames(payload["remove"]);
+  if (add === null || remove === null) return null;
+  return { add, remove };
 }
 
 function redactEnvironment(source: Record<string, string>): RedactedEnvironment {
@@ -832,6 +1028,253 @@ export function createCommandDispatcher(sender: CommandSender, deps: CommandDeps
     }
   }
 
+  async function executeAction(
+    env: Envelope,
+    run: () => Promise<{ ok: true; message?: string } | { ok: false; error: string }>,
+  ): Promise<void> {
+    const startedAt = deps.now();
+    try {
+      const result = await run();
+      sender.send(buildAck(env.id, {
+        status: result.ok ? "success" : "failure",
+        message: result.ok ? (result.message ?? "done") : result.error,
+        started_at: startedAt,
+        finished_at: deps.now(),
+      }));
+    } catch (error: unknown) {
+      sender.send(buildAck(env.id, {
+        status: "failure",
+        message: error instanceof Error ? error.message : String(error),
+        started_at: startedAt,
+        finished_at: deps.now(),
+      }));
+    }
+  }
+
+  async function executeSecretSet(env: Envelope, payload: SecretSetPayload): Promise<void> {
+    await executeAction(env, async () => {
+      const activation = deps.setSecret(payload.key, payload.value);
+      return { ok: true, message: `${payload.key} updated (${activation} activation)` };
+    });
+  }
+
+  async function executeSshKeyAdd(env: Envelope, payload: SshKeyAddPayload): Promise<void> {
+    await executeAction(env, async () => {
+      const result = await deps.sshAddKey(payload.name, payload.keyType, payload.passphrase);
+      return result.ok
+        ? { ok: true, message: `SSH key ${payload.name} added` }
+        : { ok: false, error: result.error };
+    });
+  }
+
+  async function executeSshKeyDelete(env: Envelope, payload: SshKeyDeletePayload): Promise<void> {
+    await executeAction(env, async () => {
+      const result = await deps.sshDeleteKey(payload.name);
+      return result.ok
+        ? { ok: true, message: `SSH key ${payload.name} deleted` }
+        : { ok: false, error: result.error };
+    });
+  }
+
+  async function executeGitConfigSet(env: Envelope, payload: GitConfigSetPayload): Promise<void> {
+    await executeAction(env, async () => {
+      const result = await deps.gitSetConfig(payload.key, payload.value);
+      return result.ok
+        ? { ok: true, message: `git config ${payload.key} updated` }
+        : { ok: false, error: result.error };
+    });
+  }
+
+  async function executeGhAuthStart(env: Envelope): Promise<void> {
+    const startedAt = deps.now();
+    try {
+      const info = await deps.ghStartDeviceFlow();
+      sender.send(buildAck(env.id, {
+        status: "success",
+        message: "device flow started",
+        started_at: startedAt,
+        finished_at: deps.now(),
+        data: { device_code: info.device_code, verification_uri: info.verification_uri },
+      }));
+    } catch (error: unknown) {
+      sender.send(buildAck(env.id, {
+        status: "failure",
+        message: error instanceof Error ? error.message : String(error),
+        started_at: startedAt,
+        finished_at: deps.now(),
+      }));
+    }
+  }
+
+  async function executeGhAuthLogout(env: Envelope): Promise<void> {
+    const startedAt = deps.now();
+    try {
+      await deps.ghLogout();
+      sender.send(buildAck(env.id, {
+        status: "success",
+        message: "GitHub disconnected",
+        started_at: startedAt,
+        finished_at: deps.now(),
+      }));
+    } catch (error: unknown) {
+      sender.send(buildAck(env.id, {
+        status: "failure",
+        message: error instanceof Error ? error.message : String(error),
+        started_at: startedAt,
+        finished_at: deps.now(),
+      }));
+    }
+  }
+
+  async function executeGlabInstanceAdd(env: Envelope, payload: GlabInstanceAddPayload): Promise<void> {
+    await executeAction(env, async () => {
+      const result = await deps.glabAddInstance(payload.hostname, payload.token);
+      return result.ok
+        ? { ok: true, message: `GitLab instance ${payload.hostname} connected` }
+        : { ok: false, error: result.error };
+    });
+  }
+
+  async function executeGlabInstanceRemove(env: Envelope, payload: GlabInstanceRemovePayload): Promise<void> {
+    const startedAt = deps.now();
+    try {
+      await deps.glabRemoveInstance(payload.hostname);
+      sender.send(buildAck(env.id, {
+        status: "success",
+        message: `GitLab instance ${payload.hostname} removed`,
+        started_at: startedAt,
+        finished_at: deps.now(),
+      }));
+    } catch (error: unknown) {
+      sender.send(buildAck(env.id, {
+        status: "failure",
+        message: error instanceof Error ? error.message : String(error),
+        started_at: startedAt,
+        finished_at: deps.now(),
+      }));
+    }
+  }
+
+  async function executeProjectEnable(env: Envelope, payload: ProjectNamePayload): Promise<void> {
+    await executeAction(env, async () => {
+      const result = await deps.projectEnable(payload.name);
+      return result.ok
+        ? { ok: true, message: `Project ${payload.name} enabled` }
+        : { ok: false, error: result.error };
+    });
+  }
+
+  async function executeProjectDisable(env: Envelope, payload: ProjectNamePayload): Promise<void> {
+    await executeAction(env, async () => {
+      const result = await deps.projectDisable(payload.name);
+      return result.ok
+        ? { ok: true, message: `Project ${payload.name} disabled` }
+        : { ok: false, error: result.error };
+    });
+  }
+
+  async function executeProjectEnableFeature(env: Envelope, payload: ProjectFeaturePayload): Promise<void> {
+    await executeAction(env, async () => {
+      const result = await deps.projectEnableFeature(payload.name, payload.feature);
+      return result.ok
+        ? { ok: true, message: `Project ${payload.name} feature ${payload.feature} enabled` }
+        : { ok: false, error: result.error };
+    });
+  }
+
+  function dispatchProjectCreate(env: Envelope, payload: ProjectCreatePayload): void {
+    const startedAt = deps.now();
+    sender.send(buildAck(env.id, {
+      status: "success",
+      message: "creating project",
+      started_at: startedAt,
+      finished_at: deps.now(),
+    }));
+    void finishProjectCreate(env, payload, startedAt);
+  }
+
+  async function finishProjectCreate(env: Envelope, payload: ProjectCreatePayload, startedAt: string): Promise<void> {
+    try {
+      const result = await deps.projectCreate(payload.name, { gitInit: payload.gitInit, gitRemote: payload.gitRemote });
+      sender.send(buildAck(env.id, {
+        status: result.ok ? "success" : "failure",
+        message: result.ok ? `Project ${payload.name} created` : result.error,
+        started_at: startedAt,
+        finished_at: deps.now(),
+      }));
+    } catch (error: unknown) {
+      sender.send(buildAck(env.id, {
+        status: "failure",
+        message: error instanceof Error ? error.message : String(error),
+        started_at: startedAt,
+        finished_at: deps.now(),
+      }));
+    }
+  }
+
+  function dispatchProjectSetRemote(env: Envelope, payload: ProjectNamePayload & { remote: string }): void {
+    const startedAt = deps.now();
+    sender.send(buildAck(env.id, {
+      status: "success",
+      message: "setting project remote",
+      started_at: startedAt,
+      finished_at: deps.now(),
+    }));
+    void finishProjectSetRemote(env, payload, startedAt);
+  }
+
+  async function finishProjectSetRemote(env: Envelope, payload: ProjectNamePayload & { remote: string }, startedAt: string): Promise<void> {
+    try {
+      const result = await deps.projectSetRemote(payload.name, payload.remote);
+      sender.send(buildAck(env.id, {
+        status: result.ok ? "success" : "failure",
+        message: result.ok ? `Project ${payload.name} remote set` : result.error,
+        started_at: startedAt,
+        finished_at: deps.now(),
+      }));
+    } catch (error: unknown) {
+      sender.send(buildAck(env.id, {
+        status: "failure",
+        message: error instanceof Error ? error.message : String(error),
+        started_at: startedAt,
+        finished_at: deps.now(),
+      }));
+    }
+  }
+
+  function dispatchProjectSync(env: Envelope, payload: ProjectSyncPayload): void {
+    const startedAt = deps.now();
+    sender.send(buildAck(env.id, {
+      status: "success",
+      message: "syncing projects",
+      started_at: startedAt,
+      finished_at: deps.now(),
+    }));
+    void finishProjectSync(env, payload, startedAt);
+  }
+
+  async function finishProjectSync(env: Envelope, payload: ProjectSyncPayload, startedAt: string): Promise<void> {
+    try {
+      const result = await deps.projectSync(payload.add, payload.remove);
+      const message = result.ok
+        ? `Project sync complete (${result.messages?.length ?? 0} changes)`
+        : result.error;
+      sender.send(buildAck(env.id, {
+        status: result.ok ? "success" : "failure",
+        message,
+        started_at: startedAt,
+        finished_at: deps.now(),
+      }));
+    } catch (error: unknown) {
+      sender.send(buildAck(env.id, {
+        status: "failure",
+        message: error instanceof Error ? error.message : String(error),
+        started_at: startedAt,
+        finished_at: deps.now(),
+      }));
+    }
+  }
+
   async function dispatchQuery(env: Envelope, query: QueryName): Promise<void> {
     let payload: unknown;
     switch (query) {
@@ -846,6 +1289,15 @@ export function createCommandDispatcher(sender: CommandSender, deps: CommandDeps
         break;
       case "providers.list":
         payload = sanitizeProviders(await deps.readProviders());
+        break;
+      case "git.config.get":
+        payload = await deps.gitGetConfig();
+        break;
+      case "glab.instances":
+        payload = await deps.glabListInstances();
+        break;
+      case "ssh.key.list":
+        payload = await deps.sshListKeys();
         break;
     }
     sender.send(buildResult(env.id, maskResultKeyMaterial(payload)));
@@ -974,10 +1426,127 @@ export function createCommandDispatcher(sender: CommandSender, deps: CommandDeps
         dispatchKeyUpdateNote(env, payload);
         return;
       }
+      case "secrets.set": {
+        const payload = parseSecretSet(env.payload);
+        if (payload === null) {
+          sendMalformed(env);
+          return;
+        }
+        void executeSecretSet(env, payload);
+        return;
+      }
+      case "ssh.key.add": {
+        const payload = parseSshKeyAdd(env.payload);
+        if (payload === null) {
+          sendMalformed(env);
+          return;
+        }
+        void executeSshKeyAdd(env, payload);
+        return;
+      }
+      case "ssh.key.delete": {
+        const payload = parseSshKeyDelete(env.payload);
+        if (payload === null) {
+          sendMalformed(env);
+          return;
+        }
+        void executeSshKeyDelete(env, payload);
+        return;
+      }
+      case "git.config.set": {
+        const payload = parseGitConfigSet(env.payload);
+        if (payload === null) {
+          sendMalformed(env);
+          return;
+        }
+        void executeGitConfigSet(env, payload);
+        return;
+      }
+      case "gh.auth.start":
+        void executeGhAuthStart(env);
+        return;
+      case "gh.auth.logout":
+        void executeGhAuthLogout(env);
+        return;
+      case "glab.instance.add": {
+        const payload = parseGlabInstanceAdd(env.payload);
+        if (payload === null) {
+          sendMalformed(env);
+          return;
+        }
+        void executeGlabInstanceAdd(env, payload);
+        return;
+      }
+      case "glab.instance.remove": {
+        const payload = parseGlabInstanceRemove(env.payload);
+        if (payload === null) {
+          sendMalformed(env);
+          return;
+        }
+        void executeGlabInstanceRemove(env, payload);
+        return;
+      }
+      case "projects.create": {
+        const payload = parseProjectCreate(env.payload);
+        if (payload === null) {
+          sendMalformed(env);
+          return;
+        }
+        dispatchProjectCreate(env, payload);
+        return;
+      }
+      case "projects.set-remote": {
+        const payload = parseProjectSetRemote(env.payload);
+        if (payload === null) {
+          sendMalformed(env);
+          return;
+        }
+        dispatchProjectSetRemote(env, payload);
+        return;
+      }
+      case "projects.enable": {
+        const payload = parseProjectName(env.payload);
+        if (payload === null) {
+          sendMalformed(env);
+          return;
+        }
+        void executeProjectEnable(env, payload);
+        return;
+      }
+      case "projects.disable": {
+        const payload = parseProjectName(env.payload);
+        if (payload === null) {
+          sendMalformed(env);
+          return;
+        }
+        void executeProjectDisable(env, payload);
+        return;
+      }
+      case "projects.enable-feature": {
+        const payload = parseProjectFeature(env.payload);
+        if (payload === null) {
+          sendMalformed(env);
+          return;
+        }
+        void executeProjectEnableFeature(env, payload);
+        return;
+      }
+      case "projects.sync": {
+        const payload = parseProjectSync(env.payload);
+        if (payload === null) {
+          sendMalformed(env);
+          return;
+        }
+        dispatchProjectSync(env, payload);
+        return;
+      }
       case "status":
       case "env.get":
       case "projects.list":
       case "providers.list":
+      case "git.config.get":
+      case "glab.instances":
+      case "ssh.key.list":
         void dispatchQuery(env, command);
         return;
     }
@@ -1063,5 +1632,22 @@ export function createRealCommandDeps(): CommandDeps {
       const result = await restartRealAiDev();
       return result.ok ? { success: true } : { success: false, message: result.error };
     },
+    setSecret: realSetSecretValue,
+    sshAddKey: realSshAddKey,
+    sshDeleteKey: realSshDeleteKey,
+    sshListKeys: realSshListKeys,
+    gitSetConfig: realSetGlobalConfig,
+    gitGetConfig: readSanitizedGlobalConfig,
+    ghStartDeviceFlow: realStartDeviceFlow,
+    ghLogout: realLogoutGh,
+    glabAddInstance: realLoginGlabWithToken,
+    glabRemoveInstance: realLogoutGlab,
+    glabListInstances: realListGlabInstances,
+    projectCreate: (name, payload) => realCreateProject(name, payload, {}),
+    projectSetRemote: (name, remote) => realSetProjectRemote(name, remote, {}),
+    projectEnable: (name) => realEnableProject(name, {}),
+    projectDisable: (name) => realDisableProject(name, {}),
+    projectEnableFeature: (name, feature) => realEnableProjectFeature(name, feature, {}),
+    projectSync: (add, remove) => realSyncProjects(add, remove, {}),
   };
 }

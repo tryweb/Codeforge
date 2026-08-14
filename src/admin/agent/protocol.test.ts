@@ -95,6 +95,41 @@ describe("agent protocol", () => {
     expect(helloAck).toMatchObject({ type: "hello_ack", id: "hello-1", payload: {} });
   });
 
+  it("optionally carries machine-readable data in an ack payload", () => {
+    const outcome = {
+      status: "success" as const,
+      message: "device flow started",
+      started_at: "2026-08-10T00:00:00.000Z",
+      finished_at: "2026-08-10T00:00:01.000Z",
+      data: { device_code: "ABCD-1234", verification_uri: "https://github.com/login/device" },
+    };
+
+    const ack = buildAck("gh-start-1", outcome);
+
+    expect(ack).toMatchObject({ type: "ack", id: "gh-start-1", payload: outcome });
+  });
+
+  it("omits data from acks built without it", () => {
+    const ack = buildAck("cmd-1", {
+      status: "success",
+      message: "done",
+      started_at: "2026-08-10T00:00:00.000Z",
+      finished_at: "2026-08-10T00:00:01.000Z",
+    });
+
+    expect(ack).toMatchObject({
+      type: "ack",
+      id: "cmd-1",
+      payload: {
+        status: "success",
+        message: "done",
+        started_at: "2026-08-10T00:00:00.000Z",
+        finished_at: "2026-08-10T00:00:01.000Z",
+      },
+    });
+    expect("data" in (ack.payload as Record<string, unknown>)).toBe(false);
+  });
+
   it("builds a correlated result envelope", () => {
     const payload = { container_status: "running" };
 
@@ -173,10 +208,25 @@ describe("agent protocol", () => {
     expect(parseCommandName({ type: "providers.key.set-active" })).toBe("providers.key.set-active");
     expect(parseCommandName({ type: "providers.key.delete" })).toBe("providers.key.delete");
     expect(parseCommandName({ type: "providers.key.update-note" })).toBe("providers.key.update-note");
+    expect(parseCommandName({ type: "secrets.set" })).toBe("secrets.set");
+    expect(parseCommandName({ type: "ssh.key.add" })).toBe("ssh.key.add");
+    expect(parseCommandName({ type: "ssh.key.delete" })).toBe("ssh.key.delete");
+    expect(parseCommandName({ type: "git.config.set" })).toBe("git.config.set");
+    expect(parseCommandName({ type: "gh.auth.start" })).toBe("gh.auth.start");
+    expect(parseCommandName({ type: "gh.auth.logout" })).toBe("gh.auth.logout");
+    expect(parseCommandName({ type: "glab.instance.add" })).toBe("glab.instance.add");
+    expect(parseCommandName({ type: "glab.instance.remove" })).toBe("glab.instance.remove");
+    expect(parseCommandName({ type: "projects.create" })).toBe("projects.create");
+    expect(parseCommandName({ type: "projects.set-remote" })).toBe("projects.set-remote");
+    expect(parseCommandName({ type: "projects.enable" })).toBe("projects.enable");
+    expect(parseCommandName({ type: "projects.disable" })).toBe("projects.disable");
+    expect(parseCommandName({ type: "projects.enable-feature" })).toBe("projects.enable-feature");
+    expect(parseCommandName({ type: "projects.sync" })).toBe("projects.sync");
     expect(parseCommandName({ type: "delete" })).toBeNull();
     expect(parseCommandName({})).toBeNull();
     expect(parseCommandName(null)).toBeNull();
     expect(parseCommandName("upgrade")).toBeNull();
+    expect(parseCommandName({ type: "git.config.get" })).toBeNull();
   });
 
   it("parses action and query command types", () => {
@@ -188,10 +238,27 @@ describe("agent protocol", () => {
       "providers.key.set-active",
       "providers.key.delete",
       "providers.key.update-note",
+      "secrets.set",
+      "ssh.key.add",
+      "ssh.key.delete",
+      "git.config.set",
+      "gh.auth.start",
+      "gh.auth.logout",
+      "glab.instance.add",
+      "glab.instance.remove",
+      "projects.create",
+      "projects.set-remote",
+      "projects.enable",
+      "projects.disable",
+      "projects.enable-feature",
+      "projects.sync",
       "status",
       "env.get",
       "projects.list",
       "providers.list",
+      "git.config.get",
+      "glab.instances",
+      "ssh.key.list",
     ];
 
     for (const commandType of commandTypes) {

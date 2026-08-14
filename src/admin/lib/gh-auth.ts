@@ -1,0 +1,55 @@
+import { execInAiDev, type ExecResult } from "./docker";
+
+export type GhCommand = (command: string, timeoutMs: number) => Promise<ExecResult>;
+
+export interface DeviceFlowInfo {
+  device_code: string;
+  verification_uri: string;
+}
+
+export async function getGhStatus(command: GhCommand = execInAiDev): Promise<string> {
+  const result = await command("gh auth status 2>&1 || true", 15_000);
+  if (result.stdout.includes("Logged in") || result.stderr.includes("Logged in")) {
+    return "authenticated";
+  }
+  return "not authenticated";
+}
+
+function parseDeviceFlowOutput(output: string): { device_code: string; verification_uri: string } {
+  let deviceCode = "";
+  let verificationUri = "https://github.com/login/device";
+
+  const codeMatch = output.match(/(?:code|Code):\s*([A-Z0-9-]+)/);
+  if (codeMatch) deviceCode = codeMatch[1];
+
+  const uriMatch = output.match(/https?:\/\/[^\s]+/);
+  if (uriMatch) verificationUri = uriMatch[0];
+
+  return { device_code: deviceCode, verification_uri: verificationUri };
+}
+
+/**
+ * Start the GitHub device-code flow in the background and read the code the
+ * CLI prints. The log is polled briefly because the CLI may take a moment to
+ * emit it; the flow itself keeps running once the command returns.
+ */
+export async function startDeviceFlow(command: GhCommand = execInAiDev): Promise<DeviceFlowInfo> {
+  await command(
+    "nohup sh -c 'gh auth login --web --hostname github.com >/tmp/gh-device.log 2>&1 &' && sleep 1 && cat /tmp/gh-device.log 2>/dev/null || true",
+    10_000,
+  );
+
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const read = await command("cat /tmp/gh-device.log 2>/dev/null || true", 5_000);
+    const info = parseDeviceFlowOutput(read.stdout || read.stderr);
+    if (info.device_code !== "") return info;
+    await Bun.sleep(500);
+  }
+
+  const last = await command("cat /tmp/gh-device.log 2>/dev/null || true", 5_000);
+  return parseDeviceFlowOutput(last.stdout || last.stderr);
+}
+
+export async function logoutGh(command: GhCommand = execInAiDev): Promise<void> {
+  await command("gh auth logout 2>/dev/null || true", 15_000);
+}

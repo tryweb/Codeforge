@@ -1,12 +1,11 @@
 import { Hono } from "hono";
 import {
   isValidProjectName,
-  mergeOpenChamberProject,
-  projectId,
   readDisabledProjects,
   readOpenChamberProjects,
   type SettingsCommand,
 } from "../lib/openchamber-projects";
+import { syncProjects } from "../lib/projects";
 
 export interface ProjectSyncRoutesOptions {
   command: SettingsCommand;
@@ -65,34 +64,11 @@ export function createProjectSyncRoutes(options: ProjectSyncRoutesOptions) {
       return c.json({ error: "add/remove must be arrays of valid project names" }, 400);
     }
 
-    const messages: string[] = [];
-    const failures: string[] = [];
-    for (const name of add) {
-      const fullPath = `${workspaceRoot}/${name}`;
-      const merged = await mergeOpenChamberProject(command, settingsPath, {
-        kind: "add",
-        id: projectId(fullPath),
-        path: fullPath,
-        now: Date.now(),
-      });
-      if (merged.ok) messages.push(`Added ${name} to OpenChamber`);
-      else failures.push(`Failed to add ${name}: ${merged.error}`);
+    const result = await syncProjects(add, remove, { command, settingsPath, workspaceRoot });
+    if (!result.ok) {
+      return c.json({ error: result.error, messages: result.messages ?? [] }, 500);
     }
-    for (const name of remove) {
-      const fullPath = `${workspaceRoot}/${name}`;
-      const merged = await mergeOpenChamberProject(command, settingsPath, {
-        kind: "remove",
-        id: projectId(fullPath),
-        path: fullPath,
-      });
-      if (merged.ok) messages.push(`Removed ${name} from OpenChamber`);
-      else failures.push(`Failed to remove ${name}: ${merged.error}`);
-    }
-
-    if (failures.length > 0) {
-      return c.json({ error: failures.join("; "), messages }, 500);
-    }
-    return c.json({ ok: true, messages });
+    return c.json({ ok: true, messages: result.messages ?? [] });
   });
 
   return sync;

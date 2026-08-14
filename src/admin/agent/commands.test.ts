@@ -40,6 +40,20 @@ interface Fixture {
   gracefulRestarts: string[];
   setUpgradeRunning: (running: boolean) => void;
   cacheClears: () => number;
+  secretSets: Array<[string, string]>;
+  sshAdds: Array<{ name: string; type: string; passphrase: string }>;
+  sshDeletes: string[];
+  gitConfigSets: Array<[string, string]>;
+  ghDeviceStarts: () => number;
+  ghLogouts: () => number;
+  glabAdds: Array<{ hostname: string; token: string }>;
+  glabRemoves: string[];
+  projectCreates: string[];
+  projectSetRemotes: Array<[string, string]>;
+  projectEnables: string[];
+  projectDisables: string[];
+  projectFeatures: Array<[string, string]>;
+  projectSyncs: Array<[string[], string[]]>;
 }
 
 const STATUS_REPORT: StatusReport = {
@@ -121,6 +135,20 @@ function createFixture(overrides: Partial<CommandDeps> = {}): Fixture {
   const authRemovals: string[] = [];
   const idleWaits: string[] = [];
   const gracefulRestarts: string[] = [];
+  const secretSets: Array<[string, string]> = [];
+  const sshAdds: Array<{ name: string; type: string; passphrase: string }> = [];
+  const sshDeletes: string[] = [];
+  const gitConfigSets: Array<[string, string]> = [];
+  const glabAdds: Array<{ hostname: string; token: string }> = [];
+  const glabRemoves: string[] = [];
+  let ghDeviceStarts = 0;
+  let ghLogouts = 0;
+  const projectCreates: string[] = [];
+  const projectSetRemotes: Array<[string, string]> = [];
+  const projectEnables: string[] = [];
+  const projectDisables: string[] = [];
+  const projectFeatures: Array<[string, string]> = [];
+  const projectSyncs: Array<[string[], string[]]> = [];
   const deps: CommandDeps = Object.assign(
     {
       isUpgradeRunning: () => upgradeRunning,
@@ -197,6 +225,63 @@ function createFixture(overrides: Partial<CommandDeps> = {}): Fixture {
         gracefulRestarts.push("graceful");
         return { success: true, message: "ai-dev gracefully restarted" };
       },
+      setSecret: (key: string, value: string) => {
+        secretSets.push([key, value]);
+        return key === "ADMIN_PASSWORD" ? "immediate" : "restart_required";
+      },
+      sshAddKey: async (name: string, type: string, passphrase: string) => {
+        sshAdds.push({ name, type, passphrase });
+        return { ok: true };
+      },
+      sshDeleteKey: async (name: string) => {
+        sshDeletes.push(name);
+        return { ok: true };
+      },
+      sshListKeys: async () => [{ name: "id_ed25519", fingerprint: "SHA256:abc", type: "Ed25519" }],
+      gitSetConfig: async (key: string, value: string) => {
+        gitConfigSets.push([key, value]);
+        return { ok: true };
+      },
+      gitGetConfig: async () => ({ "user.name": "Test User", "user.email": "test@example.com" }),
+      ghStartDeviceFlow: async () => {
+        ghDeviceStarts += 1;
+        return { device_code: "ABCD-1234", verification_uri: "https://github.com/login/device" };
+      },
+      ghLogout: async () => {
+        ghLogouts += 1;
+      },
+      glabAddInstance: async (hostname: string, token: string) => {
+        glabAdds.push({ hostname, token });
+        return { ok: true };
+      },
+      glabRemoveInstance: async (hostname: string) => {
+        glabRemoves.push(hostname);
+      },
+      glabListInstances: async () => [{ hostname: "gitlab.com", username: "alice", authenticated: true }],
+      projectCreate: async (name: string) => {
+        projectCreates.push(name);
+        return { ok: true };
+      },
+      projectSetRemote: async (name: string, remote: string) => {
+        projectSetRemotes.push([name, remote]);
+        return { ok: true };
+      },
+      projectEnable: async (name: string) => {
+        projectEnables.push(name);
+        return { ok: true };
+      },
+      projectDisable: async (name: string) => {
+        projectDisables.push(name);
+        return { ok: true };
+      },
+      projectEnableFeature: async (name: string, feature: string) => {
+        projectFeatures.push([name, feature]);
+        return { ok: true };
+      },
+      projectSync: async (add: string[], remove: string[]) => {
+        projectSyncs.push([add, remove]);
+        return { ok: true, messages: ["Added alpha to OpenChamber"] };
+      },
     },
     {
       readStatus: async () => {
@@ -240,6 +325,20 @@ function createFixture(overrides: Partial<CommandDeps> = {}): Fixture {
       upgradeRunning = running;
     },
     cacheClears: () => cacheClearsCount,
+    secretSets,
+    sshAdds,
+    sshDeletes,
+    gitConfigSets,
+    ghDeviceStarts: () => ghDeviceStarts,
+    ghLogouts: () => ghLogouts,
+    glabAdds,
+    glabRemoves,
+    projectCreates,
+    projectSetRemotes,
+    projectEnables,
+    projectDisables,
+    projectFeatures,
+    projectSyncs,
   };
 }
 
@@ -1508,4 +1607,336 @@ describe("query result contracts", () => {
       expect(JSON.stringify(payload)).not.toContain(RAW_KEY_MATERIAL);
     });
   }
+
+  test("secrets.set writes a schema password key and reports activation status", async () => {
+    const fixture = createFixture();
+    const dispatcher = createCommandDispatcher(fixture.sender, fixture.deps);
+
+    dispatcher.handle(commandEnvelope("secrets-1", { type: "secrets.set", key: "OPENCHAMBER_UI_PASSWORD", value: "hunter2secret" }));
+    await flushAsyncWork();
+
+    expect(fixture.secretSets).toEqual([["OPENCHAMBER_UI_PASSWORD", "hunter2secret"]]);
+    expect(fixture.sent).toEqual([
+      expect.objectContaining({
+        type: MESSAGE_TYPES.ack,
+        id: "secrets-1",
+        payload: expect.objectContaining({
+          status: "success",
+          message: expect.stringContaining("OPENCHAMBER_UI_PASSWORD updated (restart_required activation)"),
+        }),
+      }),
+    ]);
+    expect(JSON.stringify(fixture.sent)).not.toContain("hunter2secret");
+  });
+
+  test("secrets.set rejects an unknown key or empty value as malformed", async () => {
+    const fixture = createFixture();
+    const dispatcher = createCommandDispatcher(fixture.sender, fixture.deps);
+
+    dispatcher.handle(commandEnvelope("secrets-bad-key", { type: "secrets.set", key: "UNKNOWN_KEY", value: "x" }));
+    dispatcher.handle(commandEnvelope("secrets-bad-value", { type: "secrets.set", key: "ADMIN_PASSWORD", value: "" }));
+    await flushAsyncWork();
+
+    expect(fixture.secretSets).toEqual([]);
+    expect(fixture.sent.every((env) => env.type === MESSAGE_TYPES.error)).toBe(true);
+    expect(fixture.sent.every((env) => (env.payload as { code?: string })?.code === ERROR_CODES.malformed_command)).toBe(true);
+  });
+
+  test("ssh.key.add generates a key and registers it", async () => {
+    const fixture = createFixture();
+    const dispatcher = createCommandDispatcher(fixture.sender, fixture.deps);
+
+    dispatcher.handle(commandEnvelope("ssh-add-1", { type: "ssh.key.add", name: "deploy", keyType: "ed25519" }));
+    await flushAsyncWork();
+
+    expect(fixture.sshAdds).toEqual([{ name: "deploy", type: "ed25519", passphrase: "" }]);
+    expect(fixture.sent[0]).toMatchObject({
+      type: MESSAGE_TYPES.ack,
+      id: "ssh-add-1",
+      payload: { status: "success", message: "SSH key deploy added" },
+    });
+  });
+
+  test("ssh.key.add rejects an unsafe key name", async () => {
+    const fixture = createFixture();
+    const dispatcher = createCommandDispatcher(fixture.sender, fixture.deps);
+
+    dispatcher.handle(commandEnvelope("ssh-bad", { type: "ssh.key.add", name: "../../tmp/evil" }));
+    await flushAsyncWork();
+
+    expect(fixture.sshAdds).toEqual([]);
+    expect(fixture.sent[0]).toMatchObject({
+      type: MESSAGE_TYPES.error,
+      id: "ssh-bad",
+      payload: { code: ERROR_CODES.malformed_command },
+    });
+  });
+
+  test("ssh.key.delete removes the named key", async () => {
+    const fixture = createFixture();
+    const dispatcher = createCommandDispatcher(fixture.sender, fixture.deps);
+
+    dispatcher.handle(commandEnvelope("ssh-del-1", { type: "ssh.key.delete", name: "deploy" }));
+    await flushAsyncWork();
+
+    expect(fixture.sshDeletes).toEqual(["deploy"]);
+    expect(fixture.sent[0]).toMatchObject({
+      type: MESSAGE_TYPES.ack,
+      id: "ssh-del-1",
+      payload: { status: "success", message: "SSH key deploy deleted" },
+    });
+  });
+
+  test("git.config.set updates the global git config", async () => {
+    const fixture = createFixture();
+    const dispatcher = createCommandDispatcher(fixture.sender, fixture.deps);
+
+    dispatcher.handle(commandEnvelope("git-set-1", { type: "git.config.set", key: "user.email", value: "dev@example.com" }));
+    await flushAsyncWork();
+
+    expect(fixture.gitConfigSets).toEqual([["user.email", "dev@example.com"]]);
+    expect(fixture.sent[0]).toMatchObject({
+      type: MESSAGE_TYPES.ack,
+      id: "git-set-1",
+      payload: { status: "success", message: "git config user.email updated" },
+    });
+  });
+
+  test("git.config.set rejects a missing value", async () => {
+    const fixture = createFixture();
+    const dispatcher = createCommandDispatcher(fixture.sender, fixture.deps);
+
+    dispatcher.handle(commandEnvelope("git-bad", { type: "git.config.set", key: "user.name" }));
+    await flushAsyncWork();
+
+    expect(fixture.gitConfigSets).toEqual([]);
+    expect(fixture.sent[0]).toMatchObject({
+      type: MESSAGE_TYPES.error,
+      payload: { code: ERROR_CODES.malformed_command },
+    });
+  });
+
+  test("gh.auth.start ack carries the device flow data and starts no query result", async () => {
+    const fixture = createFixture();
+    const dispatcher = createCommandDispatcher(fixture.sender, fixture.deps);
+
+    dispatcher.handle(commandEnvelope("gh-start-1", { type: "gh.auth.start" }));
+    await flushAsyncWork();
+
+    expect(fixture.ghDeviceStarts()).toBe(1);
+    expect(fixture.sent).toEqual([
+      expect.objectContaining({
+        type: MESSAGE_TYPES.ack,
+        id: "gh-start-1",
+        payload: expect.objectContaining({
+          status: "success",
+          data: { device_code: "ABCD-1234", verification_uri: "https://github.com/login/device" },
+        }),
+      }),
+    ]);
+    expect(fixture.sent.some((env) => env.type === MESSAGE_TYPES.result)).toBe(false);
+  });
+
+  test("gh.auth.logout disconnects GitHub", async () => {
+    const fixture = createFixture();
+    const dispatcher = createCommandDispatcher(fixture.sender, fixture.deps);
+
+    dispatcher.handle(commandEnvelope("gh-logout-1", { type: "gh.auth.logout" }));
+    await flushAsyncWork();
+
+    expect(fixture.ghLogouts()).toBe(1);
+    expect(fixture.sent[0]).toMatchObject({
+      type: MESSAGE_TYPES.ack,
+      id: "gh-logout-1",
+      payload: { status: "success", message: "GitHub disconnected" },
+    });
+  });
+
+  test("glab.instance.add connects an instance without echoing the token", async () => {
+    const fixture = createFixture();
+    const dispatcher = createCommandDispatcher(fixture.sender, fixture.deps);
+
+    dispatcher.handle(commandEnvelope("glab-add-1", { type: "glab.instance.add", hostname: "gitlab.example.com", token: "glpat-secret-token-xyz" }));
+    await flushAsyncWork();
+
+    expect(fixture.glabAdds).toEqual([{ hostname: "gitlab.example.com", token: "glpat-secret-token-xyz" }]);
+    expect(fixture.sent[0]).toMatchObject({
+      type: MESSAGE_TYPES.ack,
+      id: "glab-add-1",
+      payload: { status: "success", message: "GitLab instance gitlab.example.com connected" },
+    });
+    expect(JSON.stringify(fixture.sent)).not.toContain("glpat-secret-token-xyz");
+  });
+
+  test("glab.instance.add rejects a missing token", async () => {
+    const fixture = createFixture();
+    const dispatcher = createCommandDispatcher(fixture.sender, fixture.deps);
+
+    dispatcher.handle(commandEnvelope("glab-bad", { type: "glab.instance.add", hostname: "gitlab.com" }));
+    await flushAsyncWork();
+
+    expect(fixture.glabAdds).toEqual([]);
+    expect(fixture.sent[0]).toMatchObject({
+      type: MESSAGE_TYPES.error,
+      payload: { code: ERROR_CODES.malformed_command },
+    });
+  });
+
+  test("glab.instance.remove logs out of the named instance", async () => {
+    const fixture = createFixture();
+    const dispatcher = createCommandDispatcher(fixture.sender, fixture.deps);
+
+    dispatcher.handle(commandEnvelope("glab-rm-1", { type: "glab.instance.remove", hostname: "gitlab.example.com" }));
+    await flushAsyncWork();
+
+    expect(fixture.glabRemoves).toEqual(["gitlab.example.com"]);
+    expect(fixture.sent[0]).toMatchObject({
+      type: MESSAGE_TYPES.ack,
+      id: "glab-rm-1",
+      payload: { status: "success", message: "GitLab instance gitlab.example.com removed" },
+    });
+  });
+
+  test("git.config.get returns the sanitized config as a query result", async () => {
+    const fixture = createFixture();
+    const dispatcher = createCommandDispatcher(fixture.sender, fixture.deps);
+
+    dispatcher.handle(commandEnvelope("git-get-1", { type: "git.config.get" }));
+    await flushAsyncWork();
+
+    const payload = expectSingleQueryResult(fixture.sent, "git-get-1");
+    expect(payload).toEqual({ "user.name": "Test User", "user.email": "test@example.com" });
+  });
+
+  test("glab.instances returns configured instances as a query result", async () => {
+    const fixture = createFixture();
+    const dispatcher = createCommandDispatcher(fixture.sender, fixture.deps);
+
+    dispatcher.handle(commandEnvelope("glab-list-1", { type: "glab.instances" }));
+    await flushAsyncWork();
+
+    const payload = expectSingleQueryResult(fixture.sent, "glab-list-1");
+    expect(payload).toEqual([{ hostname: "gitlab.com", username: "alice", authenticated: true }]);
+  });
+
+  test("ssh.key.list returns existing keys as a query result", async () => {
+    const fixture = createFixture();
+    const dispatcher = createCommandDispatcher(fixture.sender, fixture.deps);
+
+    dispatcher.handle(commandEnvelope("ssh-list-1", { type: "ssh.key.list" }));
+    await flushAsyncWork();
+
+    const payload = expectSingleQueryResult(fixture.sent, "ssh-list-1");
+    expect(payload).toEqual([{ name: "id_ed25519", fingerprint: "SHA256:abc", type: "Ed25519" }]);
+  });
+
+  test("projects.create reports accepted-then-final acks and creates the project", async () => {
+    const fixture = createFixture();
+    const dispatcher = createCommandDispatcher(fixture.sender, fixture.deps);
+
+    dispatcher.handle(commandEnvelope("proj-create-1", { type: "projects.create", name: "alpha", gitInit: true }));
+    await flushAsyncWork();
+
+    expect(fixture.projectCreates).toEqual(["alpha"]);
+    expect(fixture.sent.filter((env) => env.type === MESSAGE_TYPES.ack).map((env) => env.payload)).toEqual([
+      expect.objectContaining({ status: "success", message: "creating project" }),
+      expect.objectContaining({ status: "success", message: "Project alpha created" }),
+    ]);
+  });
+
+  test("projects.create rejects an invalid project name", async () => {
+    const fixture = createFixture();
+    const dispatcher = createCommandDispatcher(fixture.sender, fixture.deps);
+
+    dispatcher.handle(commandEnvelope("proj-bad", { type: "projects.create", name: "../escape" }));
+    await flushAsyncWork();
+
+    expect(fixture.projectCreates).toEqual([]);
+    expect(fixture.sent[0]).toMatchObject({
+      type: MESSAGE_TYPES.error,
+      payload: { code: ERROR_CODES.malformed_command },
+    });
+  });
+
+  test("projects.set-remote updates the origin remote", async () => {
+    const fixture = createFixture();
+    const dispatcher = createCommandDispatcher(fixture.sender, fixture.deps);
+
+    dispatcher.handle(commandEnvelope("proj-remote-1", { type: "projects.set-remote", name: "alpha", remote: "https://github.com/acme/alpha.git" }));
+    await flushAsyncWork();
+
+    expect(fixture.projectSetRemotes).toEqual([["alpha", "https://github.com/acme/alpha.git"]]);
+    expect(fixture.sent.filter((env) => env.type === MESSAGE_TYPES.ack)).toHaveLength(2);
+  });
+
+  test("projects.enable and projects.disable flip project state", async () => {
+    const fixture = createFixture();
+    const dispatcher = createCommandDispatcher(fixture.sender, fixture.deps);
+
+    dispatcher.handle(commandEnvelope("proj-enable-1", { type: "projects.enable", name: "alpha" }));
+    dispatcher.handle(commandEnvelope("proj-disable-1", { type: "projects.disable", name: "alpha" }));
+    await flushAsyncWork();
+
+    expect(fixture.projectEnables).toEqual(["alpha"]);
+    expect(fixture.projectDisables).toEqual(["alpha"]);
+    expect(fixture.sent).toHaveLength(2);
+    expect(fixture.sent.every((env) => env.type === MESSAGE_TYPES.ack && (env.payload as { status?: string })?.status === "success")).toBe(true);
+  });
+
+  test("projects.enable-feature enables a whitelisted skill scaffold", async () => {
+    const fixture = createFixture();
+    const dispatcher = createCommandDispatcher(fixture.sender, fixture.deps);
+
+    dispatcher.handle(commandEnvelope("proj-feat-1", { type: "projects.enable-feature", name: "alpha", feature: "openspec" }));
+    await flushAsyncWork();
+
+    expect(fixture.projectFeatures).toEqual([["alpha", "openspec"]]);
+    expect(fixture.sent[0]).toMatchObject({
+      type: MESSAGE_TYPES.ack,
+      payload: { status: "success" },
+    });
+  });
+
+  test("projects.enable-feature rejects an unknown feature", async () => {
+    const fixture = createFixture();
+    const dispatcher = createCommandDispatcher(fixture.sender, fixture.deps);
+
+    dispatcher.handle(commandEnvelope("proj-feat-bad", { type: "projects.enable-feature", name: "alpha", feature: "magic" }));
+    await flushAsyncWork();
+
+    expect(fixture.projectFeatures).toEqual([]);
+    expect(fixture.sent[0]).toMatchObject({
+      type: MESSAGE_TYPES.error,
+      payload: { code: ERROR_CODES.malformed_command },
+    });
+  });
+
+  test("projects.sync reconciles add/remove arrays", async () => {
+    const fixture = createFixture();
+    const dispatcher = createCommandDispatcher(fixture.sender, fixture.deps);
+
+    dispatcher.handle(commandEnvelope("proj-sync-1", { type: "projects.sync", add: ["alpha"], remove: ["beta"] }));
+    await flushAsyncWork();
+
+    expect(fixture.projectSyncs).toEqual([[["alpha"], ["beta"]]]);
+    expect(fixture.sent.filter((env) => env.type === MESSAGE_TYPES.ack)).toHaveLength(2);
+    expect(fixture.sent[1]).toMatchObject({
+      type: MESSAGE_TYPES.ack,
+      payload: { status: "success" },
+    });
+  });
+
+  test("projects.sync rejects an invalid name in either array", async () => {
+    const fixture = createFixture();
+    const dispatcher = createCommandDispatcher(fixture.sender, fixture.deps);
+
+    dispatcher.handle(commandEnvelope("proj-sync-bad", { type: "projects.sync", add: ["ok"], remove: ["../bad"] }));
+    await flushAsyncWork();
+
+    expect(fixture.projectSyncs).toEqual([]);
+    expect(fixture.sent[0]).toMatchObject({
+      type: MESSAGE_TYPES.error,
+      payload: { code: ERROR_CODES.malformed_command },
+    });
+  });
 });

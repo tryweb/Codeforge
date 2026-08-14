@@ -34,10 +34,31 @@ export type CommandName =
   | "providers.key.add"
   | "providers.key.set-active"
   | "providers.key.delete"
-  | "providers.key.update-note";
+  | "providers.key.update-note"
+  | "secrets.set"
+  | "ssh.key.add"
+  | "ssh.key.delete"
+  | "git.config.set"
+  | "gh.auth.start"
+  | "gh.auth.logout"
+  | "glab.instance.add"
+  | "glab.instance.remove"
+  | "projects.create"
+  | "projects.set-remote"
+  | "projects.enable"
+  | "projects.disable"
+  | "projects.enable-feature"
+  | "projects.sync";
 
 /** Supported read-only query command names. */
-export type QueryName = "status" | "env.get" | "projects.list" | "providers.list";
+export type QueryName =
+  | "status"
+  | "env.get"
+  | "projects.list"
+  | "providers.list"
+  | "git.config.get"
+  | "glab.instances"
+  | "ssh.key.list";
 
 /** Supported action and query command types. */
 export type CommandType = CommandName | QueryName;
@@ -102,9 +123,18 @@ export function buildAck(
     message: string;
     started_at: string;
     finished_at: string;
+    /** Optional machine-readable outcome material (e.g. gh.auth.start device flow). */
+    data?: unknown;
   },
 ): Envelope {
-  return createAcknowledgement(MESSAGE_TYPES.ack, outcome, acknowledgesId);
+  const payload: Record<string, unknown> = {
+    status: outcome.status,
+    message: outcome.message,
+    started_at: outcome.started_at,
+    finished_at: outcome.finished_at,
+  };
+  if (outcome.data !== undefined) payload["data"] = outcome.data;
+  return createAcknowledgement(MESSAGE_TYPES.ack, payload, acknowledgesId);
 }
 
 /** Build a query result correlated to the query command. */
@@ -188,6 +218,20 @@ export function parseCommandName(payload: unknown): CommandName | null {
     case "providers.key.set-active":
     case "providers.key.delete":
     case "providers.key.update-note":
+    case "secrets.set":
+    case "ssh.key.add":
+    case "ssh.key.delete":
+    case "git.config.set":
+    case "gh.auth.start":
+    case "gh.auth.logout":
+    case "glab.instance.add":
+    case "glab.instance.remove":
+    case "projects.create":
+    case "projects.set-remote":
+    case "projects.enable":
+    case "projects.disable":
+    case "projects.enable-feature":
+    case "projects.sync":
       return commandName;
     default:
       return null;
@@ -207,10 +251,27 @@ export function parseCommandType(payload: unknown): CommandType | null {
     case "providers.key.set-active":
     case "providers.key.delete":
     case "providers.key.update-note":
+    case "secrets.set":
+    case "ssh.key.add":
+    case "ssh.key.delete":
+    case "git.config.set":
+    case "gh.auth.start":
+    case "gh.auth.logout":
+    case "glab.instance.add":
+    case "glab.instance.remove":
+    case "projects.create":
+    case "projects.set-remote":
+    case "projects.enable":
+    case "projects.disable":
+    case "projects.enable-feature":
+    case "projects.sync":
     case "status":
     case "env.get":
     case "projects.list":
     case "providers.list":
+    case "git.config.get":
+    case "glab.instances":
+    case "ssh.key.list":
       return commandType;
     default:
       return null;
