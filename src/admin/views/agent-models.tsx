@@ -34,7 +34,7 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
         <table id="agent-models-table">
           <tr>
             <th>Agent</th>
-            <th>Configured fallback chain</th>
+            <th>Configured model</th>
             <th>Resolved model</th>
             <th>Source</th>
             <th></th>
@@ -46,9 +46,10 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
                 {a.configured.length === 0 ? (
                   <span class="text-muted">—</span>
                 ) : (
-                  a.configured
-                    .map((e) => `${e.model}${e.variant ? ` (${e.variant})` : ""}`)
-                    .join(", ")
+                  (() => {
+                    const e = a.configured[0]!;
+                    return `${e.model}${e.variant ? ` (${e.variant})` : ""}`;
+                  })()
                 )}
               </td>
               <td>
@@ -97,15 +98,14 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
 
       <div id="edit-modal" class="modal-overlay" style="display:none;">
         <div class="modal" style="max-width:580px;">
-          <h3 id="modal-title" style="margin-bottom:4px;">Edit fallback models</h3>
+          <h3 id="modal-title" style="margin-bottom:4px;">Edit primary model</h3>
           <p class="text-sm text-muted" style="margin-bottom:12px;">
-            First entry is the default; later entries are fallbacks when a provider is saturated.
-            Saving restarts ai-dev.
+            Sets the model the subagent runs on. Fallback chains are not supported until the OMO
+            plugin honors them; saving restarts ai-dev.
           </p>
           <div id="model-rows"></div>
           <div class="flex gap-2" style="justify-content:flex-end;margin-top:14px;">
             <button class="btn-outline" onclick="closeModal()">Cancel</button>
-            <button class="btn-outline" onclick="addRow()">+ Add entry</button>
             <button id="btn-save" onclick="saveAgent()">Save &amp; Restart</button>
           </div>
           <div id="save-result" class="text-sm" style="margin-top:12px;"></div>
@@ -126,7 +126,6 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
           return '<div class="model-row" style="display:flex;gap:8px;margin-bottom:8px;align-items:center;">' +
             '<select class="model-select" style="flex:1;">' + modelOpts + '</select>' +
             '<select class="variant-select" style="width:110px;">' + variantOpts + '</select>' +
-            '<button class="btn-outline" style="padding:4px 8px;font-size:0.75rem;" onclick="removeRow(this)">✕</button>' +
           '</div>';
         }
 
@@ -135,34 +134,21 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
           var agent = agentModelsState.agents.filter(function (a) { return a.name === name; })[0];
           var rows = document.getElementById('model-rows');
           rows.innerHTML = '';
-          (agent && agent.configured.length ? agent.configured : [{}]).forEach(function (e) {
-            rows.insertAdjacentHTML('beforeend', rowTemplate(e.model || '', e.variant || ''));
-          });
+          var primary = agent && agent.configured.length ? agent.configured[0] : {};
+          rows.insertAdjacentHTML('beforeend', rowTemplate(primary.model || '', primary.variant || ''));
           document.getElementById('save-result').textContent = '';
           document.getElementById('edit-modal').style.display = 'flex';
         }
 
-        function addRow() {
-          document.getElementById('model-rows').insertAdjacentHTML('beforeend', rowTemplate('', ''));
-        }
-
-        function removeRow(btn) {
-          var rows = document.querySelectorAll('#model-rows .model-row');
-          if (rows.length > 1) btn.parentNode.remove();
-          else alert('At least one row is required; clear all models by leaving one empty row.');
-        }
-
         function collectEntries() {
-          var entries = [];
-          document.querySelectorAll('#model-rows .model-row').forEach(function (row) {
-            var model = row.querySelector('.model-select').value;
-            var variant = row.querySelector('.variant-select').value;
-            if (!model) return;
-            var entry = { model: model };
-            if (variant) entry.variant = variant;
-            entries.push(entry);
-          });
-          return entries;
+          var row = document.querySelector('#model-rows .model-row');
+          if (!row) return [];
+          var model = row.querySelector('.model-select').value;
+          var variant = row.querySelector('.variant-select').value;
+          if (!model) return [];
+          var entry = { model: model };
+          if (variant) entry.variant = variant;
+          return [entry];
         }
 
         function closeModal() {
