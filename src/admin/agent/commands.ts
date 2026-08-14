@@ -29,6 +29,7 @@ import { collectStatus } from "../lib/status";
 import { restartAiDev as restartRealAiDev } from "../lib/restart-ai-dev";
 import { getState, runUpgrade as runRealUpgrade } from "../lib/upgrade";
 import { buildStatusReport, getComponentVersions, type StatusReport } from "./heartbeat";
+import { getUpdateCheck } from "../routes/versions";
 import {
   buildAck,
   buildError,
@@ -1041,7 +1042,7 @@ export function createRealCommandDeps(): CommandDeps {
     upsertEnvVar: upsertRealEnvVar,
     now: () => new Date().toISOString(),
     readStatus: () => buildStatusReport(
-      { collectStatus, getVersions: getComponentVersions },
+      { collectStatus, getVersions: getComponentVersions, getUpdateCheck },
       getState(),
     ),
     readEnv: readEnvFile,

@@ -50,6 +50,8 @@ const STATUS_REPORT: StatusReport = {
   admin_version: STATUS.admin_version,
   admin_version_mismatch: STATUS.admin_version_mismatch,
   upgrade_state: "idle",
+  upgrade_available: false,
+  latest_version: "",
 };
 const STATUS_FIELDS = [
   "admin_version",
@@ -58,7 +60,9 @@ const STATUS_FIELDS = [
   "containers",
   "gh_auth",
   "glab_auth",
+  "latest_version",
   "uptime_seconds",
+  "upgrade_available",
   "upgrade_state",
   "versions",
 ] as const;
@@ -191,6 +195,13 @@ function createIntegrationRuntime(
   const runtime = createAgentRuntime({
     collectStatus: async () => STATUS,
     getVersions: async () => VERSIONS,
+    getUpdateCheck: async () => ({
+      current: "1.2.3",
+      latest: "",
+      update_available: false,
+      status: "up-to-date",
+      message: "Up to date",
+    }),
     getUpgradeState: () => "idle",
     createRealDeps: () => ({
       isUpgradeRunning: () => false,

@@ -122,6 +122,13 @@ function makeRuntime(
     WebSocketCtor: FakeWebSocket,
     collectStatus: async () => STATUS,
     getVersions: async () => VERSIONS,
+    getUpdateCheck: async () => ({
+      current: "1.2.3",
+      latest: "",
+      update_available: false,
+      status: "up-to-date",
+      message: "Up to date",
+    }),
     getUpgradeState: () => "idle",
     createRealDeps: () => ({
       isUpgradeRunning: () => false,
@@ -139,6 +146,8 @@ function makeRuntime(
         admin_version: STATUS.admin_version,
         admin_version_mismatch: STATUS.admin_version_mismatch,
         upgrade_state: "idle",
+        upgrade_available: false,
+        latest_version: "",
       }),
       readEnv: () => ({}),
       readProjects: async () => ({}),

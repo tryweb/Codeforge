@@ -55,6 +55,8 @@ const STATUS_REPORT: StatusReport = {
   admin_version: "1.2.3",
   admin_version_mismatch: false,
   upgrade_state: "idle",
+  upgrade_available: false,
+  latest_version: "",
 };
 
 function commandEnvelope(id: string, payload: unknown): Envelope {
@@ -1336,6 +1338,8 @@ describe("query result contracts", () => {
       "containers",
       "gh_auth",
       "glab_auth",
+      "latest_version",
+      "upgrade_available",
       "upgrade_state",
       "uptime_seconds",
       "versions",

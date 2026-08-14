@@ -33,6 +33,13 @@ describe("heartbeat status report", () => {
     const deps: HeartbeatDeps = {
       collectStatus: async () => status,
       getVersions: async () => versions,
+      getUpdateCheck: async () => ({
+        current: "1.2.3",
+        latest: "latest",
+        update_available: true,
+        status: "update-available",
+        message: "New image available",
+      }),
     };
     const expected: StatusReport = {
       container_status: "running",
@@ -47,6 +54,8 @@ describe("heartbeat status report", () => {
       admin_version: "1.2.3",
       admin_version_mismatch: true,
       upgrade_state: "running",
+      upgrade_available: true,
+      latest_version: "latest",
     };
 
     const report = await buildStatusReport(deps, "running");

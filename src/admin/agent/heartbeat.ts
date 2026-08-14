@@ -1,5 +1,6 @@
 import { execInAiDev } from "../lib/docker";
 import type { ContainerMap, StatusResponse } from "../lib/status";
+import type { UpdateCheckResult } from "../routes/versions";
 
 export interface StatusReport {
   container_status: "running" | "stopped";
@@ -12,11 +13,14 @@ export interface StatusReport {
   admin_version: string;
   admin_version_mismatch: boolean;
   upgrade_state: string;
+  upgrade_available: boolean;
+  latest_version: string;
 }
 
 export interface HeartbeatDeps {
   collectStatus: () => Promise<StatusResponse>;
   getVersions: () => Promise<Record<string, string>>;
+  getUpdateCheck: () => Promise<UpdateCheckResult>;
 }
 
 function getVersion(command: string): Promise<string> {
@@ -51,9 +55,10 @@ export async function buildStatusReport(
   deps: HeartbeatDeps,
   upgradeState: string,
 ): Promise<StatusReport> {
-  const [status, versions] = await Promise.all([
+  const [status, versions, updateCheck] = await Promise.all([
     deps.collectStatus(),
     deps.getVersions(),
+    deps.getUpdateCheck(),
   ]);
 
   return {
@@ -66,6 +71,8 @@ export async function buildStatusReport(
     admin_version: status.admin_version,
     admin_version_mismatch: status.admin_version_mismatch,
     upgrade_state: upgradeState,
+    upgrade_available: updateCheck.update_available,
+    latest_version: updateCheck.latest,
   };
 }
 

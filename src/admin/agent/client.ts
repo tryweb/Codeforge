@@ -17,6 +17,7 @@ import {
   getComponentVersions,
   heartbeatIntervalMs,
 } from "./heartbeat";
+import { getUpdateCheck, type UpdateCheckResult } from "../routes/versions";
 import {
   buildError,
   buildEvent,
@@ -74,6 +75,7 @@ export interface AgentRuntimeDeps {
   WebSocketCtor: AgentWebSocketConstructor;
   collectStatus: () => Promise<StatusResponse>;
   getVersions: () => Promise<Record<string, string>>;
+  getUpdateCheck: () => Promise<UpdateCheckResult>;
   getUpgradeState: () => string;
   createDispatcher: (sender: CommandSender, deps: CommandDeps) => CommandDispatcher;
   createRealDeps: () => CommandDeps;
@@ -90,6 +92,7 @@ const DEFAULT_DEPS: AgentRuntimeDeps = {
   WebSocketCtor: WebSocket,
   collectStatus,
   getVersions: getComponentVersions,
+  getUpdateCheck,
   getUpgradeState: getState,
   createDispatcher: createCommandDispatcher,
   createRealDeps: createRealCommandDeps,
@@ -212,7 +215,7 @@ export function createAgentRuntime(overrides: Partial<AgentRuntimeDeps> = {}): A
   const sendHeartbeat = async (target: AgentWebSocket): Promise<void> => {
     try {
       const report = await buildStatusReport(
-        { collectStatus: deps.collectStatus, getVersions: deps.getVersions },
+        { collectStatus: deps.collectStatus, getVersions: deps.getVersions, getUpdateCheck: deps.getUpdateCheck },
         deps.getUpgradeState(),
       );
       if (!active || socket !== target) return;

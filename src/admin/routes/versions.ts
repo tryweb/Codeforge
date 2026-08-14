@@ -5,7 +5,7 @@ import { VersionsPage } from "../views/versions";
 
 const IMAGE = "ghcr.io/tryweb/ai-engkit:latest";
 
-interface UpdateCheckResult {
+export interface UpdateCheckResult {
   current: string;
   latest: string;
   update_available: boolean;
