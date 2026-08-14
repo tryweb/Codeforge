@@ -305,8 +305,13 @@ export function createAgentModelsLib(deps: AgentModelsDeps = REAL_DEPS) {
 for f in ${MANAGED_OPENCODE_DIR}/*.json; do
   [ -f "\$f" ] || continue
   pid=\$(jq -r '.pid' "\$f" 2>/dev/null)
-  if [ -n "\$pid" ] && kill -0 "\$pid" 2>/dev/null; then
-    PORT=\$(jq -r '.port' "\$f")
+  port=\$(jq -r '.port' "\$f" 2>/dev/null)
+  [ -n "\$pid" ] && [ -n "\$port" ] || continue
+  kill -0 "\$pid" 2>/dev/null || continue
+  # The state file can be stale (a previous managed server that was
+  # replaced on restart). Verify the port actually answers before using it.
+  if curl -fsS -m 2 -H "Authorization: Basic ${auth}" "http://127.0.0.1:\${port}/agent" >/dev/null 2>&1; then
+    PORT="\$port"
     break
   fi
 done
