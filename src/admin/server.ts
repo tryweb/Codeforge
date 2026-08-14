@@ -21,6 +21,7 @@ import secretsRoutes from "./routes/secrets";
 import providersRoutes from "./routes/providers";
 import statusRoutes from "./routes/status";
 import agentRoutes from "./routes/agent";
+import agentModelsRoutes from "./routes/agent-models";
 import openChamberRoutes from "./routes/openchamber";
 import { getUpdateCheck } from "./routes/versions";
 import { getStatus as getUpgradeStatus } from "./lib/upgrade";
@@ -107,6 +108,7 @@ app.use("*", authGuard);
 // Mount routes
 app.route("/", statusRoutes);
 app.route("/", agentRoutes);
+app.route("/", agentModelsRoutes);
 app.route("/", authRoutes);
 app.route("/", versionRoutes);
 app.route("/", envRoutes);
