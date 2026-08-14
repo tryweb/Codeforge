@@ -1,6 +1,22 @@
 ## [Unreleased]
 
 
+## [1.14.2] - 2026-08-14
+
+### Added
+- Report ai-dev upgrade availability in heartbeats
+- Clarify provider registry wording and activation status
+- Extract shared ai-dev restart helper
+- Report per-container status for ai-dev and ai-admin in heartbeat
+
+### Fixed
+- Resolve test containers via compose service label
+- Resolve ai-dev container via compose service label
+- Discover ai-dev container via compose service label
+- Only snapshot provider auth for key-managed providers in PUT active
+- Harden provider key commands against failed applies and deferral
+- Roll back provider auth and registry when a key apply fails
+
 ## [1.14.1] - 2026-08-14
 
 ### Added
@@ -1275,7 +1291,7 @@
 
 ## Format
 
-[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.14.1...HEAD
+[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.14.2...HEAD
 [0.3.0]: https://github.com/tryweb/ai-engkit/releases/tag/v0.3.0
 [0.3.3]: https://github.com/tryweb/ai-engkit/compare/v0.3.0...v0.3.3
 [0.5.0]: https://github.com/tryweb/ai-engkit/compare/v0.3.3...v0.5.0
@@ -1405,3 +1421,4 @@
 [1.13.2]: https://github.com/tryweb/ai-engkit/compare/v1.13.1...v1.13.2
 [1.14.0]: https://github.com/tryweb/ai-engkit/compare/v1.13.2...v1.14.0
 [1.14.1]: https://github.com/tryweb/ai-engkit/compare/v1.14.0...v1.14.1
+[1.14.2]: https://github.com/tryweb/ai-engkit/compare/v1.14.1...v1.14.2
