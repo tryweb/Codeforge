@@ -76,7 +76,33 @@ export interface ExecResult {
   exitCode: number;
 }
 
+/**
+ * Find the ai-dev container via its compose service label, scoped to the
+ * same compose project as this admin container. Labels survive container_name
+ * overrides (CI renames ai-dev to "ci-test"); the derived name does not.
+ */
+async function getAiDevContainerByService(): Promise<string> {
+  const selfRef = await getSelfContainerRef();
+  const projectResult = await dockerCommand(
+    `inspect --format='{{index .Config.Labels "com.docker.compose.project"}}' ${selfRef}`,
+    5_000,
+  );
+  const project = projectResult.exitCode === 0 ? projectResult.stdout.trim() : "";
+  const filters = ["status=running", "label=com.docker.compose.service=ai-dev"];
+  if (project) filters.push(`label=com.docker.compose.project=${project}`);
+  const args = ["docker", "ps", "--format", "{{.ID}}"];
+  for (const filter of filters) args.push("--filter", filter);
+  const result = await runCommand(args, 10_000);
+  if (result.exitCode === 0 && result.stdout.trim()) {
+    return result.stdout.trim().split("\n")[0];
+  }
+  return "";
+}
+
 export async function getAiDevContainerRef(): Promise<string> {
+  const byService = await getAiDevContainerByService();
+  if (byService) return byService;
+
   const devName = await getSiblingDevContainerName();
   const result = await runCommand(
     ["docker", "ps", "--filter", "status=running", "--filter", `name=^/${devName}$`, "--format", "{{.ID}}"],
@@ -98,13 +124,13 @@ export async function execInAiDev(
 }
 
 /**
- * Detect the docker compose project name from the running ai-dev container.
- * Falls back to "ai-engkit" if detection fails.
+ * Detect the docker compose project name from this admin container's own
+ * label. Falls back to "ai-engkit" if detection fails.
  */
 export async function getComposeProject(): Promise<string> {
-  const devName = await getSiblingDevContainerName();
+  const selfRef = await getSelfContainerRef();
   const result = await runCommand(
-    ["docker", "inspect", "--format={{index .Config.Labels \"com.docker.compose.project\"}}", devName],
+    ["docker", "inspect", "--format={{index .Config.Labels \"com.docker.compose.project\"}}", selfRef],
     5_000,
   );
   if (result.exitCode === 0 && result.stdout.trim()) {
