@@ -32,7 +32,7 @@
 | `hello` | A→C | `{agent_id, protocol_version: 1}` | 連線後第一個訊息 |
 | `hello_ack` | C→A | `{}` | **必須**在第一個訊息回;否則 agent 斷線重連 |
 | `heartbeat` | A→C | StatusReport(§5) | 每 60s 一次 |
-| `ack` | A→C | `{status, message, started_at, finished_at}` | command 執行結果 |
+| `ack` | A→C | `{status, message, started_at, finished_at, data?}` | command 執行結果(`data` 為可選欄位,目前僅 `gh.auth.start` 使用) |
 | `error` | 雙向 | `{code, message}` | 錯誤;agent 對 malformed 用 |
 | `command` | C→A | 見 §4 | center 下指令 |
 | `result` | A→C | 見 §6 | query 的回應,`id` 對應 command id |
@@ -55,8 +55,28 @@
 | `providers.key.set-active` | `{"provider", "keyId", "mode"?}` | 切換 active key → apply → restart per mode;已 active 為 no-op;先 ack `"setting active provider key"` 再 ack 結果 |
 | `providers.key.delete` | `{"provider", "keyId", "mode"?}` | 刪除 key;刪到 active 時 promote 下一把,或(最後一把)移除 auth entry + restart;先 ack `"deleting provider key"` 再 ack 結果 |
 | `providers.key.update-note` | `{"provider", "keyId", "note"}` | 只更新 registry note,不 restart;先 ack `"updating provider key note"` 再 ack 結果 |
+| `secrets.set` | `{"key", "value"}` — `key` ∈ `ADMIN_PASSWORD` \| `OPENCHAMBER_UI_PASSWORD` \| `OPENCODE_SERVER_PASSWORD` | 寫入 env;ack message 含 activation(`immediate` / `restart_required`),**不自行 restart**;單次 ack |
+| `ssh.key.add` | `{"name"?, "keyType"? ("ed25519"\|"rsa"), "passphrase"?}` | 於 ai-dev home 產生 key pair 並註冊 ssh-agent;`name` 僅允許 `[A-Za-z0-9][A-Za-z0-9._-]*`;單次 ack |
+| `ssh.key.delete` | `{"name"}` | 移除 key pair + 登出 ssh-agent;單次 ack |
+| `ssh.key.list` | `{}` (query) | 回 result:`[{name, type, fingerprint}]` — 不含 key 內容 |
+| `git.config.set` | `{"key", "value"}` | `git config --global` 寫入(如 `user.name`/`user.email`);單次 ack |
+| `git.config.get` | `{}` (query) | 回 result:global config map — **刪除** `credential.*`/`url.*`,key-like 值經 `maskKey` 遮罩 |
+| `gh.auth.start` | `{}` | 於 ai-dev 啟動 device flow;ack 的 `data` 帶 `{device_code, verification_uri}`;完成狀態靠 `status` query(`gh_auth`)輪詢 |
+| `gh.auth.logout` | `{}` | `gh auth logout`;單次 ack |
+| `glab.instance.add` | `{"hostname", "token"}` | `glab auth login --token` + 設定 git credential helper;token 只存在於 command payload;單次 ack |
+| `glab.instance.remove` | `{"hostname"}` | `glab auth logout --hostname` + 移除 config entry;單次 ack |
+| `glab.instances` | `{}` (query) | 回 result:`[{hostname, username, authenticated}]` — 不含 token |
+| `projects.create` | `{"name", "gitInit"?, "gitRemote"?}` | clone(gitInit 在有 gitRemote 時預設 true)或 git init + 註冊 OpenChamber;先 ack `"creating project"` 再 ack 結果 |
+| `projects.set-remote` | `{"name", "remote"}` | 設定/替換/移除 `origin`;fresh repo 會 shallow fetch + checkout;先 ack `"setting project remote"` 再 ack 結果 |
+| `projects.enable` | `{"name"}` | 解除 disabled + 註冊 OpenChamber;單次 ack |
+| `projects.disable` | `{"name"}` | 標記 disabled + 註銷 OpenChamber(失敗回滾);單次 ack |
+| `projects.enable-feature` | `{"name", "feature"}` — `feature` ∈ `knowledge` \| `maintenance` \| `openspec` | 佈建 skill scaffold;單次 ack |
+| `projects.sync` | `{"add"?: [name], "remove"?: [name]}` | 對帳 workspace ↔ OpenChamber 註冊;先 ack `"syncing projects"` 再 ack 結果 |
 
-**重要語意**:所有 action command(`upgrade`/`reconfigure`/`restart` 與四個 provider-key command)都會對**同一個 command id 送兩次 ack** — 第一次 = accepted/starting(此時 `status` 恆為 `"success"`),第二次 = 最終 outcome。center 端必須處理「同 id 兩次 ack」。
+**重要語意**:
+- 長操作 action(`upgrade`/`reconfigure`/`restart`、四個 provider-key command、`projects.create`/`projects.set-remote`/`projects.sync`)會對**同一個 command id 送兩次 ack** — 第一次 = accepted/starting(此時 `status` 恆為 `"success"`),第二次 = 最終 outcome。center 端必須處理「同 id 兩次 ack」。
+- 快速 action(`secrets.set`/`ssh.key.*`/`git.config.set`/`gh.auth.*`/`glab.instance.*`/`projects.enable`/`projects.disable`/`projects.enable-feature`)只送**一次 ack**(最終 outcome)。
+- `gh.auth.start` 的 ack payload 額外帶 `data: {device_code, verification_uri}` — 這是唯一的 ack `data` 使用場合,center 需把它顯示給操作者。
 
 **Deferral**:upgrade 執行中(`isUpgradeRunning()`)時,收到的 command 進 FIFO queue;收到終態 upgrade 事件(任一 step 的 `failure`,或 `cleanup` 的 `success`,經 event bridge 轉發)後才 drain 執行。center 送出的 command 在 upgrade 期間不會立刻得到 ack。
 
@@ -66,7 +86,7 @@
 - graceful 等待逾時或 idle 檢查 API 失敗 → 自動 fallback 到 force,最終 ack 標記 `"(force restart after ...)"`。
 - 最終 ack 的 message 一律載明**實際使用的** restart mode。
 
-**Key-material containment**:`providers.key.add` 的 `value` 只存在於 command payload 中;任何 `ack`/`result`/`event`/`error` 都**不得**包含明文 key — 回應只帶 key id,或經 `maskKey`(前4+後4字元)遮罩。log 與 error message 也不得含 key 值。
+**Key-material containment**:機密物 — `providers.key.add` 的 key、`secrets.set` 的 value、`glab.instance.add` 的 token、`ssh.key.add` 的 passphrase、`gh.auth.start` 的 device code — 只存在於 command payload(device code 例外:同時存在於 `gh.auth.start` 的 ack `data`,這是傳遞給操作者所必需)。任何 `ack`/`result`/`event`/`error` 都**不得**包含明文機密;回應只帶 key id / key name,或經 `maskKey`(前4+後4字元)遮罩。log 與 error message 也不得含機密值。
 
 **Key-command 失敗與 rollback 語意**:
 - `key.add` 的第一把 key 會先檢查 auth store:該 provider 已存在 key 時回 failure(`"already holds a key in the ai-dev auth store; remove it before adding a registry key"`)且**不寫入 registry**。
@@ -181,6 +201,37 @@
 ```
 
   registry keys 一律 `maskKey`(前4…後4),原始值絕不出現
+
+- **git.config.get** →
+
+```json
+{
+  "user.name": "Alice",
+  "user.email": "alice@example.com"
+}
+```
+
+  `credential.*` 與 `url.*` 區段**整個刪除**;其餘值含 key material pattern(`sk-`、`ghp_`、`glpat-`、`AIza`、`token=`、`secret`)時以 `maskKey` 遮罩
+
+- **glab.instances** →
+
+```json
+[
+  { "hostname": "gitlab.com", "username": "alice", "authenticated": true }
+]
+```
+
+  只讀 token 的存在性,任何情況下都不帶 token 值
+
+- **ssh.key.list** →
+
+```json
+[
+  { "name": "id_ed25519", "type": "Ed25519", "fingerprint": "256 SHA256:abc... comment (ED25519)" }
+]
+```
+
+  不含 private key 或 public key 內容
 
 ## 7. Events(A→C)
 
