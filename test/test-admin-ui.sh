@@ -384,6 +384,13 @@ fi
 # Creates a real project, asserts registration + dedupe, then cleans up.
 # ============================================================
 E2E_PROJ="e2e-reg-$(date +%s)"
+# Resolve the ai-dev container: prefer the legacy name (matches dev setups),
+# then fall back to the compose service label, which survives container_name
+# overrides (CI renames the container to "ci-test").
+AI_DEV_CONTAINER="${AI_DEV_CONTAINER:-ai-engkit-dev}"
+if [ "$AI_DEV_CONTAINER" = "ai-engkit-dev" ] && ! docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "$AI_DEV_CONTAINER"; then
+  AI_DEV_CONTAINER="$(docker ps --filter 'label=com.docker.compose.service=ai-dev' --filter 'status=running' --format '{{.Names}}' 2>/dev/null | head -n 1)"
+fi
 AI_DEV_CONTAINER="${AI_DEV_CONTAINER:-ai-engkit-dev}"
 e2e_project_cleanup() {
   curl -s -o /dev/null -b "$COOKIE_JAR" -X POST "$BASE/api/projects/sync" \
