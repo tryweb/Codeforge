@@ -32,5 +32,8 @@ describe("ProvidersPage key notes", () => {
     expect(html).toContain('value="team A"');
     expect(html).toContain("class=\"key-add-note-input\"");
     expect(html).toContain("/api/providers/' + name + '/keys/' + keyId");
+    expect(html).toContain("API Keys in registry (1)");
+    expect(html).toContain("Selected in registry");
+    expect(html).toContain("Applying selected key...");
   });
 });

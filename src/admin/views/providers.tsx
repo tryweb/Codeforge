@@ -187,11 +187,18 @@ export function ProvidersPage({
 
       function selectActiveKey(name, keyId) {
         if (!confirm('Switching the active key writes it to the auth store and restarts ai-dev (brief downtime). Continue?')) return;
+        var status = providerCard(name).querySelector('.key-activation-status');
+        status.textContent = 'Applying selected key...';
         fetch('/api/providers/' + name + '/keys/' + keyId + '/active', { method: 'PUT' })
           .then(function (r) { return r.json(); })
           .then(function (j) {
             if (j.ok) return location.reload();
+            status.textContent = 'Selection not applied';
             alert('Activate key failed: ' + (j.error || 'unknown error'));
+          })
+          .catch(function (err) {
+            status.textContent = 'Selection not applied';
+            alert('Activate key failed: ' + (err && err.message ? err.message : 'network error'));
           });
       }
 
@@ -242,7 +249,7 @@ export function ProvidersPage({
       </div>
       <p class="text-sm text-muted" style="margin-bottom: 16px;">
         Providers are defined in <code>OPENCODE_PROVIDER</code> and injected into <code>opencode.json</code> on startup.
-        Key-managed providers (Opencode Go) keep their API keys in the provider-keys registry instead; the active key is
+        Key-managed providers (Opencode Go) keep their API keys in the provider-keys registry instead; the registry-selected key is
         written to the opencode auth store and applied on restart.
       </p>
       {meta.invalid && (
@@ -280,7 +287,10 @@ export function ProvidersPage({
           {p.keyManagement && (
             <div style="margin-bottom: 12px;">
               <div class="flex" style="justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                <b style="font-size: 14px;">API Keys ({p.registry.keyCount})</b>
+                <div>
+                  <b style="font-size: 14px;">API Keys in registry ({p.registry.keyCount})</b>
+                  <span class="key-activation-status text-muted" style="font-size: 13px; margin-left: 8px;"></span>
+                </div>
                 <span class="badge badge-warning">
                   {p.authStoreKeyPresent ? "auth store: key present" : "auth store: no key"}
                 </span>
@@ -303,6 +313,7 @@ export function ProvidersPage({
                     <span class="masked">{k.masked}</span>
                     <span class="revealed"></span>
                   </span>
+                  {k.active && <span class="badge badge-warning">Selected in registry</span>}
                   <input
                     type="text"
                     class="key-note-input"
