@@ -117,9 +117,9 @@ fi
 echo "  target model: $TARGET"
 
 # --- Set ------------------------------------------------------
-jq --argjson fm "[{\"model\":\"$TARGET\"}]" ".agents.$TEST_AGENT.fallback_models = \$fm" "$BASELINE" \
+jq --argjson fm "[{\"model\":\"$TARGET\"}]" ".agents.$TEST_AGENT.models = \$fm" "$BASELINE" \
   | docker exec -i "$CONTAINER" sh -c 'cat > ~/.omo/omo.jsonc' \
-  || { fail "set: writing fallback_models failed"; exit 1; }
+  || { fail "set: writing models failed"; exit 1; }
 assert_contains "set: omo.jsonc contains target" "$TARGET" "$(in_container 'cat ~/.omo/omo.jsonc')"
 
 # --- Restart + confirm ------------------------------------------
