@@ -61,6 +61,14 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
                 )}
               </td>
               <td>
+                {a.invalid && (
+                  <span
+                    title="Config has keys the OMO plugin no longer recognizes (e.g. permission). Fix or remove them for overrides to take effect."
+                    style={{ color: "#ef4444", fontSize: "0.75rem", marginRight: "0.5rem" }}
+                  >
+                    ⚠ invalid
+                  </span>
+                )}
                 <span
                   style={{
                     color:
@@ -112,7 +120,7 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
           var modelOpts = agentModelsState.catalog.map(function (m) {
             return '<option value="' + m + '"' + (m === model ? ' selected' : '') + '>' + m + '</option>';
           }).join('');
-          var variantOpts = ['', ${VARIANTS.map((v) => `"${v}"`).join(",")}].map(function (v) {
+          var variantOpts = ['', ${raw(VARIANTS.map((v) => `"${v}"`).join(","))}].map(function (v) {
             return '<option value="' + v + '"' + (v === (variant || '') ? ' selected' : '') + '>' + (v || 'default') + '</option>';
           }).join('');
           return '<div class="model-row" style="display:flex;gap:8px;margin-bottom:8px;align-items:center;">' +

@@ -38,7 +38,7 @@ function stubDeps(handlers: ExecHandler[]) {
 }
 
 const CONFIG_JSON =
-  '{"plan":{"fallback_models":[{"model":"kimi-k3","variant":"max"}]},"prometheus":{"fallback_models":[{"model":"kimi-k3"}]}}';
+  '{"plan":{"models":[{"model":"kimi-k3","variant":"max"}]},"prometheus":{"models":[{"model":"kimi-k3"}]}}';
 const AGENTS_JSON = JSON.stringify([
   { name: "plan", model: { modelID: "kimi-k3", providerID: "opencode-go" } },
   { name: "oracle", model: { modelID: "gpt-5.6-sol", providerID: "openai" } },
@@ -66,6 +66,7 @@ describe("createAgentModelsRoutes — GET /api/agent-models", () => {
     expect(plan.configured[0].model).toBe("kimi-k3");
     expect(plan.resolved).toEqual({ modelID: "kimi-k3", providerID: "opencode-go" });
     expect(plan.source).toBe("configured");
+    expect(plan.invalid).toBe(false);
 
     // oracle exists only on the resolved side -> plugin source
     const oracle = data.agents.find((a: { name: string }) => a.name === "oracle");
@@ -73,6 +74,29 @@ describe("createAgentModelsRoutes — GET /api/agent-models", () => {
     expect(oracle.resolved).toEqual({ modelID: "gpt-5.6-sol", providerID: "openai" });
 
     expect(data.catalog).toEqual(["gpt-5.6-sol", "kimi-k3"]);
+    cleanup();
+  });
+
+  test("flags agents whose config has unrecognized keys as invalid", async () => {
+    const { deps, cleanup } = stubDeps([
+      {
+        match: /jq -c '\.agents/,
+        stdout:
+          '{"explore":{"permission":{"bash":"allow"},"models":[{"model":"kimi-k3"}]},"plan":{"models":[{"model":"kimi-k3"}]}}',
+      },
+      { match: /connected-providers\.json/, stdout: '{"connected":["opencode-go"]}' },
+      { match: /provider-models\.json/, stdout: "kimi-k3\n" },
+      { match: /\/agent\b/, stdout: JSON.stringify([{ name: "plan", model: { modelID: "kimi-k3", providerID: "opencode-go" } }]) },
+    ]);
+    const app = createAgentModelsRoutes(deps);
+    const res = await app.request("http://localhost/api/agent-models");
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    const explore = data.agents.find((a: { name: string }) => a.name === "explore");
+    expect(explore.invalid).toBe(true);
+    expect(explore.configured).toEqual([{ model: "kimi-k3" }]);
+    const plan = data.agents.find((a: { name: string }) => a.name === "plan");
+    expect(plan.invalid).toBe(false);
     cleanup();
   });
 

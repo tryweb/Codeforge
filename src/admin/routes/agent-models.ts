@@ -36,11 +36,12 @@ async function collectAgentModelState(
   const names = [...new Set([...knownKeys, ...resolvedByKey.keys()])].sort();
 
   const agents: AgentModelEntry[] = names.map((name) => {
-    const configured = config[name]?.fallback_models ?? [];
+    const entry = config[name];
+    const configured = entry?.models ?? [];
     let source: AgentModelEntry["source"] = "plugin";
     if (configured.length > 0) {
       source = "configured";
-    } else if (name === "plan" && (config["prometheus"]?.fallback_models?.length ?? 0) > 0) {
+    } else if (name === "plan" && (config["prometheus"]?.models?.length ?? 0) > 0) {
       source = "inherited";
     }
     return {
@@ -48,6 +49,7 @@ async function collectAgentModelState(
       configured,
       resolved: resolvedByKey.get(name) ?? null,
       source,
+      invalid: entry?.invalid ?? false,
     };
   });
 
