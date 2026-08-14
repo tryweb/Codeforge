@@ -106,13 +106,13 @@ The `secrets.set` command SHALL write one of the environment-schema password key
 The `ssh.key.add` command SHALL carry `name`, `keyType` (`"ed25519"` or `"rsa"`, defaulting to `"ed25519"`), and an optional `passphrase`, and SHALL generate an SSH key pair in the ai-dev home directory (default name `id_ed25519`) using the same commands the local SSH Keys page runs, and SHALL register the new key with the SSH agent. The `ssh.key.delete` command SHALL carry a `name` and SHALL remove the named key pair from disk and drop it from the SSH agent. The `ssh.key.list` query SHALL return existing keys as `{ name, type, fingerprint }` without private or public key content. A name containing path separators or shell-active characters SHALL be rejected with `error` `malformed_command` before any filesystem change. The ack SHALL report success or the underlying command failure.
 
 #### Scenario: add an ed25519 key
-- **WHEN** a `ssh.key.add` command with no type is received
+- **WHEN** a `ssh.key.add` command with no `keyType` is received
 - **THEN** an ed25519 key pair is generated in the ai-dev home
 - **AND** the key is registered with the SSH agent
 - **AND** an `ack` reporting success is sent
 
 #### Scenario: add an rsa key
-- **WHEN** a `ssh.key.add` command with `type: "rsa"` is received
+- **WHEN** a `ssh.key.add` command with `keyType: "rsa"` is received
 - **THEN** a 4096-bit RSA key pair is generated in the ai-dev home
 - **AND** an `ack` reporting success is sent
 
