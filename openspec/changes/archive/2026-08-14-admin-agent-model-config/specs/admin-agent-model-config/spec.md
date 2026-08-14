@@ -34,16 +34,24 @@ The system SHALL expose a write endpoint accepting a per-agent list of `{model, 
 - **WHEN** an admin opens the model selector for an agent while `openai` and `opencode-go` are connected
 - **THEN** only models from the `openai` and `opencode-go` catalogs are offered, and a model absent from both cannot be selected
 
-### Requirement: Live verification and rollback after apply
-After writing and restarting, the system SHALL re-query the managed opencode server `/agent` endpoint and compare each written agent's resolved model against the configured primary entry. If the resolved model does not match the configured primary, the system SHALL restore the previous `~/.omo/omo.jsonc` content, restart ai-dev again, and report the failure with both the expected and actual resolved model.
+### Requirement: Apply confirmation and rollback after restart
+After writing and restarting, the system SHALL confirm that the write landed (the target agent's `fallback_models` entries are present in `~/.omo/omo.jsonc`), that the restart succeeded, and that the managed opencode server is reachable again (it re-reads config from disk on restart). The `/agent` model report SHALL be treated as informational only: it reflects the plugin's default model resolution (AGENT_MODEL_REQUIREMENTS), not `fallback_models`, so it SHALL NOT be used to judge whether a write succeeded or to trigger a rollback. The system SHALL restore the previous `~/.omo/omo.jsonc` content only when the write itself fails or the restart fails, and SHALL report the failure.
 
-#### Scenario: Configuration takes effect
-- **WHEN** an admin sets `sisyphus.fallback_models` to `[{model: "gpt-5.6-sol", variant: "medium"}]` with the `openai` provider connected
-- **THEN** after restart the verification reports `sisyphus` resolved as `{modelID: "gpt-5.6-sol", providerID: "openai"}` and the write is confirmed
+#### Scenario: Apply confirmed after successful write and restart
+- **WHEN** an admin sets `explore.fallback_models` to `[{model: "claude-opus-5"}]` and the write, restart, and server reachability all succeed
+- **THEN** the system reports the apply as confirmed, and a reported current model that differs from the configured entries does not trigger a rollback
 
-#### Scenario: Unresolvable API write rolls back with a distinct reason
-- **WHEN** an API client writes a primary model absent from all connected providers' catalogs (possible only via the API, since the UI restricts choices to connected providers)
-- **THEN** the resolved model cannot match the primary after restart, the system restores the previous configuration, restarts, and reports a failure that names the model as unavailable on connected providers — distinct from a verification/restart failure
+#### Scenario: Write failure reports without changing configuration
+- **WHEN** the jq write to `~/.omo/omo.jsonc` fails
+- **THEN** the system reports a write failure and the file is unchanged (no restart, no rollback needed)
+
+#### Scenario: Restart failure restores the snapshot
+- **WHEN** the write succeeds but the ai-dev restart fails
+- **THEN** the system restores the previous `~/.omo/omo.jsonc` content and reports the restart failure
+
+#### Scenario: Server unreachable after restart is reported without rollback
+- **WHEN** the restart succeeds but the managed opencode `/agent` endpoint cannot be reached afterwards
+- **THEN** the system reports the apply as confirmed-but-unverified without restoring the configuration
 
 ### Requirement: Server password prerequisite for verification
 The live-verification and list-resolved-model behaviors SHALL require `OPENCODE_SERVER_PASSWORD` to be set in the mounted `.env` (the password OpenChamber uses to spawn the managed opencode server). When it is absent, the system SHALL expose the configuration read/write of `~/.omo/omo.jsonc` but SHALL NOT claim live verification: the UI SHALL show a prerequisite warning and the write endpoint SHALL refuse to apply-and-restart with an explanatory error.
@@ -57,11 +65,11 @@ The live-verification and list-resolved-model behaviors SHALL require `OPENCODE_
 - **THEN** the UI shows a prerequisite warning, the list endpoint returns no live resolved model, and the write endpoint rejects apply with an error explaining the missing variable
 
 ### Requirement: End-to-end regression test
-The test suite SHALL include an end-to-end script that (1) records the baseline `~/.omo/omo.jsonc` and live `/agent` model for a target agent, (2) writes a valid configuration, (3) restarts and asserts the resolved model equals the configured primary via `/agent`, and (4) restores the baseline and asserts the original model returns. Restoration SHALL be guaranteed even if verification fails (trap-based cleanup), and the script SHALL skip with a warning when `OPENCODE_SERVER_PASSWORD` is absent.
+The test suite SHALL include an end-to-end script that (1) records the baseline `~/.omo/omo.jsonc` and the live `/agent` model for a target agent, (2) writes a valid configuration, (3) restarts and confirms the managed server answers `/agent` again (config re-read) and the config file retains the target, and (4) restores the baseline and asserts the file is byte-identical and the server is reachable. Restoration SHALL be guaranteed even if confirmation fails (trap-based cleanup), and the script SHALL skip with a warning when `OPENCODE_SERVER_PASSWORD` is absent. The script SHALL NOT assert a model change via `/agent` — that endpoint never reflects `fallback_models`.
 
-#### Scenario: Test passes through set-verify-restore
+#### Scenario: Test passes through set-confirm-restore
 - **WHEN** the test runs on an environment with `OPENCODE_SERVER_PASSWORD` set and a writable ai-dev
-- **THEN** it exits 0 only if the configured model is observed live after restart and the baseline is restored afterwards
+- **THEN** it exits 0 only if the target is retained in config and the server answers `/agent` after restart, and the baseline is restored afterwards
 
 #### Scenario: Test skips without password
 - **WHEN** the test runs without `OPENCODE_SERVER_PASSWORD` in `.env`
