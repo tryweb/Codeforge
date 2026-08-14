@@ -70,6 +70,7 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
                     ⚠ invalid
                   </span>
                 )}
+                {" "}
                 <span
                   style={{
                     color:
