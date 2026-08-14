@@ -1,7 +1,14 @@
 #!/usr/bin/env bash
 set -uo pipefail
 
+# Resolve the ai-dev container: prefer the legacy name (matches dev setups),
+# then fall back to the compose service label, which survives container_name
+# overrides (CI renames the container to "ci-test").
 CONTAINER="${1:-ai-engkit-dev}"
+if [ "$CONTAINER" = "ai-engkit-dev" ] && ! docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "$CONTAINER"; then
+  CONTAINER="$(docker ps --filter 'label=com.docker.compose.service=ai-dev' --filter 'status=running' --format '{{.Names}}' 2>/dev/null | head -n 1)"
+fi
+CONTAINER="${CONTAINER:-ai-engkit-dev}"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'

@@ -8,7 +8,14 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-CONTAINER="${CONTAINER_NAME:-ai-dev}"
+# Resolve the ai-dev container: prefer the legacy name (matches compose.yml),
+# then fall back to the compose service label, which survives container_name
+# overrides.
+CONTAINER="${CONTAINER_NAME:-ai-engkit}"
+if [ "$CONTAINER" = "ai-engkit" ] && ! docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "$CONTAINER"; then
+  CONTAINER="$(docker ps --filter 'label=com.docker.compose.service=ai-dev' --filter 'status=running' --format '{{.Names}}' 2>/dev/null | head -n 1)"
+fi
+CONTAINER="${CONTAINER:-ai-engkit}"
 CHAMBER_PORT="${CHAMBER_PORT:-8000}"
 
 RED='\033[0;31m'

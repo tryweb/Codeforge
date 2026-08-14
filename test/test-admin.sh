@@ -6,7 +6,14 @@ set -uo pipefail
 # Usage: ./test/test-admin.sh [container_name]
 # ============================================================
 
+# Resolve the admin container: prefer the legacy name (matches dev setups),
+# then fall back to the compose service label, which survives container_name
+# overrides.
 CONTAINER="${1:-ai-engkit-admin-dev}"
+if [ "$CONTAINER" = "ai-engkit-admin-dev" ] && ! docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "$CONTAINER"; then
+  CONTAINER="$(docker ps --filter 'label=com.docker.compose.service=ai-admin' --filter 'status=running' --format '{{.Names}}' 2>/dev/null | head -n 1)"
+fi
+CONTAINER="${CONTAINER:-ai-engkit-admin-dev}"
 PASS=0
 FAIL=0
 
