@@ -1,6 +1,19 @@
 ## [Unreleased]
 
 
+## [1.14.3] - 2026-08-14
+
+### Added
+- Add center remote management commands for agent config
+
+### Documentation
+- Compose service label container discovery pattern
+- Document remote management commands in agent-center-protocol
+- Propose center-agent-remote-management change
+
+### Changed
+- Add grype ignore for headless Chromium and daemon-side docker GHSA
+
 ## [1.14.2] - 2026-08-14
 
 ### Added
@@ -1291,7 +1304,7 @@
 
 ## Format
 
-[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.14.2...HEAD
+[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.14.3...HEAD
 [0.3.0]: https://github.com/tryweb/ai-engkit/releases/tag/v0.3.0
 [0.3.3]: https://github.com/tryweb/ai-engkit/compare/v0.3.0...v0.3.3
 [0.5.0]: https://github.com/tryweb/ai-engkit/compare/v0.3.3...v0.5.0
@@ -1422,3 +1435,4 @@
 [1.14.0]: https://github.com/tryweb/ai-engkit/compare/v1.13.2...v1.14.0
 [1.14.1]: https://github.com/tryweb/ai-engkit/compare/v1.14.0...v1.14.1
 [1.14.2]: https://github.com/tryweb/ai-engkit/compare/v1.14.1...v1.14.2
+[1.14.3]: https://github.com/tryweb/ai-engkit/compare/v1.14.2...v1.14.3
