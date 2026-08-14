@@ -1,8 +1,8 @@
 import { Hono } from "hono";
-import { existsSync } from "node:fs";
 import { readEnvFile, upsertEnvVar, envFileExists } from "../lib/env";
 import { PROVIDER_ENV_KEY, parseProviders } from "../lib/providers";
-import { execInAiDev, getAiDevContainerRef, dockerCommand, getComposeProject } from "../lib/docker";
+import { execInAiDev } from "../lib/docker";
+import { restartAiDev } from "../lib/restart-ai-dev";
 import { EnvEditorPage } from "../views/env-editor";
 import { ENV_SCHEMA } from "../lib/env-schema";
 
@@ -47,29 +47,6 @@ env.post("/api/env/from-template", async (c) => {
   }
   return c.json({ content: result.stdout });
 });
-
-/** Restart ai-dev: compose recreate in prod (re-reads .env), plain restart in dev/DooD. */
-export async function restartAiDev(): Promise<{ ok: boolean; error?: string }> {
-  const ref = await getAiDevContainerRef();
-
-  const composePath = "/opt/ai-engkit/compose.yml";
-  const envFilePath = "/opt/ai-engkit/.env";
-  if (existsSync(composePath)) {
-    const project = await getComposeProject();
-    const result = await dockerCommand(
-      `compose -p ${project} --env-file ${envFilePath} -f ${composePath} up -d --force-recreate ai-dev 2>&1`,
-      120_000,
-    );
-    if (result.exitCode === 0) return { ok: true };
-    return { ok: false, error: result.stderr || "Compose recreate failed" };
-  }
-
-  const result = await dockerCommand(`restart ${ref}`, 30_000);
-  if (result.exitCode !== 0) {
-    return { ok: false, error: result.stderr || "Failed to restart ai-dev container" };
-  }
-  return { ok: true };
-}
 
 env.post("/api/env/restart", async (c) => {
   const result = await restartAiDev();
