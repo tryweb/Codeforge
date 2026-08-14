@@ -133,6 +133,36 @@ describe("createAgentModelsRoutes — GET /api/agent-models", () => {
     cleanup();
   });
 
+  test("includes configurable native subagent (general) but not internal mechanism agents", async () => {
+    const agentsJson = JSON.stringify([
+      { name: "general", mode: "subagent", model: null },
+      { name: "build", mode: "subagent", model: null },
+      { name: "compaction", mode: "subagent", model: null },
+      { name: "summary", mode: "subagent", model: null },
+      { name: "title", mode: "subagent", model: null },
+      { name: "explore", mode: "subagent", model: { modelID: "gpt-5.6-luna-fast", providerID: "openai" } },
+    ]);
+    const { deps, cleanup } = stubDeps([
+      { match: /jq -c '\.agents/, stdout: '{"explore":{}}' },
+      { match: /connected-providers\.json/, stdout: '{"connected":["openai"]}' },
+      { match: /provider-models\.json/, stdout: "gpt-5.6-luna-fast\n" },
+      { match: /\/agent\b/, stdout: agentsJson },
+    ]);
+    const app = createAgentModelsRoutes(deps);
+    const res = await app.request("http://localhost/api/agent-models");
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    const names = data.agents.map((a: { name: string }) => a.name);
+
+    expect(names).toContain("general");
+    expect(names).not.toContain("build");
+    expect(names).not.toContain("compaction");
+    expect(names).not.toContain("summary");
+    expect(names).not.toContain("title");
+    expect(names).toContain("explore");
+    cleanup();
+  });
+
   test("degraded mode omits resolved models when password is absent", async () => {
     const { deps, calls, cleanup } = stubDeps(listHandlers());
     deps.readEnv = () => ({});

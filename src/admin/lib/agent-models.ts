@@ -55,6 +55,13 @@ export const REAL_DEPS: AgentModelsDeps = {
 export const OMO_CONFIG = "~/.omo/omo.jsonc";
 export const MANAGED_OPENCODE_DIR = "~/.config/openchamber/managed-opencode";
 
+/**
+ * opencode-native subagents that are safe for the admin to configure a model
+ * on. Internal mechanism agents (compaction, summary, title, build) are
+ * excluded — changing their model can break core opencode behavior.
+ */
+export const CONFIGURABLE_NATIVE_AGENTS = ["general"] as const;
+
 export const VARIANTS = ["low", "medium", "high", "xhigh", "max"] as const;
 
 /** Validate a write payload `{ entries: Array<{ model, variant? }> }`. Returns an error message or null. */
@@ -298,10 +305,9 @@ export function createAgentModelsLib(deps: AgentModelsDeps = REAL_DEPS) {
     return [];
   }
 
-  /** Query the managed opencode server's /agent endpoint; returns name → resolved model. */
-  async function fetchResolvedAgentModels(password: string): Promise<Map<string, ResolvedModel> | null> {
-    const auth = Buffer.from(`opencode:${password}`).toString("base64");
-    const script = `PORT=""
+  /** Build the sh script that discovers the live managed server port and fetches /agent. */
+  function buildAgentFetchScript(auth: string): string {
+    return `PORT=""
 for f in ${MANAGED_OPENCODE_DIR}/*.json; do
   [ -f "\$f" ] || continue
   pid=\$(jq -r '.pid' "\$f" 2>/dev/null)
@@ -321,7 +327,12 @@ for i in 1 2 3 4 5 6 7 8 9 10; do
   sleep 2
 done
 exit 2`;
-    const r = await deps.exec(script, 40_000);
+  }
+
+  /** Query the managed opencode server's /agent endpoint; returns name → resolved model. */
+  async function fetchResolvedAgentModels(password: string): Promise<Map<string, ResolvedModel> | null> {
+    const auth = Buffer.from(`opencode:${password}`).toString("base64");
+    const r = await deps.exec(buildAgentFetchScript(auth), 40_000);
     if (r.exitCode !== 0 || !r.stdout) return null;
     try {
       const parsed: unknown = JSON.parse(r.stdout);
@@ -339,6 +350,25 @@ exit 2`;
       return map;
     } catch {
       return null;
+    }
+  }
+
+  /** All subagent names reported by /agent, including model-less opencode natives. */
+  async function fetchSubagentNames(password: string): Promise<string[]> {
+    const auth = Buffer.from(`opencode:${password}`).toString("base64");
+    const r = await deps.exec(buildAgentFetchScript(auth), 40_000);
+    if (r.exitCode !== 0 || !r.stdout) return [];
+    try {
+      const parsed: unknown = JSON.parse(r.stdout);
+      if (!Array.isArray(parsed)) return [];
+      return parsed
+        .filter((agent): agent is { name: string } => {
+          const a = agent as { name?: unknown; mode?: unknown };
+          return typeof a.name === "string" && a.name.length > 0 && a.mode === "subagent";
+        })
+        .map((agent) => agent.name);
+    } catch {
+      return [];
     }
   }
 
@@ -385,6 +415,7 @@ exit 2`;
     getServerPassword,
     fetchConnectedCatalog,
     fetchResolvedAgentModels,
+    fetchSubagentNames,
     applyAndVerify,
   };
 }

@@ -3,6 +3,7 @@ import {
   createAgentModelsLib,
   validateFallbackModels,
   displayNameToKey,
+  CONFIGURABLE_NATIVE_AGENTS,
   REAL_DEPS,
   type AgentModelsDeps,
   type AgentModelEntry,
@@ -18,10 +19,11 @@ async function collectAgentModelState(
   lib: AgentModelsLib,
   password: string | null,
 ): Promise<{ agents: AgentModelEntry[]; catalog: string[]; hasPassword: boolean }> {
-  const [config, resolvedMap, catalog] = await Promise.all([
+  const [config, resolvedMap, catalog, subagentNames] = await Promise.all([
     lib.readAgentModelsConfig(),
     password !== null ? lib.fetchResolvedAgentModels(password) : Promise.resolve(null),
     lib.fetchConnectedCatalog(password),
+    password !== null ? lib.fetchSubagentNames(password) : Promise.resolve([]),
   ]);
 
   const knownKeys = new Set(Object.keys(config));
@@ -33,7 +35,16 @@ async function collectAgentModelState(
     if (!resolvedByKey.has(key)) resolvedByKey.set(key, resolved);
   }
 
-  const names = [...new Set([...knownKeys, ...resolvedByKey.keys()])].sort();
+  // Include the opencode-native subagents that are safe to configure (e.g.
+  // general); internal mechanism agents (compaction, summary, title, build)
+  // stay out because changing their model can break opencode internals.
+  const nativeKeys = new Set<string>();
+  for (const displayName of subagentNames) {
+    const key = displayNameToKey(displayName, knownKeys) ?? displayName.toLowerCase();
+    if ((CONFIGURABLE_NATIVE_AGENTS as readonly string[]).includes(key)) nativeKeys.add(key);
+  }
+
+  const names = [...new Set([...knownKeys, ...resolvedByKey.keys(), ...nativeKeys])].sort();
 
   const agents: AgentModelEntry[] = names.map((name) => {
     const entry = config[name];
