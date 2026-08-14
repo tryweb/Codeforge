@@ -1,0 +1,38 @@
+# Grype ignore rules — accepted risks in the ai-engkit image.
+# Each entry is documented below; re-evaluate when the pinned component bumps
+# (PLAYWRIGHT_VERSION / DOCKER_VERSION / BUILDX_VERSION / COMPOSE_VERSION).
+
+ignore:
+  # --- Playwright Chromium (headless test browser) ---
+  # 158 Critical/High findings in the bundled Chromium 151.0.7922.34.
+  # Used headless by the Playwright MCP server: no user interaction and no
+  # untrusted web content. Fixes ship in Chromium 151.0.7922.72/109, bundled
+  # with the next Playwright release — tracked by check-versions.sh via
+  # PLAYWRIGHT_VERSION. The location pin (chromium-1234) makes this ignore
+  # expire automatically when Playwright bumps to a new Chromium revision.
+  - package:
+      name: chrome
+      location: "/ms-playwright/chromium-1234/chrome-linux64/chrome"
+
+  # --- Docker daemon-side advisories attributed to CLI plugins ---
+  # grype matches these against the go module tag (v28.5.2+incompatible)
+  # embedded in docker-buildx / docker-compose. All five are dockerd
+  # (daemon) vulnerabilities; this image is Docker-out-of-Docker and ships
+  # only the CLI client + plugins, so the vulnerable daemon code is not
+  # present. The engine binary (/usr/local/bin/docker, 29.7.2) is not
+  # flagged. GHSA-x744 is fixed in engine 29.3.1 (<= pinned 29.7.2).
+  - vulnerability: GHSA-x744-4wpc-v9h2
+    package:
+      name: github.com/docker/docker
+  - vulnerability: GHSA-x86f-5xw2-fm2r
+    package:
+      name: github.com/docker/docker
+  - vulnerability: GHSA-rg2x-37c3-w2rh
+    package:
+      name: github.com/docker/docker
+  - vulnerability: GHSA-vp62-88p7-qqf5
+    package:
+      name: github.com/docker/docker
+  - vulnerability: GHSA-pxq6-2prw-chj9
+    package:
+      name: github.com/docker/docker
