@@ -2,7 +2,6 @@ import {
   dockerCommand,
   execInAiDev,
   getAiDevContainerRef,
-  getComposeProject,
   getSelfContainerRef,
 } from "../lib/docker";
 import { PASSWORD_KEYS } from "../lib/env-schema";
@@ -23,10 +22,11 @@ import {
   applyActiveKey as realApplyActiveKey,
   clearProviderCache as realClearProviderCache,
   isKeyProviderSupported as realIsKeyProviderSupported,
-  readProviderAuthKey as realReadProviderAuthKey,
+  readProviderAuthSnapshot as realReadProviderAuthSnapshot,
   removeAuthKey as realRemoveAuthKey,
 } from "../lib/opencode-auth";
 import { collectStatus } from "../lib/status";
+import { restartAiDev as restartRealAiDev } from "../lib/restart-ai-dev";
 import { getState, runUpgrade as runRealUpgrade } from "../lib/upgrade";
 import { buildStatusReport, getComponentVersions, type StatusReport } from "./heartbeat";
 import {
@@ -68,13 +68,13 @@ export interface CommandDeps {
   isKeyProviderSupported: (provider: string) => boolean;
   readProviderKeys: () => ProviderKeysFile;
   addProviderKey: (provider: string, value: string, note?: string) => ProviderKey;
-  setActiveProviderKey: (provider: string, keyId: string) => boolean;
+  setActiveProviderKey: (provider: string, keyId: string | null) => boolean;
   deleteProviderKey: (provider: string, keyId: string) => boolean;
   updateProviderKeyNote: (provider: string, keyId: string, note: string) => boolean;
   applyActiveKey: (provider: string, key: string) => Promise<void>;
   removeAuthKey: (provider: string) => Promise<void>;
   clearProviderCache: () => Promise<void>;
-  readProviderAuthKey: (provider: string) => Promise<string | null>;
+  readProviderAuthSnapshot: (provider: string) => Promise<string | null>;
   waitForIdleSessions: () => Promise<IdleWaitOutcome>;
   gracefulRestartAiDev: () => Promise<{ success: boolean; message?: string }>;
 }
@@ -488,11 +488,38 @@ export function createCommandDispatcher(sender: CommandSender, deps: CommandDeps
   }
 
   async function finishKeyAdd(env: Envelope, payload: ProviderKeyAddPayload, startedAt: string): Promise<void> {
+    let added: ProviderKey | null = null;
+    let firstKey = false;
+
+    const rollbackFirstKey = async (): Promise<string[]> => {
+      if (added === null || !firstKey) return [];
+      const failures: string[] = [];
+      if (!deps.deleteProviderKey(payload.provider, added.id)) failures.push("registry key removal failed");
+      try {
+        await deps.removeAuthKey(payload.provider);
+        await deps.clearProviderCache();
+      } catch {
+        failures.push("runtime auth removal failed");
+      }
+      try {
+        const restart = await deps.restartAiDev();
+        if (!restart.success) failures.push("rollback restart failed");
+      } catch {
+        failures.push("rollback restart failed");
+      }
+      return failures;
+    };
+
+    const failureMessage = async (message: string): Promise<string> => {
+      const failures = await rollbackFirstKey();
+      return failures.length === 0 ? message : `${message}; rollback incomplete: ${failures.join(", ")}`;
+    };
+
     try {
       const existing = deps.readProviderKeys().providers[payload.provider]?.keys ?? [];
-      const firstKey = existing.length === 0;
+      firstKey = existing.length === 0;
       if (firstKey) {
-        const stored = await deps.readProviderAuthKey(payload.provider);
+        const stored = await deps.readProviderAuthSnapshot(payload.provider);
         if (stored !== null) {
           sender.send(buildAck(env.id, {
             status: "failure",
@@ -504,7 +531,7 @@ export function createCommandDispatcher(sender: CommandSender, deps: CommandDeps
         }
       }
 
-      const added = deps.addProviderKey(payload.provider, payload.value, payload.note);
+      added = deps.addProviderKey(payload.provider, payload.value, payload.note);
       if (!firstKey) {
         sender.send(buildAck(env.id, {
           status: "success",
@@ -517,10 +544,9 @@ export function createCommandDispatcher(sender: CommandSender, deps: CommandDeps
 
       const applied = await applyKeyAndRestart(payload.provider, payload.value, payload.mode);
       if (!applied.success) {
-        deps.deleteProviderKey(payload.provider, added.id);
         sender.send(buildAck(env.id, {
           status: "failure",
-          message: applied.message,
+          message: await failureMessage(applied.message),
           started_at: startedAt,
           finished_at: deps.now(),
         }));
@@ -533,9 +559,10 @@ export function createCommandDispatcher(sender: CommandSender, deps: CommandDeps
         finished_at: deps.now(),
       }));
     } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
       sender.send(buildAck(env.id, {
         status: "failure",
-        message: error instanceof Error ? error.message : String(error),
+        message: await failureMessage(message),
         started_at: startedAt,
         finished_at: deps.now(),
       }));
@@ -577,9 +604,50 @@ export function createCommandDispatcher(sender: CommandSender, deps: CommandDeps
     previousActiveId: string | null,
     startedAt: string,
   ): Promise<void> {
-    const revert = (): void => {
-      if (previousActiveId !== null) deps.setActiveProviderKey(payload.provider, previousActiveId);
+    let previousAuthKey: string | null;
+    try {
+      previousAuthKey = await deps.readProviderAuthSnapshot(payload.provider);
+    } catch (error: unknown) {
+      sender.send(buildAck(env.id, {
+        status: "failure",
+        message: error instanceof Error ? error.message : String(error),
+        started_at: startedAt,
+        finished_at: deps.now(),
+      }));
+      return;
+    }
+
+    const restorePreviousState = async (): Promise<string[]> => {
+      const failures: string[] = [];
+      try {
+        if (previousAuthKey === null) {
+          await deps.removeAuthKey(payload.provider);
+          await deps.clearProviderCache();
+        } else {
+          await deps.applyActiveKey(payload.provider, previousAuthKey);
+        }
+      } catch {
+        failures.push("runtime auth restore failed");
+      }
+
+      if (!deps.setActiveProviderKey(payload.provider, previousActiveId)) {
+        failures.push("registry selection restore failed");
+      }
+
+      try {
+        const restart = await deps.restartAiDev();
+        if (!restart.success) failures.push("rollback restart failed");
+      } catch {
+        failures.push("rollback restart failed");
+      }
+      return failures;
     };
+
+    const failureMessage = async (message: string): Promise<string> => {
+      const failures = await restorePreviousState();
+      return failures.length === 0 ? message : `${message}; rollback incomplete: ${failures.join(", ")}`;
+    };
+
     try {
       if (!deps.setActiveProviderKey(payload.provider, payload.keyId)) {
         sender.send(buildAck(env.id, {
@@ -592,10 +660,9 @@ export function createCommandDispatcher(sender: CommandSender, deps: CommandDeps
       }
       const applied = await applyKeyAndRestart(payload.provider, key.value, payload.mode);
       if (!applied.success) {
-        revert();
         sender.send(buildAck(env.id, {
           status: "failure",
-          message: applied.message,
+          message: await failureMessage(applied.message),
           started_at: startedAt,
           finished_at: deps.now(),
         }));
@@ -608,10 +675,10 @@ export function createCommandDispatcher(sender: CommandSender, deps: CommandDeps
         finished_at: deps.now(),
       }));
     } catch (error: unknown) {
-      revert();
+      const message = error instanceof Error ? error.message : String(error);
       sender.send(buildAck(env.id, {
         status: "failure",
-        message: error instanceof Error ? error.message : String(error),
+        message: await failureMessage(message),
         started_at: startedAt,
         finished_at: deps.now(),
       }));
@@ -787,6 +854,17 @@ export function createCommandDispatcher(sender: CommandSender, deps: CommandDeps
     queue.push(env);
   }
 
+  function deferProviderCommand(env: Envelope): void {
+    const acknowledgedAt = deps.now();
+    sender.send(buildAck(env.id, {
+      status: "success",
+      message: "provider key command queued until upgrade completes",
+      started_at: acknowledgedAt,
+      finished_at: acknowledgedAt,
+    }));
+    defer(env);
+  }
+
   function handle(env: Envelope): void {
     const command = parseCommandType(env.payload);
     if (command === null) {
@@ -800,7 +878,7 @@ export function createCommandDispatcher(sender: CommandSender, deps: CommandDeps
       return;
     }
 
-    if (deps.isUpgradeRunning()) {
+    if (deps.isUpgradeRunning() && !command.startsWith("providers.key.")) {
       defer(env);
       return;
     }
@@ -833,6 +911,10 @@ export function createCommandDispatcher(sender: CommandSender, deps: CommandDeps
           sendMalformed(env);
           return;
         }
+        if (deps.isUpgradeRunning()) {
+          deferProviderCommand(env);
+          return;
+        }
         dispatchKeyAdd(env, payload);
         return;
       }
@@ -846,6 +928,10 @@ export function createCommandDispatcher(sender: CommandSender, deps: CommandDeps
         const key = entry?.keys.find((candidate) => candidate.id === payload.keyId);
         if (key === undefined) {
           sendMalformed(env);
+          return;
+        }
+        if (deps.isUpgradeRunning()) {
+          deferProviderCommand(env);
           return;
         }
         dispatchKeySetActive(env, payload, key, entry?.activeKeyId ?? null);
@@ -862,6 +948,10 @@ export function createCommandDispatcher(sender: CommandSender, deps: CommandDeps
           sendMalformed(env);
           return;
         }
+        if (deps.isUpgradeRunning()) {
+          deferProviderCommand(env);
+          return;
+        }
         dispatchKeyDelete(env, payload);
         return;
       }
@@ -874,6 +964,10 @@ export function createCommandDispatcher(sender: CommandSender, deps: CommandDeps
         const entry = deps.readProviderKeys().providers[payload.provider];
         if (entry === undefined || !entry.keys.some((candidate) => candidate.id === payload.keyId)) {
           sendMalformed(env);
+          return;
+        }
+        if (deps.isUpgradeRunning()) {
+          deferProviderCommand(env);
           return;
         }
         dispatchKeyUpdateNote(env, payload);
@@ -919,25 +1013,8 @@ export function createRealCommandDeps(): CommandDeps {
       }
     },
     restartAiDev: async () => {
-      try {
-        const containerName = await getAiDevContainerRef();
-        const project = await getComposeProject();
-        const recreate = await dockerCommand(
-          `compose -p ${project} up -d --force-recreate --no-deps ai-engkit`,
-          180_000,
-        );
-        if (recreate.exitCode !== 0) {
-          return { success: false, message: recreate.stderr || recreate.stdout || "Compose recreate failed" };
-        }
-
-        const remove = await dockerCommand(`rm -f ${containerName}`, 30_000);
-        if (remove.exitCode !== 0) {
-          return { success: false, message: remove.stderr || remove.stdout || "Failed to remove stale container" };
-        }
-        return { success: true };
-      } catch (error: unknown) {
-        return { success: false, message: error instanceof Error ? error.message : String(error) };
-      }
+      const result = await restartRealAiDev();
+      return result.ok ? { success: true } : { success: false, message: result.error };
     },
     restartContainer: async (service) => {
       try {
@@ -979,27 +1056,11 @@ export function createRealCommandDeps(): CommandDeps {
     applyActiveKey: realApplyActiveKey,
     removeAuthKey: realRemoveAuthKey,
     clearProviderCache: realClearProviderCache,
-    readProviderAuthKey: realReadProviderAuthKey,
+    readProviderAuthSnapshot: realReadProviderAuthSnapshot,
     waitForIdleSessions: () => waitForIdleSessions(probeIdleViaOpenCodeServer),
     gracefulRestartAiDev: async () => {
-      try {
-        const containerName = await getAiDevContainerRef();
-        const project = await getComposeProject();
-        const stop = await dockerCommand(`stop ${containerName}`, 60_000);
-        if (stop.exitCode !== 0) {
-          return { success: false, message: stop.stderr || stop.stdout || "Failed to stop ai-dev" };
-        }
-
-        const recreate = await dockerCommand(
-          `compose -p ${project} up -d --force-recreate --no-deps ai-engkit`,
-          180_000,
-        );
-        return recreate.exitCode === 0
-          ? { success: true }
-          : { success: false, message: recreate.stderr || recreate.stdout || "Compose recreate failed" };
-      } catch (error: unknown) {
-        return { success: false, message: error instanceof Error ? error.message : String(error) };
-      }
+      const result = await restartRealAiDev();
+      return result.ok ? { success: true } : { success: false, message: result.error };
     },
   };
 }
