@@ -71,9 +71,11 @@ describe("validateFallbackModels", () => {
 });
 
 describe("buildJqWriteCommand", () => {
-  test("delete case drops the model keys without a payload", () => {
+  test("delete case drops all model keys without a payload", () => {
     const cmd = buildJqWriteCommand("sisyphus", []);
-    expect(cmd).toContain(`del(.agents[$agent].model, .agents[$agent].variant, .agents[$agent].models)`);
+    expect(cmd).toContain(
+      `del(.agents[$agent].model, .agents[$agent].variant, .agents[$agent].models, .agents[$agent].fallback_models)`,
+    );
     expect(cmd).toContain(`mv /tmp/omo.jsonc.tmp ${OMO_CONFIG}`);
     expect(cmd).not.toContain("base64");
   });
@@ -81,48 +83,51 @@ describe("buildJqWriteCommand", () => {
   test("single-entry case writes the model string plus variant", () => {
     const cmd = buildJqWriteCommand("sisyphus-junior", [{ model: "gpt-5.6-sol", variant: "medium" }]);
     expect(cmd).toContain(`--arg agent 'sisyphus-junior'`);
-    expect(cmd).toContain(`--slurpfile entry /tmp/omo-fm.json`);
-    expect(cmd).toContain(`.agents[$agent].model = $entry[0][0].model`);
+    expect(cmd).toContain(`--arg model 'gpt-5.6-sol'`);
+    expect(cmd).toContain(`.agents[$agent].model = $model`);
     expect(cmd).toContain(`.agents[$agent].variant = "medium"`);
-    expect(cmd).toContain("base64 -d");
-    const b64 = cmd.match(/echo '([^']+)'/)?.[1];
-    expect(b64).toBeDefined();
-    expect(Buffer.from(b64!, "base64").toString("utf-8")).toBe(
-      JSON.stringify([{ model: "gpt-5.6-sol", variant: "medium" }]),
-    );
+    expect(cmd).toContain(`del(.agents[$agent].models, .agents[$agent].fallback_models)`);
   });
 
-  test("multi-entry case writes the models array", () => {
+  test("chain case writes only the primary model, dropping the rest", () => {
     const cmd = buildJqWriteCommand("explore", [
       { model: "gpt-5.6-sol", variant: "high" },
       { model: "kimi-k3" },
     ]);
-    expect(cmd).toContain(`--slurpfile models /tmp/omo-fm.json`);
-    expect(cmd).toContain(`.agents[$agent].models = $models[0]`);
-    expect(cmd).toContain(`del(.agents[$agent].model, .agents[$agent].variant)`);
+    expect(cmd).toContain(`--arg model 'gpt-5.6-sol'`);
+    expect(cmd).toContain(`.agents[$agent].model = $model`);
+    expect(cmd).toContain(`.agents[$agent].variant = "high"`);
+    expect(cmd).toContain(`del(.agents[$agent].models, .agents[$agent].fallback_models)`);
+    expect(cmd).not.toContain("kimi-k3");
+    expect(cmd).not.toContain("base64");
   });
 });
 
 describe("readAgentModelsConfig", () => {
-  test("parses schema-valid model and models keys from stdout", async () => {
+  test("parses model primary plus fallback_models chain from stdout", async () => {
     const { deps } = stubDeps([
-      { stdout: '{"plan":{"models":[{"model":"kimi-k3","variant":"max"}]},"oracle":{"model":"opencode-go/glm-5.2"}}' },
+      {
+        stdout:
+          '{"plan":{"model":"opencode-go/kimi-k3","variant":"max","fallback_models":[{"model":"opencode-go/qwen3.7-plus"}]}}',
+      },
     ]);
     const lib = createAgentModelsLib(deps);
     const config = await lib.readAgentModelsConfig();
-    expect(config.plan?.models?.[0]).toEqual({ model: "kimi-k3", variant: "max" });
-    expect(config.oracle?.models?.[0]).toEqual({ model: "opencode-go/glm-5.2" });
+    expect(config.plan?.models).toEqual([
+      { model: "opencode-go/kimi-k3", variant: "max" },
+      { model: "opencode-go/qwen3.7-plus" },
+    ]);
     expect(config.plan?.invalid).toBe(false);
   });
 
   test("flags entries with unrecognized keys (e.g. legacy permission) as invalid", async () => {
     const { deps } = stubDeps([
-      { stdout: '{"explore":{"permission":{"bash":"allow"},"models":[{"model":"kimi-k3"}]}}' },
+      { stdout: '{"explore":{"permission":{"bash":"allow"},"model":"opencode-go/kimi-k3"}}' },
     ]);
     const lib = createAgentModelsLib(deps);
     const config = await lib.readAgentModelsConfig();
     expect(config.explore?.invalid).toBe(true);
-    expect(config.explore?.models?.[0]).toEqual({ model: "kimi-k3" });
+    expect(config.explore?.models?.[0]).toEqual({ model: "opencode-go/kimi-k3" });
   });
 
   test("returns empty map when jq fails", async () => {

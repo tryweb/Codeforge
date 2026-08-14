@@ -84,27 +84,27 @@ export function validateFallbackModels(input: unknown): string | null {
 
 /**
  * Build the sh command that applies `entries` to `agents.<agent>` model config.
- * Uses schema-valid keys for the pinned OMO release: a single entry writes the
- * `model` string (plus `variant` when present); multiple entries write a
- * `models` array. An empty array deletes the model keys (returning the agent
- * to plugin-assigned models). The payload rides as base64 through a temp file
- * so no shell quoting can corrupt it. Pure — unit-testable.
+ * Writes the first entry as the primary `model` string (plus `variant` when
+ * present) and removes every other model key. This matches what the plugin's
+ * delegate-task resolution honors: `resolveSubagentModel` reads
+ * `agentOverride.model` as the subagent model, and the presence of a
+ * `fallback_models` array makes it ignore that primary entirely (verified
+ * empirically: `model` alone selects the configured model, adding
+ * `fallback_models` falls back to the plugin default). An empty array deletes
+ * all model keys (returning the agent to plugin-assigned models). The payload
+ * rides as base64 through a temp file so no shell quoting can corrupt it.
+ * Pure — unit-testable.
  */
 export function buildJqWriteCommand(agent: string, entries: FallbackModelEntry[]): string {
   const out = "/tmp/omo.jsonc.tmp";
   if (entries.length === 0) {
-    return `jq --arg agent '${agent}' 'del(.agents[$agent].model, .agents[$agent].variant, .agents[$agent].models)' ${OMO_CONFIG} > ${out} && mv ${out} ${OMO_CONFIG}`;
+    return `jq --arg agent '${agent}' 'del(.agents[$agent].model, .agents[$agent].variant, .agents[$agent].models, .agents[$agent].fallback_models)' ${OMO_CONFIG} > ${out} && mv ${out} ${OMO_CONFIG}`;
   }
-  const b64 = Buffer.from(JSON.stringify(entries)).toString("base64");
-  const payload = "/tmp/omo-fm.json";
-  if (entries.length === 1) {
-    const variant = entries[0]!.variant;
-    const variantSet = variant
-      ? ` | .agents[$agent].variant = ${JSON.stringify(variant)}`
-      : " | del(.agents[$agent].variant)";
-    return `echo '${b64}' | base64 -d > ${payload} && jq --slurpfile entry ${payload} --arg agent '${agent}' '.agents[$agent].model = $entry[0][0].model${variantSet} | del(.agents[$agent].models)' ${OMO_CONFIG} > ${out} && mv ${out} ${OMO_CONFIG}`;
-  }
-  return `echo '${b64}' | base64 -d > ${payload} && jq --slurpfile models ${payload} --arg agent '${agent}' '.agents[$agent].models = $models[0] | del(.agents[$agent].model, .agents[$agent].variant)' ${OMO_CONFIG} > ${out} && mv ${out} ${OMO_CONFIG}`;
+  const primary = entries[0]!;
+  const variantSet = primary.variant
+    ? ` | .agents[$agent].variant = ${JSON.stringify(primary.variant)}`
+    : " | del(.agents[$agent].variant)";
+  return `jq --arg model '${primary.model}' --arg agent '${agent}' '.agents[$agent].model = $model${variantSet} | del(.agents[$agent].models, .agents[$agent].fallback_models)' ${OMO_CONFIG} > ${out} && mv ${out} ${OMO_CONFIG}`;
 }
 
 /**
@@ -131,15 +131,17 @@ export interface AgentModelConfig {
 }
 
 /**
- * Agent config schema keys accepted by the pinned OMO release (4.19.4
- * OmoAgentDefInputSchema). Keys outside this set (e.g. the legacy `permission`
- * block) make the entry fail strict validation, silently disabling overrides.
+ * Agent config keys recognized by the pinned OMO release. `fallback_models` is
+ * deprecated in the schema but still honored by the delegate-task resolution,
+ * so it is not treated as invalid. Keys outside this set (e.g. the legacy
+ * `permission` block) make the entry fail strict validation.
  */
 const VALID_AGENT_KEYS = new Set([
   "description",
   "prompt",
   "model",
   "models",
+  "fallback_models",
   "reasoning",
   "variant",
   "reasoningEffort",
@@ -154,26 +156,27 @@ const VALID_AGENT_KEYS = new Set([
   "disable",
 ]);
 
-/** Normalize a raw agent config entry into its schema-valid model entries. */
+/** Normalize a raw agent config entry into its model entries (primary + chain). */
 function toConfiguredEntries(entry: Record<string, unknown>): FallbackModelEntry[] {
+  const chain: FallbackModelEntry[] = [];
   if (typeof entry.model === "string" && entry.model.trim().length > 0) {
     const variant = typeof entry.variant === "string" ? entry.variant : undefined;
-    return [{ model: entry.model, ...(variant ? { variant } : {}) }];
+    chain.push({ model: entry.model, ...(variant ? { variant } : {}) });
   }
-  if (Array.isArray(entry.models)) {
-    return (entry.models as unknown[]).flatMap((m): FallbackModelEntry[] => {
-      if (typeof m === "string") return [{ model: m }];
-      if (typeof m === "object" && m !== null) {
-        const rec = m as Record<string, unknown>;
-        if (typeof rec.model === "string" && rec.model.trim().length > 0) {
-          const variant = typeof rec.variant === "string" ? rec.variant : undefined;
-          return [{ model: rec.model, ...(variant ? { variant } : {}) }];
-        }
+  const fallback = Array.isArray(entry.fallback_models) ? entry.fallback_models : [];
+  const models = Array.isArray(entry.models) ? entry.models : [];
+  for (const m of [...fallback, ...models]) {
+    if (typeof m === "string") {
+      chain.push({ model: m });
+    } else if (typeof m === "object" && m !== null) {
+      const rec = m as Record<string, unknown>;
+      if (typeof rec.model === "string" && rec.model.trim().length > 0) {
+        const variant = typeof rec.variant === "string" ? rec.variant : undefined;
+        chain.push({ model: rec.model, ...(variant ? { variant } : {}) });
       }
-      return [];
-    });
+    }
   }
-  return [];
+  return chain;
 }
 
 export function createAgentModelsLib(deps: AgentModelsDeps = REAL_DEPS) {

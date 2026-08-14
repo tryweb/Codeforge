@@ -38,7 +38,7 @@ function stubDeps(handlers: ExecHandler[]) {
 }
 
 const CONFIG_JSON =
-  '{"plan":{"models":[{"model":"kimi-k3","variant":"max"}]},"prometheus":{"models":[{"model":"kimi-k3"}]}}';
+  '{"plan":{"model":"opencode-go/kimi-k3","variant":"max","fallback_models":[{"model":"opencode-go/qwen3.7-plus"}]},"prometheus":{"model":"opencode-go/kimi-k3"}}';
 const AGENTS_JSON = JSON.stringify([
   { name: "plan", model: { modelID: "kimi-k3", providerID: "opencode-go" } },
   { name: "oracle", model: { modelID: "gpt-5.6-sol", providerID: "openai" } },
@@ -63,7 +63,10 @@ describe("createAgentModelsRoutes — GET /api/agent-models", () => {
     expect(data.hasPassword).toBe(true);
 
     const plan = data.agents.find((a: { name: string }) => a.name === "plan");
-    expect(plan.configured[0].model).toBe("kimi-k3");
+    expect(plan.configured).toEqual([
+      { model: "opencode-go/kimi-k3", variant: "max" },
+      { model: "opencode-go/qwen3.7-plus" },
+    ]);
     expect(plan.resolved).toEqual({ modelID: "kimi-k3", providerID: "opencode-go" });
     expect(plan.source).toBe("configured");
     expect(plan.invalid).toBe(false);
@@ -82,7 +85,7 @@ describe("createAgentModelsRoutes — GET /api/agent-models", () => {
       {
         match: /jq -c '\.agents/,
         stdout:
-          '{"explore":{"permission":{"bash":"allow"},"models":[{"model":"kimi-k3"}]},"plan":{"models":[{"model":"kimi-k3"}]}}',
+          '{"explore":{"permission":{"bash":"allow"},"model":"opencode-go/kimi-k3"},"plan":{"model":"opencode-go/kimi-k3"}}',
       },
       { match: /connected-providers\.json/, stdout: '{"connected":["opencode-go"]}' },
       { match: /provider-models\.json/, stdout: "kimi-k3\n" },
@@ -94,7 +97,7 @@ describe("createAgentModelsRoutes — GET /api/agent-models", () => {
     const data = await res.json();
     const explore = data.agents.find((a: { name: string }) => a.name === "explore");
     expect(explore.invalid).toBe(true);
-    expect(explore.configured).toEqual([{ model: "kimi-k3" }]);
+    expect(explore.configured).toEqual([{ model: "opencode-go/kimi-k3" }]);
     const plan = data.agents.find((a: { name: string }) => a.name === "plan");
     expect(plan.invalid).toBe(false);
     cleanup();
@@ -190,7 +193,7 @@ describe("createAgentModelsRoutes — PUT /api/agent-models/:agent", () => {
   test("returns verified when the resolved model matches", async () => {
     const { deps, cleanup } = stubDeps([
       { match: /cat ~\/\.omo\/omo\.jsonc/, stdout: '{"agents":{}}' },
-      { match: /base64 -d > \/tmp\/omo-fm/, stdout: "" },
+      { match: /\.agents\[\$agent\]\.model = \$model/, stdout: "" },
       { match: /\/agent\b/, stdout: JSON.stringify([{ name: "plan", model: { modelID: "gpt-5.6-sol", providerID: "openai" } }]) },
     ]);
     const app = createAgentModelsRoutes(deps);
