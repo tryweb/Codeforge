@@ -26,6 +26,10 @@ interface UpgradeEventSource {
 const STATUS: StatusResponse = {
   container_status: "running",
   uptime_seconds: 42,
+  containers: {
+    "ai-dev": { status: "running", uptime_seconds: 42, version: "1.2.3" },
+    "ai-admin": { status: "running", uptime_seconds: 8450, version: "1.2.3" },
+  },
   restart_count: 0,
   gh_auth: "authenticated",
   glab_auth: "not authenticated",
@@ -39,6 +43,7 @@ const VERSIONS = { "AI-EngKit": "1.2.3" };
 const STATUS_REPORT: StatusReport = {
   container_status: STATUS.container_status,
   uptime_seconds: STATUS.uptime_seconds,
+  containers: STATUS.containers,
   versions: VERSIONS,
   gh_auth: STATUS.gh_auth,
   glab_auth: STATUS.glab_auth,
@@ -50,6 +55,7 @@ const STATUS_FIELDS = [
   "admin_version",
   "admin_version_mismatch",
   "container_status",
+  "containers",
   "gh_auth",
   "glab_auth",
   "uptime_seconds",
@@ -172,7 +178,7 @@ function createKeyDeps(): CommandDeps {
     applyActiveKey: async () => {},
     removeAuthKey: async () => {},
     clearProviderCache: async () => {},
-    readProviderAuthKey: async () => null,
+    readProviderAuthSnapshot: async () => null,
     waitForIdleSessions: async () => "idle",
     gracefulRestartAiDev: async () => ({ success: true, message: "restarted" }),
   };
@@ -442,7 +448,10 @@ describe("agent stub-center integration", () => {
     const deferred = connection.messages.filter(
       (envelope) => envelope.type === MESSAGE_TYPES.ack && envelope.id === "key-add-deferred",
     );
-    expect(deferred).toHaveLength(0);
+    expect(deferred).toHaveLength(1);
+    expect(requireRecord(deferred[0].payload, "ack payload")["message"]).toBe(
+      "provider key command queued until upgrade completes",
+    );
 
     upgradeRunning = false;
     source.emit({ step: "cleanup", status: "success", message: "ok", timestamp: "2026-08-10T00:00:01.000Z" } as UpgradeEvent);
@@ -450,14 +459,14 @@ describe("agent stub-center integration", () => {
       () =>
         connection.messages.filter(
           (envelope) => envelope.type === MESSAGE_TYPES.ack && envelope.id === "key-add-deferred",
-        ).length >= 2,
-      "two acks after drain",
+        ).length >= 3,
+      "three acks after drain",
     );
     const drained = connection.messages.filter(
       (envelope) => envelope.type === MESSAGE_TYPES.ack && envelope.id === "key-add-deferred",
     );
-    expect(requireRecord(drained[0].payload, "ack payload")["message"]).toBe("adding provider key");
-    expect(requireRecord(drained[1].payload, "ack payload")["message"]).toBe(
+    expect(requireRecord(drained[1].payload, "ack payload")["message"]).toBe("adding provider key");
+    expect(requireRecord(drained[2].payload, "ack payload")["message"]).toBe(
       "provider key k-1 added and applied (graceful restart)",
     );
     expect(JSON.stringify(connection.messages)).not.toContain("sk-ant-test-789");

@@ -60,6 +60,10 @@ class FakeWebSocket {
 const STATUS: StatusResponse = {
   container_status: "running",
   uptime_seconds: 42,
+  containers: {
+    "ai-dev": { status: "running", uptime_seconds: 42, version: "1.2.3" },
+    "ai-admin": { status: "running", uptime_seconds: 8450, version: "1.2.3" },
+  },
   restart_count: 0,
   gh_auth: "authenticated",
   glab_auth: "not authenticated",

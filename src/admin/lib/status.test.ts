@@ -19,13 +19,16 @@ function makeDeps(overrides: DepOverrides = {}): StatusDeps {
     isAiDevRunning: async () => overrides.running ?? true,
     getAiDevUptime: async () => (overrides.uptime === undefined ? 3600 : overrides.uptime),
     getSelfContainerRef: async () => "self-ref",
-    dockerCommand: async (subcommand: string) =>
-      ok(subcommand.includes("self-ref") ? adminDigest : aiDevDigest),
+    dockerCommand: async (subcommand: string) => {
+      if (subcommand.includes("State.StartedAt")) return ok(new Date(0).toISOString());
+      return ok(subcommand.includes("self-ref") ? adminDigest : aiDevDigest);
+    },
     execInAiDev: async (command: string) => {
       if (command.startsWith("gh auth")) return ok("Logged in to github.com");
       if (command.startsWith("glab auth")) return ok("Logged in to gitlab.com");
       if (command.startsWith("git config")) return ok("u");
       if (command.startsWith("ls ~/workspace/")) return ok("3");
+      if (command.startsWith("cat /opt/ai-engkit/VERSION")) return ok("1.2.3");
       return ok("");
     },
   };
@@ -38,6 +41,7 @@ describe("collectStatus", () => {
       "admin_version",
       "admin_version_mismatch",
       "container_status",
+      "containers",
       "gh_auth",
       "git_user",
       "glab_auth",
@@ -56,6 +60,22 @@ describe("collectStatus", () => {
       admin_version_mismatch: false,
     });
     expect(typeof status.admin_version).toBe("string");
+  });
+
+  test("reports per-container status, uptime, and version for ai-dev and ai-admin", async () => {
+    const status = await collectStatus(makeDeps());
+    expect(status.containers).toEqual({
+      "ai-dev": {
+        status: "running",
+        uptime_seconds: 3600,
+        version: "1.2.3",
+      },
+      "ai-admin": {
+        status: "running",
+        uptime_seconds: expect.any(Number),
+        version: status.admin_version,
+      },
+    });
   });
 
   test("flags admin_version_mismatch when the image digests differ", async () => {

@@ -95,6 +95,18 @@
 {
   "container_status": "running",
   "uptime_seconds": 42,
+  "containers": {
+    "ai-dev": {
+      "status": "running",
+      "uptime_seconds": 42,
+      "version": "1.2.3"
+    },
+    "ai-admin": {
+      "status": "running",
+      "uptime_seconds": 8450,
+      "version": "1.2.3"
+    }
+  },
   "versions": { "AI-EngKit": "1.2.3", "OpenCode": "", "OpenChamber": "", "Docker": "" },
   "gh_auth": "authenticated",
   "glab_auth": "not authenticated",
@@ -104,7 +116,12 @@
 }
 ```
 
-- `container_status` ∈ `running | stopped`
+- `container_status` ∈ `running | stopped` — **legacy scalar**,等同 `containers["ai-dev"].status`,保留以相容舊 Center
+- `uptime_seconds` — **legacy scalar**,等同 `containers["ai-dev"].uptime_seconds`,保留以相容舊 Center
+- `containers` — 每個 AI-EngKit 實例的兩個容器:
+  - `ai-dev` — 開發容器(container `ai-engkit` / `ai-engkit-dev`)
+  - `ai-admin` — admin 容器(container `ai-engkit-admin` / `ai-engkit-admin-dev`),agent 本身所在容器
+  - 每個容器: `status` ∈ `running | stopped`、`uptime_seconds`(null 代表無法取得)、`version`(容器內 `/opt/ai-engkit/VERSION`)
 - `versions` 的值可能為空字串(對應指令執行失敗時)
 - `upgrade_state` ∈ `idle | running | completed | failed`
 - center **可以**對 heartbeat 回 ack/error(`id` 對應 heartbeat id);agent 僅記錄 `acked/errored` 並清除 pending(上限 100,超出丟最舊)— 不 ack 也不影響連線

@@ -19,16 +19,23 @@ While connected, the agent SHALL send a `heartbeat` message every 60 seconds car
 
 ### Requirement: Heartbeat carries a status report
 
-Each heartbeat SHALL carry a status report with the fields `container_status`, `uptime_seconds`, `versions`, `gh_auth`, `glab_auth`, `admin_version`, `admin_version_mismatch`, and `upgrade_state`.
+Each heartbeat SHALL carry a status report with the fields `container_status`, `uptime_seconds`, `containers`, `versions`, `gh_auth`, `glab_auth`, `admin_version`, `admin_version_mismatch`, and `upgrade_state`.
 
 #### Scenario: Status fields are populated
 - **WHEN** a heartbeat is sent
 - **THEN** the payload contains `container_status` (`running` or `stopped`) and `uptime_seconds` for the ai-dev container (`ai-engkit`)
+- **AND** `containers` maps each container of the AI-EngKit instance — `ai-dev` (development container, `ai-engkit`/`ai-engkit-dev`) and `ai-admin` (admin container, `ai-engkit-admin`/`ai-engkit-admin-dev`, where the agent itself runs) — to its `status` (`running` or `stopped`), `uptime_seconds` (`null` when unavailable), and `version` (from `/opt/ai-engkit/VERSION` in that container)
 - **AND** `versions` maps component names (AI-EngKit, OpenCode, OpenChamber, Docker) to their versions
 - **AND** `gh_auth` and `glab_auth` are `authenticated` or `not authenticated`
 - **AND** `admin_version` is the version from `/opt/ai-engkit/VERSION`
 - **AND** `admin_version_mismatch` reflects whether the admin and ai-dev image digests differ
 - **AND** `upgrade_state` is the current upgrade state (`idle`, `running`, `completed`, or `failed`)
+
+#### Scenario: Legacy scalar fields match the ai-dev container
+- **WHEN** a heartbeat status report is sent
+- **THEN** `container_status` equals `containers["ai-dev"].status`
+- **AND** `uptime_seconds` equals `containers["ai-dev"].uptime_seconds`
+- **AND** the scalar fields are kept so that Center Servers not yet aware of `containers` can still display the ai-dev container
 
 #### Scenario: Status gathering is shared with the local API
 - **WHEN** a heartbeat status report is built

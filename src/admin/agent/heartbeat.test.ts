@@ -12,6 +12,10 @@ describe("heartbeat status report", () => {
     const status: StatusResponse = {
       container_status: "running",
       uptime_seconds: 3_600,
+      containers: {
+        "ai-dev": { status: "running", uptime_seconds: 3_600, version: "1.2.3" },
+        "ai-admin": { status: "running", uptime_seconds: 8_450, version: "1.2.3" },
+      },
       restart_count: 2,
       gh_auth: "authenticated",
       glab_auth: "not authenticated",
@@ -33,6 +37,10 @@ describe("heartbeat status report", () => {
     const expected: StatusReport = {
       container_status: "running",
       uptime_seconds: 3_600,
+      containers: {
+        "ai-dev": { status: "running", uptime_seconds: 3_600, version: "1.2.3" },
+        "ai-admin": { status: "running", uptime_seconds: 8_450, version: "1.2.3" },
+      },
       versions,
       gh_auth: "authenticated",
       glab_auth: "not authenticated",

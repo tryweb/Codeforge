@@ -148,7 +148,7 @@ The agent SHALL route query commands — `status`, `env.get`, `projects.list`, `
 #### Scenario: status query is answered
 - **WHEN** a `command` message with payload type `status` is received
 - **THEN** the handler assembles the current status fields (container state, versions, auth status)
-- **AND** the result payload contains `container_status`, `uptime_seconds`, `versions`, `gh_auth`, `glab_auth`, `admin_version`, `admin_version_mismatch`, and `upgrade_state`
+- **AND** the result payload contains `container_status`, `uptime_seconds`, `containers`, `versions`, `gh_auth`, `glab_auth`, `admin_version`, `admin_version_mismatch`, and `upgrade_state`
 - **AND** the agent sends a `result` carrying those fields
 
 #### Scenario: env.get query is answered

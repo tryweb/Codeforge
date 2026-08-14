@@ -1,9 +1,11 @@
 import { execInAiDev } from "../lib/docker";
-import type { StatusResponse } from "../lib/status";
+import type { ContainerMap, StatusResponse } from "../lib/status";
 
 export interface StatusReport {
   container_status: "running" | "stopped";
   uptime_seconds: number | null;
+  /** Per-container status/uptime/version for ai-dev and ai-admin. */
+  containers: ContainerMap;
   versions: Record<string, string>;
   gh_auth: "authenticated" | "not authenticated";
   glab_auth: "authenticated" | "not authenticated";
@@ -57,6 +59,7 @@ export async function buildStatusReport(
   return {
     container_status: status.container_status,
     uptime_seconds: status.uptime_seconds,
+    containers: status.containers,
     versions,
     gh_auth: status.gh_auth,
     glab_auth: status.glab_auth,

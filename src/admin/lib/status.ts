@@ -10,9 +10,24 @@ import { readFileSync } from "node:fs";
 
 export type AuthStatus = "authenticated" | "not authenticated";
 
-export interface StatusResponse {
-  container_status: "running" | "stopped";
+export interface ContainerInfo {
+  status: "running" | "stopped";
   uptime_seconds: number | null;
+  version: string;
+}
+
+/** Per-container status/uptime/version for one AI-EngKit container. */
+export type ContainerMap = {
+  "ai-dev": ContainerInfo;
+  "ai-admin": ContainerInfo;
+};
+
+export interface StatusResponse {
+  /** ai-dev container status — kept alongside containers for backward compatibility. */
+  container_status: "running" | "stopped";
+  /** ai-dev container uptime — kept alongside containers for backward compatibility. */
+  uptime_seconds: number | null;
+  containers: ContainerMap;
   restart_count: number;
   gh_auth: AuthStatus;
   glab_auth: AuthStatus;
@@ -65,9 +80,28 @@ async function getAiDevImageDigest(deps: StatusDeps): Promise<string | null> {
   return result.stdout.trim();
 }
 
+async function getAiDevVersion(deps: StatusDeps): Promise<string> {
+  const result = await deps.execInAiDev(
+    "cat /opt/ai-engkit/VERSION 2>/dev/null || echo ''",
+    10_000,
+  );
+  return result.stdout.trim();
+}
+
+async function getSelfUptime(deps: StatusDeps): Promise<number | null> {
+  const ref = await deps.getSelfContainerRef();
+  const result = await deps.dockerCommand(
+    `inspect --format='{{.State.StartedAt}}' ${ref}`,
+    10_000,
+  );
+  if (result.exitCode !== 0 || !result.stdout.trim()) return null;
+  const startedAt = new Date(result.stdout.trim());
+  return Math.floor((Date.now() - startedAt.getTime()) / 1000);
+}
+
 export async function collectStatus(overrides: Partial<StatusDeps> = {}): Promise<StatusResponse> {
   const deps: StatusDeps = { ...DEFAULT_DEPS, ...overrides };
-  const [containerRunning, uptime, ghResult, glabResult, gitResult, projectsResult, adminVersion, adminDigest, aiDevDigest] =
+  const [containerRunning, uptime, ghResult, glabResult, gitResult, projectsResult, adminVersion, adminDigest, aiDevDigest, aiDevVersion, selfUptime] =
     await Promise.all([
       deps.isAiDevRunning(),
       deps.getAiDevUptime(),
@@ -78,6 +112,8 @@ export async function collectStatus(overrides: Partial<StatusDeps> = {}): Promis
       getAdminVersion(),
       getAdminImageDigest(deps),
       getAiDevImageDigest(deps),
+      getAiDevVersion(deps),
+      getSelfUptime(deps),
     ]);
 
   const ghAuth: AuthStatus = ghResult.stdout.includes("Logged in") || ghResult.stderr.includes("Logged in")
@@ -89,10 +125,24 @@ export async function collectStatus(overrides: Partial<StatusDeps> = {}): Promis
   const gitUser = gitResult.stdout.trim();
   const projectCount = parseInt(projectsResult.stdout.trim() || "0", 10);
   const adminVersionMismatch = adminDigest !== null && aiDevDigest !== null && adminDigest !== aiDevDigest;
+  // The agent process runs inside the admin container; reaching this point means it is up.
+  const adminStatus: "running" | "stopped" = "running";
 
   return {
     container_status: containerRunning ? "running" : "stopped",
     uptime_seconds: uptime,
+    containers: {
+      "ai-dev": {
+        status: containerRunning ? "running" : "stopped",
+        uptime_seconds: uptime,
+        version: aiDevVersion,
+      },
+      "ai-admin": {
+        status: adminStatus,
+        uptime_seconds: selfUptime,
+        version: adminVersion,
+      },
+    },
     restart_count: 0,
     gh_auth: ghAuth,
     glab_auth: glabAuth,
