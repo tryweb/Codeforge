@@ -219,11 +219,13 @@ providers.put("/api/providers/:name/keys/:keyId/active", async (c) => {
   }
 
   const previousActive = entry.activeKeyId;
-  let previousAuthKey: string | null;
-  try {
-    previousAuthKey = await readProviderAuthSnapshot(name);
-  } catch {
-    return c.json({ error: "Could not read the current auth-store key" }, 500);
+  let previousAuthKey: string | null = null;
+  if (isKeyProviderSupported(name)) {
+    try {
+      previousAuthKey = await readProviderAuthSnapshot(name);
+    } catch {
+      return c.json({ error: "Could not read the current auth-store key" }, 500);
+    }
   }
   if (!setActiveProviderKey(name, keyId)) {
     return c.json({ error: "Failed to set active key" }, 500);
