@@ -71,10 +71,10 @@ describe("validateFallbackModels", () => {
 });
 
 describe("buildJqWriteCommand", () => {
-  test("delete case drops all model keys without a payload", () => {
+  test("delete case drops all model keys plus legacy permission without a payload", () => {
     const cmd = buildJqWriteCommand("sisyphus", []);
     expect(cmd).toContain(
-      `del(.agents[$agent].model, .agents[$agent].variant, .agents[$agent].models, .agents[$agent].fallback_models)`,
+      `del(.agents[$agent].model, .agents[$agent].variant, .agents[$agent].models, .agents[$agent].fallback_models, .agents[$agent].permission)`,
     );
     expect(cmd).toContain(`mv /tmp/omo.jsonc.tmp ${OMO_CONFIG}`);
     expect(cmd).not.toContain("base64");
@@ -86,7 +86,9 @@ describe("buildJqWriteCommand", () => {
     expect(cmd).toContain(`--arg model 'gpt-5.6-sol'`);
     expect(cmd).toContain(`.agents[$agent].model = $model`);
     expect(cmd).toContain(`.agents[$agent].variant = "medium"`);
-    expect(cmd).toContain(`del(.agents[$agent].models, .agents[$agent].fallback_models)`);
+    expect(cmd).toContain(
+      `del(.agents[$agent].models, .agents[$agent].fallback_models, .agents[$agent].permission)`,
+    );
   });
 
   test("chain case writes only the primary model, dropping the rest", () => {
@@ -97,7 +99,9 @@ describe("buildJqWriteCommand", () => {
     expect(cmd).toContain(`--arg model 'gpt-5.6-sol'`);
     expect(cmd).toContain(`.agents[$agent].model = $model`);
     expect(cmd).toContain(`.agents[$agent].variant = "high"`);
-    expect(cmd).toContain(`del(.agents[$agent].models, .agents[$agent].fallback_models)`);
+    expect(cmd).toContain(
+      `del(.agents[$agent].models, .agents[$agent].fallback_models, .agents[$agent].permission)`,
+    );
     expect(cmd).not.toContain("kimi-k3");
     expect(cmd).not.toContain("base64");
   });

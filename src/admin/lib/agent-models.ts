@@ -85,26 +85,26 @@ export function validateFallbackModels(input: unknown): string | null {
 /**
  * Build the sh command that applies `entries` to `agents.<agent>` model config.
  * Writes the first entry as the primary `model` string (plus `variant` when
- * present) and removes every other model key. This matches what the plugin's
- * delegate-task resolution honors: `resolveSubagentModel` reads
- * `agentOverride.model` as the subagent model, and the presence of a
- * `fallback_models` array makes it ignore that primary entirely (verified
- * empirically: `model` alone selects the configured model, adding
- * `fallback_models` falls back to the plugin default). An empty array deletes
- * all model keys (returning the agent to plugin-assigned models). The payload
- * rides as base64 through a temp file so no shell quoting can corrupt it.
- * Pure — unit-testable.
+ * present) and removes every other model key plus legacy keys the pinned OMO
+ * schema rejects (e.g. `permission`, which invalidates the whole entry and
+ * silently disables overrides). This matches what the plugin's delegate-task
+ * resolution honors: `resolveSubagentModel` reads `agentOverride.model` as the
+ * subagent model, and the presence of a `fallback_models` array makes it ignore
+ * that primary entirely (verified empirically: `model` alone selects the
+ * configured model, adding `fallback_models` falls back to the plugin default).
+ * An empty array deletes all model keys (returning the agent to plugin-assigned
+ * models). Pure — unit-testable.
  */
 export function buildJqWriteCommand(agent: string, entries: FallbackModelEntry[]): string {
   const out = "/tmp/omo.jsonc.tmp";
   if (entries.length === 0) {
-    return `jq --arg agent '${agent}' 'del(.agents[$agent].model, .agents[$agent].variant, .agents[$agent].models, .agents[$agent].fallback_models)' ${OMO_CONFIG} > ${out} && mv ${out} ${OMO_CONFIG}`;
+    return `jq --arg agent '${agent}' 'del(.agents[$agent].model, .agents[$agent].variant, .agents[$agent].models, .agents[$agent].fallback_models, .agents[$agent].permission)' ${OMO_CONFIG} > ${out} && mv ${out} ${OMO_CONFIG}`;
   }
   const primary = entries[0]!;
   const variantSet = primary.variant
     ? ` | .agents[$agent].variant = ${JSON.stringify(primary.variant)}`
     : " | del(.agents[$agent].variant)";
-  return `jq --arg model '${primary.model}' --arg agent '${agent}' '.agents[$agent].model = $model${variantSet} | del(.agents[$agent].models, .agents[$agent].fallback_models)' ${OMO_CONFIG} > ${out} && mv ${out} ${OMO_CONFIG}`;
+  return `jq --arg model '${primary.model}' --arg agent '${agent}' '.agents[$agent].model = $model${variantSet} | del(.agents[$agent].models, .agents[$agent].fallback_models, .agents[$agent].permission)' ${OMO_CONFIG} > ${out} && mv ${out} ${OMO_CONFIG}`;
 }
 
 /**
