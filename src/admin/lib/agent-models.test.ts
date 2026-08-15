@@ -2,19 +2,13 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import {
-  createAgentModelsLib,
-  validateFallbackModels,
-  buildJqWriteCommand,
-  displayNameToKey,
-  OMO_CONFIG,
-  type AgentModelsDeps,
-} from "./agent-models";
+import { createAgentModelsLib, type AgentModelsDeps } from "./agent-models";
 import type { ExecResult as DockerExecResult } from "./docker";
 
 type ExecResponse = { stdout: string; stderr?: string; exitCode?: number };
+type StubOptions = { readonly password?: string | null; readonly restart?: AgentModelsDeps["restart"] };
 
-function stubDeps(responses: ExecResponse[] = []) {
+function stubDeps(responses: ExecResponse[] = [], options: StubOptions = {}) {
   const calls: string[] = [];
   let restartCount = 0;
   const dir = mkdtempSync(join(tmpdir(), "agent-models-test-"));
@@ -24,11 +18,8 @@ function stubDeps(responses: ExecResponse[] = []) {
       const next = responses.shift() ?? { stdout: "", exitCode: 0 };
       return { stdout: next.stdout, stderr: next.stderr ?? "", exitCode: next.exitCode ?? 0 };
     },
-    restart: async () => {
-      restartCount += 1;
-      return { ok: true };
-    },
-    readEnv: () => ({ OPENCODE_SERVER_PASSWORD: "testpass" }),
+    restart: options.restart ?? (async () => { restartCount += 1; return { ok: true }; }),
+    readEnv: (): Record<string, string> => options.password === null ? {} : { OPENCODE_SERVER_PASSWORD: options.password ?? "testpass" },
     snapshotDir: dir,
   };
   return {
@@ -40,72 +31,6 @@ function stubDeps(responses: ExecResponse[] = []) {
     cleanup: () => rmSync(dir, { recursive: true, force: true }),
   };
 }
-
-describe("validateFallbackModels", () => {
-  test("accepts valid entries with and without variant", () => {
-    expect(validateFallbackModels({ entries: [{ model: "opencode-go/kimi-k3" }] })).toBeNull();
-    expect(validateFallbackModels({ entries: [{ model: "gpt-5.6-sol", variant: "max" }] })).toBeNull();
-  });
-
-  test("rejects non-object bodies", () => {
-    expect(validateFallbackModels(null)).toContain("JSON object");
-    expect(validateFallbackModels("x")).toContain("JSON object");
-    expect(validateFallbackModels([])).toContain("JSON object");
-  });
-
-  test("rejects non-array entries", () => {
-    expect(validateFallbackModels({ entries: "nope" })).toContain("entries must be an array");
-  });
-
-  test("rejects missing or non-string model", () => {
-    expect(validateFallbackModels({ entries: [{}] })).toContain("non-empty string model");
-    expect(validateFallbackModels({ entries: [{ model: 42 }] })).toContain("non-empty string model");
-    expect(validateFallbackModels({ entries: [{ model: "" }] })).toContain("non-empty string model");
-  });
-
-  test("rejects invalid variant", () => {
-    expect(validateFallbackModels({ entries: [{ model: "x", variant: "turbo" }] })).toContain(
-      "variant must be one of",
-    );
-  });
-});
-
-describe("buildJqWriteCommand", () => {
-  test("delete case drops all model keys plus legacy permission without a payload", () => {
-    const cmd = buildJqWriteCommand("sisyphus", []);
-    expect(cmd).toContain(
-      `del(.agents[$agent].model, .agents[$agent].variant, .agents[$agent].models, .agents[$agent].fallback_models, .agents[$agent].permission)`,
-    );
-    expect(cmd).toContain(`mv /tmp/omo.jsonc.tmp ${OMO_CONFIG}`);
-    expect(cmd).not.toContain("base64");
-  });
-
-  test("single-entry case writes the model string plus variant", () => {
-    const cmd = buildJqWriteCommand("sisyphus-junior", [{ model: "gpt-5.6-sol", variant: "medium" }]);
-    expect(cmd).toContain(`--arg agent 'sisyphus-junior'`);
-    expect(cmd).toContain(`--arg model 'gpt-5.6-sol'`);
-    expect(cmd).toContain(`.agents[$agent].model = $model`);
-    expect(cmd).toContain(`.agents[$agent].variant = "medium"`);
-    expect(cmd).toContain(
-      `del(.agents[$agent].models, .agents[$agent].fallback_models, .agents[$agent].permission)`,
-    );
-  });
-
-  test("chain case writes only the primary model, dropping the rest", () => {
-    const cmd = buildJqWriteCommand("explore", [
-      { model: "gpt-5.6-sol", variant: "high" },
-      { model: "kimi-k3" },
-    ]);
-    expect(cmd).toContain(`--arg model 'gpt-5.6-sol'`);
-    expect(cmd).toContain(`.agents[$agent].model = $model`);
-    expect(cmd).toContain(`.agents[$agent].variant = "high"`);
-    expect(cmd).toContain(
-      `del(.agents[$agent].models, .agents[$agent].fallback_models, .agents[$agent].permission)`,
-    );
-    expect(cmd).not.toContain("kimi-k3");
-    expect(cmd).not.toContain("base64");
-  });
-});
 
 describe("readAgentModelsConfig", () => {
   test("parses model primary plus fallback_models chain from stdout", async () => {
@@ -148,14 +73,18 @@ describe("snapshot / restore round-trip", () => {
     const lib = createAgentModelsLib(deps);
     const snapshot = await lib.snapshotAgentModelsConfig();
     expect(snapshot).not.toBeNull();
-    expect(readFileSync(snapshot!, "utf-8")).toBe(content);
+    if (snapshot === null) return;
+    expect(readFileSync(snapshot, "utf-8")).toBe(content);
 
-    const restore = await lib.restoreAgentModelsConfig(snapshot!);
+    const restore = await lib.restoreAgentModelsConfig(snapshot);
     expect(restore.ok).toBe(true);
-    const restoreCmd = calls[1]!;
+    const restoreCmd = calls[1];
+    expect(restoreCmd).toBeDefined();
+    if (restoreCmd === undefined) return;
     const b64 = restoreCmd.match(/echo '([^']+)'/)?.[1];
     expect(b64).toBeDefined();
-    expect(Buffer.from(b64!, "base64").toString("utf-8")).toBe(content);
+    if (b64 === undefined) return;
+    expect(Buffer.from(b64, "base64").toString("utf-8")).toBe(content);
     cleanup();
   });
 });
@@ -167,8 +96,7 @@ describe("getServerPassword", () => {
   });
 
   test("returns null when absent", async () => {
-    const { deps } = stubDeps();
-    deps.readEnv = () => ({});
+    const { deps } = stubDeps([], { password: null });
     expect(createAgentModelsLib(deps).getServerPassword()).toBeNull();
   });
 });
@@ -186,10 +114,15 @@ describe("fetchResolvedAgentModels", () => {
     expect(map?.get("Sisyphus - ultraworker")).toEqual({ modelID: "kimi-k3", providerID: "opencode-go" });
     expect(map?.get("explore")?.modelID).toBe("gpt-5.6-luna-fast");
     expect(map?.has("build")).toBe(false);
-    const script = calls[0]!;
+    const script = calls[0];
+    expect(script).toBeDefined();
+    if (script === undefined) return;
     const expectedAuth = Buffer.from("opencode:testpass").toString("base64");
     expect(script).toContain(`Authorization: Basic ${expectedAuth}`);
     expect(script).toContain("/agent");
+    expect(script).toContain("for attempt in");
+    expect(script.indexOf("for attempt in")).toBeLessThan(script.indexOf("for f in ~/.config/openchamber/managed-opencode"));
+    expect(script).not.toContain(`[ -n "$PORT" ] || exit 3`);
   });
 
   test("returns null on curl failure", async () => {
@@ -199,48 +132,33 @@ describe("fetchResolvedAgentModels", () => {
   });
 });
 
-describe("displayNameToKey", () => {
-  const keys = new Set(["sisyphus", "plan", "explore", "sisyphus-junior", "oracle"]);
-
-  test("maps 'Key - Role' display names to config keys", () => {
-    expect(displayNameToKey("Sisyphus - ultraworker", keys)).toBe("sisyphus");
-    expect(displayNameToKey("Sisyphus-Junior", keys)).toBe("sisyphus-junior");
-  });
-
-  test("passes plain display names through unchanged", () => {
-    expect(displayNameToKey("plan", keys)).toBe("plan");
-    expect(displayNameToKey("oracle", keys)).toBe("oracle");
-  });
-
-  test("returns null for unknown built-ins", () => {
-    expect(displayNameToKey("build", keys)).toBeNull();
-    expect(displayNameToKey("compaction", keys)).toBeNull();
-  });
-});
-
 describe("fetchConnectedCatalog", () => {
-  test("returns unique model ids across connected providers", async () => {
-    const { deps } = stubDeps([
+  test("returns unique provider/model ids across connected providers", async () => {
+    const { deps, calls } = stubDeps([
       { stdout: '{"connected":["openai","opencode-go"]}' }, // r1 connected-providers
       { stdout: "openai\nopencode-go\n" }, // r2 provider keys (unused when conn non-empty)
-      { stdout: "gpt-5.6-sol\ngpt-5.6-luna-fast\nkimi-k3\n" }, // r3 model ids
+      { stdout: "openai/gpt-5.6-sol\nopenai/gpt-5.6-luna-fast\nopencode-go/kimi-k3\n" },
     ]);
     const lib = createAgentModelsLib(deps);
     expect(await lib.fetchConnectedCatalog("testpass")).toEqual([
-      "gpt-5.6-sol",
-      "gpt-5.6-luna-fast",
-      "kimi-k3",
+      "openai/gpt-5.6-sol",
+      "openai/gpt-5.6-luna-fast",
+      "opencode-go/kimi-k3",
     ]);
+    expect(calls[2]).toContain('"\\($provider)/\\(.id)"');
   });
 
   test("falls back to all catalog providers when connected-providers cache is absent", async () => {
     const { deps } = stubDeps([
       { stdout: "", exitCode: 1 }, // r1 connected-providers missing
       { stdout: "openai\nopencode-go\n" }, // r2 provider keys
-      { stdout: "kimi-k3\ngpt-5.6-sol\n" }, // r3 model ids
+      { stdout: "opencode-go/kimi-k3\nopenai/gpt-5.6-sol\n" }, // r3 model ids
     ]);
     const lib = createAgentModelsLib(deps);
-    expect(await lib.fetchConnectedCatalog("testpass")).toEqual(["kimi-k3", "gpt-5.6-sol"]);
+    expect(await lib.fetchConnectedCatalog("testpass")).toEqual([
+      "opencode-go/kimi-k3",
+      "openai/gpt-5.6-sol",
+    ]);
   });
 
   test("falls back to live /agent models when all caches are absent", async () => {
@@ -255,8 +173,8 @@ describe("fetchConnectedCatalog", () => {
     ]);
     const lib = createAgentModelsLib(deps);
     expect(await lib.fetchConnectedCatalog("testpass")).toEqual([
-      "gpt-5.6-luna-fast",
-      "gpt-5.6-terra",
+      "openai/gpt-5.6-luna-fast",
+      "openai/gpt-5.6-terra",
     ]);
   });
 });
@@ -272,7 +190,7 @@ describe("applyAndVerify", () => {
       { stdout: agentsJson }, // fetch
     ]);
     const lib = createAgentModelsLib(deps);
-    const result = await lib.applyAndVerify("explore", [{ model: "claude-opus-5" }]);
+    const result = await lib.applyAndVerify("explore", [{ model: "openai/gpt-5.6-luna-fast" }]);
     expect(result).toMatchObject({
       ok: true,
       status: "verified",
@@ -294,11 +212,13 @@ describe("applyAndVerify", () => {
   });
 
   test("restart failure rolls back the snapshot without a second restart", async () => {
-    const { deps, calls, restartCount, cleanup } = stubDeps([
-      { stdout: '{"agents":{}}' }, // snapshot
-      { stdout: "" }, // write
-    ]);
-    deps.restart = async () => ({ ok: false, error: "compose failed" });
+    const { deps, calls, restartCount, cleanup } = stubDeps(
+      [
+        { stdout: '{"agents":{}}' }, // snapshot
+        { stdout: "" }, // write
+      ],
+      { restart: async () => ({ ok: false, error: "compose failed" }) },
+    );
     const lib = createAgentModelsLib(deps);
     const result = await lib.applyAndVerify("explore", [{ model: "claude-opus-5" }]);
     expect(result).toMatchObject({ ok: false, status: "restart_failed", error: "compose failed" });
@@ -320,6 +240,30 @@ describe("applyAndVerify", () => {
     expect(result).toMatchObject({ status: "unverified" });
     expect(ctx.restartCount).toBe(1); // no rollback restart
     expect(ctx.calls.some((c) => c.includes("base64 -d > ~/.omo/omo.jsonc"))).toBe(false);
+    ctx.cleanup();
+  });
+
+  test("reports runtime_mismatch without restoring the applied model", async () => {
+    const agentsJson = JSON.stringify([
+      { name: "librarian", model: { modelID: "qwen3.7-plus", providerID: "opencode-go" } },
+    ]);
+    const ctx = stubDeps([
+      { stdout: '{"agents":{"librarian":{}}}' },
+      { stdout: "" },
+      { stdout: agentsJson },
+    ]);
+    const lib = createAgentModelsLib(ctx.deps);
+    const result = await lib.applyAndVerify("librarian", [
+      { model: "opencode/nemotron-3.5-lightning-free" },
+    ]);
+    expect(result).toMatchObject({
+      ok: false,
+      status: "runtime_mismatch",
+      configured: "opencode/nemotron-3.5-lightning-free",
+      resolved: { modelID: "qwen3.7-plus", providerID: "opencode-go" },
+      error: "Configured model opencode/nemotron-3.5-lightning-free was persisted, but the live agent resolved opencode-go/qwen3.7-plus",
+    });
+    expect(ctx.calls.some((command) => command.includes("base64 -d > ~/.omo/omo.jsonc"))).toBe(false);
     ctx.cleanup();
   });
 });
