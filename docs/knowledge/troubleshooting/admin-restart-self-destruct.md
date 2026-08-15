@@ -163,6 +163,20 @@ All three share the same error signature: admin log shows `/opt/ai-engkit/.env i
   Same `docker run` command succeeds when executed directly via SSH on all machines. v1.7.0 still uses `dockerCommand()` with `sh -c` wrapping (commit `1d609c6` only added `getSelfBindSource()` + `shellQuote()`, did not fix the triple-nested shell quoting).
 - **Final fix**: After applying all fixes, `↻ Restart` successfully recreated admin from `15332b7a83b7 (v1.6.0)` to `44b863f386c8 (v1.6.1)`. `⚠` badge disappeared, `✓ Latest` displayed.
 
+## Agent Command Path (v1.14.6)
+
+The same Bug 2 reappeared on the **agent command path**: `src/admin/agent/commands.ts` `restartContainer("ai-admin")` (used when Center Manager dispatches a restart action to the agent) ran `docker compose up -d --force-recreate ai-admin` in-place. Commit `a4f385d` (v1.14.5) introduced this, so a restart dispatched through Center Manager killed the agent mid-recreate exactly like the dashboard path did.
+
+**Fix** (commit `88b8162`, v1.14.6): the `ai-admin` branch now mirrors the dashboard pattern in `routes/admin.ts`:
+
+1. Best-effort `docker pull ghcr.io/tryweb/ai-engkit:latest` (the agent path is ai-admin's only upgrade path; a registry outage must not block the restart).
+2. Recreate from a **separate helper container** via `runCommand` with a direct argv array (`docker run --rm --user 0 --entrypoint /usr/local/bin/docker -v <env>:<env>:ro -v <compose>:<compose>:ro -v /var/run/docker.sock:... <image> compose ... up -d --force-recreate ai-admin`) — no shell nesting, bind sources resolved via `getSelfBindSource` (Bug 4-safe).
+3. If bind sources cannot be resolved, return a failure result (unlike the dashboard's silent return, the agent must answer its action with an ack).
+
+**Ack semantics**: the agent sends an immediate "restarting ai-admin" ack; when the helper recreate succeeds the old admin is killed, so no final ack is possible. Completion is observed as the agent's reconnection. Never report the helper exit code in an ack — the process is usually already dead.
+
+The `ai-dev` branch keeps the direct in-place compose (safe: the admin container is not the one being recreated).
+
 ## Related Files
 
 - `src/admin/routes/versions.ts` — inFlightCheck bug + getAiEngkitVersion / getLocalDigest fixes
