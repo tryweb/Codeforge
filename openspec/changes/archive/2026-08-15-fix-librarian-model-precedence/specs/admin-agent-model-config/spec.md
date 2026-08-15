@@ -1,20 +1,4 @@
-## Purpose
-
-Let the Admin interface configure schema-valid primary models for live OMO subagents, compare persisted settings with live resolution, and verify that model selection reaches real child-session execution.
-
-## Model Resolution Architecture
-
-OMO subagent primary models use one canonical Admin-managed source:
-
-| Layer | Source | Description |
-|---|---|---|
-| **Configured primary** | `~/.omo/omo.jsonc` → `agents.<name>.model` | Complete `provider/model` selected through Admin. |
-| **Resolved model** | Managed OpenCode server `GET /agent` | Live provider and model after OMO applies configuration and provider availability. |
-| **Executed model** | Completed child assistant message | Final execution evidence when the child is created without a request-level model. |
-
-`[opencode].agents` is not a supported Admin model source. Invalid agent settings such as the legacy 4.19.4 `permission` field can prevent a configured primary from becoming effective and must be surfaced rather than silently accepted.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: List agent model configuration
 The system SHALL expose a read endpoint returning, for every live OMO subagent, its configured primary model from top-level `agents.<name>.model`, its currently resolved model from the managed OpenCode server `/agent` endpoint, and whether those values agree. A schema-invalid agent configuration SHALL be reported as invalid and SHALL NOT be presented as an effective configured model.
@@ -72,17 +56,6 @@ After writing and restarting, the system SHALL confirm that the target top-level
 #### Scenario: Restart failure restores snapshot
 - **WHEN** the write succeeds but the service restart fails
 - **THEN** the system restores the previous `~/.omo/omo.jsonc` content and reports the restart failure
-
-### Requirement: Server password prerequisite for verification
-The live-verification and list-resolved-model behaviors SHALL require `OPENCODE_SERVER_PASSWORD` to be set in the mounted `.env` (the password OpenChamber uses to spawn the managed opencode server). When it is absent, the system SHALL expose the configuration read/write of `~/.omo/omo.jsonc` but SHALL NOT claim live verification: the UI SHALL show a prerequisite warning and the write endpoint SHALL refuse to apply-and-restart with an explanatory error.
-
-#### Scenario: Password present enables verification
-- **WHEN** `.env` sets `OPENCODE_SERVER_PASSWORD` and the managed opencode server accepts Basic auth with `opencode:<password>`
-- **THEN** the list endpoint returns live resolved models and the write endpoint performs apply-and-verify
-
-#### Scenario: Password absent degrades gracefully
-- **WHEN** `.env` does not set `OPENCODE_SERVER_PASSWORD`
-- **THEN** the UI shows a prerequisite warning, the list endpoint returns no live resolved model, and the write endpoint rejects apply with an error explaining the missing variable
 
 ### Requirement: End-to-end regression test
 The test suite SHALL include an end-to-end test that snapshots `~/.omo/omo.jsonc`, configures librarian to `opencode/nemotron-3.5-lightning-free`, restarts the managed service, verifies the live `/agent` model, and creates a real librarian child session without supplying an explicit model. The test SHALL pass only when a completed assistant message records provider `opencode` and model `nemotron-3.5-lightning-free`. Trap-based cleanup SHALL restore the byte-identical baseline and remove test sessions on every exit path.

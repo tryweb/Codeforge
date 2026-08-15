@@ -2,6 +2,33 @@
 
 > **Status (2026-07-31): the feature was removed from the repo.** `apply_omo_model_defaults`, `.opencode/omo-model-defaults.json`, the `AI_ENGKIT_APPLY_OMO_MODEL_DEFAULTS` flag, and `test/test-omo-model-default-migration.sh` were deleted because the mechanism cannot work with plugin 4.19.3. This entry documents why, and what actually controls agent models.
 
+> **Update (2026-08-15):** ai-engkit now supports the OpenCode-native `general` agent through an explicit startup bridge from `~/.omo/omo.jsonc` to generated `opencode.json → agent.general`. This does not revive the removed generic migration. See `../patterns/native-agent-model-override-bridge.md`.
+
+> **Correction for OMO 4.19.4 (2026-08-15):** a schema-valid top-level `agents.<name>.model` override is effective for OMO subagents. The earlier inert result remains historical evidence for 4.19.3 and for invalid or shadowed configurations; it is not the current 4.19.4 contract.
+
+## Current 4.19.4 Resolution Contract
+
+Admin-managed OMO subagent primary models have one canonical source:
+
+```text
+~/.omo/omo.jsonc → agents.<name>.model
+```
+
+Two legacy conditions can prevent that value from taking effect together:
+
+1. An agent-level `permission` field fails the pinned 4.19.4 migration schema. Direct tool allow/deny values must be represented as `tools.<name>: boolean`; unsupported nested or deny-all policies must be retained and reported for manual migration rather than deleted.
+2. A stale `[opencode].agents` model layer can shadow the top-level Admin value. Startup normalization removes that agent layer while preserving unrelated `[opencode]` settings.
+
+The startup normalization in `entrypoint.d/lib-omo-model-defaults.bash` is atomic and idempotent. It preserves top-level models and unrelated user settings, converts known direct permission values, removes redundant allow-all permission maps, and leaves the original file byte-identical when conversion is unsafe.
+
+Verification proceeds through three distinct observations:
+
+1. Persisted config: `jq -r '.agents.librarian.model' ~/.omo/omo.jsonc` reports the selected `provider/model` and no agent entry contains `permission`.
+2. Advertised runtime: authenticated `GET /agent` reports the same `providerID/modelID` for librarian.
+3. Executed runtime: a real librarian child session is created without an explicit request model, and its completed assistant message records the same provider and model.
+
+`test/test-agent-model-e2e.sh` automates all three checks, restores the baseline file byte-for-byte, and removes its parent and child sessions on every exit path. A `/agent` match alone is not sufficient execution evidence.
+
 ## Context
 
 ai-engkit ships an opt-in migration, gated by `AI_ENGKIT_APPLY_OMO_MODEL_DEFAULTS=1` in the compose `.env`, that fills missing model keys under `[opencode].agents` and `[opencode].categories` in `~/.omo/omo.jsonc` with the low-cost `opencode/deepseek-v4-flash`. It exists to cap model cost across the 11 OMO agents and 7 delegation categories. The dev stack (`docker-compose.dev.yml`) runs with the flag enabled.
