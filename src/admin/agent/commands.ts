@@ -4,7 +4,9 @@ import {
   execInAiDev,
   getAiDevContainerRef,
   getComposeProject,
+  getSelfBindSource,
   getSelfContainerRef,
+  runCommand,
 } from "../lib/docker";
 import { PASSWORD_KEYS } from "../lib/env-schema";
 import { readEnvFile, upsertEnvVar as upsertRealEnvVar } from "../lib/env";
@@ -88,6 +90,9 @@ const DEFAULT_OPENCHAMBER_DISABLED = "/home/devuser/.config/openchamber/disabled
 const SECRET_MASK = "••••••";
 const COMPOSE_FILE = "/opt/ai-engkit/compose.yml";
 const ENV_FILE = "/opt/ai-engkit/.env";
+// ai-admin has no upgrade flow (runUpgrade only recreates ai-dev), so its
+// restart is its only path to a newly published image.
+const IMAGE = "ghcr.io/tryweb/ai-engkit:latest";
 
 /** Runtime operations used to execute commands and serve read-only queries. */
 export interface CommandDeps {
@@ -1698,8 +1703,40 @@ export function createRealCommandDeps(): CommandDeps {
         // `docker restart` keeps the container on its old image.
         if (existsSync(COMPOSE_FILE)) {
           const project = await getComposeProject();
+          if (service === "ai-admin") {
+            // ai-admin has no upgrade flow; fetch the latest tag so the
+            // recreate below applies the newest published image. Best-effort:
+            // a registry outage must not block the restart itself.
+            await dockerCommand(`pull ${IMAGE} 2>&1`, 120_000);
+            // Recreate ai-admin from a helper container (mirroring
+            // POST /api/admin/restart): compose run in-place stops the very
+            // container executing it, killing the agent mid-recreate.
+            const envSource = await getSelfBindSource(ENV_FILE);
+            const composeSource = await getSelfBindSource(COMPOSE_FILE);
+            if (!envSource || !composeSource) {
+              return { success: false, message: "Failed to resolve host bind sources for ai-admin restart" };
+            }
+            const helperResult = await runCommand(
+              [
+                "docker", "run", "--rm", "--user", "0",
+                "--entrypoint", "/usr/local/bin/docker",
+                "-v", `${envSource}:${envSource}:ro`,
+                "-v", `${composeSource}:${composeSource}:ro`,
+                "-v", "/var/run/docker.sock:/var/run/docker.sock",
+                IMAGE,
+                "compose", "-p", project,
+                "--env-file", envSource,
+                "-f", composeSource,
+                "up", "-d", "--force-recreate", "ai-admin",
+              ],
+              120_000,
+            );
+            return helperResult.exitCode === 0
+              ? { success: true }
+              : { success: false, message: helperResult.stderr || helperResult.stdout || "ai-admin compose recreate failed" };
+          }
           const result = await dockerCommand(
-            `compose -p ${project} --env-file ${ENV_FILE} -f ${COMPOSE_FILE} up -d --force-recreate ${service} 2>&1`,
+            `compose -p ${project} --env-file ${ENV_FILE} -f ${COMPOSE_FILE} up -d --force-recreate ai-dev 2>&1`,
             120_000,
           );
           return result.exitCode === 0
