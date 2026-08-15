@@ -2,15 +2,12 @@
 set -uo pipefail
 
 # ============================================================
-# Agent Model Config E2E Test
+# Agent Model E2E Test
 # Usage: ./test/test-agent-model-e2e.sh [container_name]
 #
-# Proves the admin agent-model write path end-to-end:
-#   set → restart → verify (via live /agent) → restore → verify
-# Uses the "explore" subagent (its /agent name equals its config key and the
-# plugin always assigns it a model) and a target model another agent is
-# currently live on. trap-guaranteed restoration even when verification fails.
-# Skips (exit 0) when OPENCODE_SERVER_PASSWORD is not set in .env.
+# Proves native and OMO subagent model paths end-to-end:
+#   set → restart → live resolution → child execution → restore
+# Restoration and test-session cleanup are trap-guaranteed.
 # ============================================================
 
 CONTAINER="${1:-ai-engkit-dev}"
@@ -34,55 +31,43 @@ assert_eq() {
   local label="$1" expected="$2" actual="$3"
   if [ "$expected" = "$actual" ]; then pass "$label"; else fail "$label (expected='$expected', actual='$actual')"; fi
 }
+
 assert_contains() {
   local label="$1" needle="$2" haystack="$3"
   if echo "$haystack" | grep -q "$needle"; then pass "$label"; else fail "$label (expected to contain '$needle')"; fi
 }
 
-# Password from the repo .env (same file compose injects into ai-dev).
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PASSWORD="$(grep -E '^OPENCODE_SERVER_PASSWORD=' "$REPO_DIR/.env" 2>/dev/null | head -n 1 | cut -d= -f2-)"
 if [ -z "$PASSWORD" ]; then
-  echo "  ${YELLOW}SKIP${NC} agent-model-e2e: OPENCODE_SERVER_PASSWORD is not set in $REPO_DIR/.env (live verification is impossible without it)"
+  echo "  ${YELLOW}SKIP${NC} agent-model-e2e: OPENCODE_SERVER_PASSWORD is not set in $REPO_DIR/.env"
   exit 0
 fi
 
 in_container() { docker exec "$CONTAINER" sh -c "$1"; }
 
-TEST_AGENT="explore"
-BASELINE="/tmp/omo-baseline-$$.json"
-RESTORED=0
-CURRENT_MODEL=""
-
-# Restore the baseline file and restart, guaranteed via trap.
-restore() {
-  [ "$RESTORED" = "1" ] && return
-  RESTORED=1
-  if [ -f "$BASELINE" ]; then
-    docker exec -i "$CONTAINER" sh -c 'cat > ~/.omo/omo.jsonc' < "$BASELINE" >/dev/null 2>&1 || fail "restore: writing baseline back"
-    docker restart "$CONTAINER" >/dev/null 2>&1 || true
-    echo "  (restored baseline omo.jsonc and restarted ai-dev)"
-  fi
+get_managed_port() {
+  local auth
+  auth="$(printf 'opencode:%s' "$PASSWORD" | base64)"
+  in_container "for f in ~/.config/openchamber/managed-opencode/*.json; do pid=\$(jq -r .pid \"\$f\" 2>/dev/null); port=\$(jq -r .port \"\$f\" 2>/dev/null); if [ -n \"\$pid\" ] && [ -n \"\$port\" ] && kill -0 \"\$pid\" 2>/dev/null && curl -fsS -m 2 -H 'Authorization: Basic $auth' \"http://127.0.0.1:\$port/agent\" >/dev/null 2>&1; then echo \"\$port\"; break; fi; done"
 }
-trap restore EXIT
 
-# Read the raw /agent JSON (used for both model reads and target selection).
-get_agents_json() {
-  local port auth
-  port="$(in_container 'for f in ~/.config/openchamber/managed-opencode/*.json; do pid=$(jq -r .pid "$f" 2>/dev/null); if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then jq -r .port "$f"; break; fi; done')"
+opencode_api() {
+  local method="$1" path="$2" body="${3:-}" port auth
+  port="$(get_managed_port)"
   [ -n "$port" ] || return 1
   auth="$(printf 'opencode:%s' "$PASSWORD" | base64)"
-  in_container "curl -fsS -m 5 -H 'Authorization: Basic $auth' http://127.0.0.1:$port/agent 2>/dev/null"
+  if [ -n "$body" ]; then
+    in_container "curl -fsS -m 180 -X '$method' -H 'Authorization: Basic $auth' -H 'Content-Type: application/json' --data-binary '$body' 'http://127.0.0.1:$port$path'"
+  else
+    in_container "curl -fsS -m 180 -X '$method' -H 'Authorization: Basic $auth' 'http://127.0.0.1:$port$path'"
+  fi
 }
 
-# Read the live /agent model for an agent name substring: "modelID@providerID".
-get_agent_model() {
-  local needle="$1"
-  get_agents_json 2>/dev/null | jq -r --arg n "$needle" '.[] | select(.name | test($n; "i")) | .model.modelID + "@" + .model.providerID' | head -n 1
+get_agents_json() {
+  opencode_api GET /agent
 }
 
-# Wait until the managed opencode server answers /agent (it re-reads config
-# from disk on restart — this confirms the restart landed, not a model change).
 wait_for_server() {
   local seconds="${1:-120}" i
   for i in $(seq 1 "$seconds"); do
@@ -92,59 +77,110 @@ wait_for_server() {
   return 1
 }
 
-echo "== Agent Model Config E2E (container: $CONTAINER) =="
+GENERAL_TARGET="opencode/big-pickle"
+LIBRARIAN_TARGET="opencode/nemotron-3.5-lightning-free"
+BASELINE="/tmp/omo-baseline-$$.json"
+RESTORED=0
+PARENT_SESSION=""
+CHILD_SESSION=""
 
-# --- Baseline -------------------------------------------------
+restore() {
+  local port auth
+  [ "$RESTORED" = "1" ] && return
+  RESTORED=1
+  port="$(get_managed_port 2>/dev/null || true)"
+  auth="$(printf 'opencode:%s' "$PASSWORD" | base64)"
+  if [ -n "$port" ]; then
+    [ -n "$CHILD_SESSION" ] && in_container "curl -fsS -X DELETE -H 'Authorization: Basic $auth' 'http://127.0.0.1:$port/session/$CHILD_SESSION' >/dev/null 2>&1" || true
+    [ -n "$PARENT_SESSION" ] && in_container "curl -fsS -X DELETE -H 'Authorization: Basic $auth' 'http://127.0.0.1:$port/session/$PARENT_SESSION' >/dev/null 2>&1" || true
+  fi
+  if [ -f "$BASELINE" ]; then
+    docker exec -i "$CONTAINER" sh -c 'cat > ~/.omo/omo.jsonc' < "$BASELINE" >/dev/null 2>&1 || fail "restore: writing baseline back"
+    docker restart "$CONTAINER" >/dev/null 2>&1 || true
+    echo "  (restored baseline omo.jsonc and restarted ai-dev)"
+  fi
+}
+trap restore EXIT
+
+echo "== Native Agent Model E2E (container: $CONTAINER) =="
+
 in_container 'cat ~/.omo/omo.jsonc' > "$BASELINE" 2>/dev/null || { fail "baseline: could not read ~/.omo/omo.jsonc"; exit 1; }
 assert_contains "baseline omo.jsonc captured" 'agents' "$(cat "$BASELINE")"
 
-CURRENT_MODEL="$(get_agent_model "$TEST_AGENT" 2>/dev/null || echo '')"
-if [ -z "$CURRENT_MODEL" ]; then
-  fail "baseline: could not read $TEST_AGENT model from /agent"
-  exit 1
-fi
-echo "  baseline $TEST_AGENT model: $CURRENT_MODEL"
-
-# --- Choose a target model: any model another agent is live on ------------
-# Cache-independent — derives from the live /agent response, so it is
-# guaranteed resolvable (in use right now) and different from the baseline.
-CURRENT_ID="$(printf '%s' "$CURRENT_MODEL" | cut -d@ -f1)"
-TARGET="$(get_agents_json 2>/dev/null | jq -r --arg cur "$CURRENT_ID" '[.[] | .model.modelID // empty] | map(select(. != $cur)) | .[0] // empty')"
-if [ -z "$TARGET" ]; then
-  echo "  ${YELLOW}SKIP${NC} agent-model-e2e: no alternate live model found ($TEST_AGENT currently on $CURRENT_MODEL)"
+if ! in_container "jq -e '.models.opencode[]? | select(.id == \"big-pickle\")' ~/.cache/oh-my-opencode/provider-models.json >/dev/null"; then
+  echo "  ${YELLOW}SKIP${NC} agent-model-e2e: $GENERAL_TARGET is absent from the environment catalog"
   exit 0
 fi
-echo "  target model: $TARGET"
+if ! in_container "jq -e '.models.opencode[]? | select(.id == \"nemotron-3.5-lightning-free\")' ~/.cache/oh-my-opencode/provider-models.json >/dev/null"; then
+  echo "  ${YELLOW}SKIP${NC} agent-model-e2e: $LIBRARIAN_TARGET is absent from the environment catalog"
+  exit 0
+fi
 
-# --- Set ------------------------------------------------------
-jq --arg model "$TARGET" ".agents.$TEST_AGENT.model = \$model" "$BASELINE" \
+jq --arg general "$GENERAL_TARGET" --arg librarian "$LIBRARIAN_TARGET" '
+  .agents.general.model = $general
+  | del(.agents.general.variant)
+  | .agents.librarian.model = $librarian
+  | del(.agents.librarian.variant)
+' "$BASELINE" \
   | docker exec -i "$CONTAINER" sh -c 'cat > ~/.omo/omo.jsonc' \
   || { fail "set: writing model failed"; exit 1; }
-assert_contains "set: omo.jsonc contains target" "$TARGET" "$(in_container 'cat ~/.omo/omo.jsonc')"
+assert_eq "set: persisted native model" "$GENERAL_TARGET" "$(in_container 'jq -r .agents.general.model ~/.omo/omo.jsonc')"
+assert_eq "set: persisted librarian model" "$LIBRARIAN_TARGET" "$(in_container 'jq -r .agents.librarian.model ~/.omo/omo.jsonc')"
 
-# --- Restart + confirm ------------------------------------------
 docker restart "$CONTAINER" >/dev/null 2>&1 || { fail "restart: docker restart failed"; exit 1; }
 if wait_for_server 120; then
-  pass "confirm: /agent reachable after restart (config re-read)"
+  pass "confirm: /agent reachable after restart"
 else
-  fail "confirm: /agent not reachable within 120s after restart"
+  fail "confirm: /agent not reachable within 120s"
 fi
-assert_contains "confirm: config file retains target after restart" "$TARGET" "$(in_container 'cat ~/.omo/omo.jsonc')"
+assert_eq "confirm: generated OpenCode native override" "$GENERAL_TARGET" "$(in_container 'jq -r .agent.general.model ~/.config/opencode/opencode.json')"
+assert_eq "confirm: live general agent resolves target" "$GENERAL_TARGET" "$(get_agents_json | jq -r '.[] | select(.name == "general") | .model.providerID + "/" + .model.modelID')"
+assert_eq "confirm: live librarian resolves target" "$LIBRARIAN_TARGET" "$(get_agents_json | jq -r '.[] | select(.name == "librarian") | .model.providerID + "/" + .model.modelID')"
 
-# --- Restore ---------------------------------------------------
+verify_child_model() {
+  local agent="$1" target="$2" child_body prompt_body actual_model messages
+  PARENT_SESSION="$(opencode_api POST '/session?directory=/home/devuser/workspace' "$(jq -nc --arg title "agent-model-e2e-$agent-parent" '{title:$title}')" | jq -r .id)"
+  [ -n "$PARENT_SESSION" ] && [ "$PARENT_SESSION" != "null" ] || { fail "$agent child: parent session creation failed"; exit 1; }
+  child_body="$(jq -nc --arg parent "$PARENT_SESSION" --arg title "agent-model-e2e-$agent" --arg agent "$agent" '{parentID:$parent,title:$title,agent:$agent}')"
+  CHILD_SESSION="$(opencode_api POST '/session?directory=/home/devuser/workspace' "$child_body" | jq -r .id)"
+  [ -n "$CHILD_SESSION" ] && [ "$CHILD_SESSION" != "null" ] || { fail "$agent child: child session creation failed"; exit 1; }
+
+  prompt_body="$(jq -nc --arg agent "$agent" '{agent:$agent,parts:[{type:"text",text:"Reply with exactly OK."}]}')"
+  opencode_api POST "/session/$CHILD_SESSION/prompt_async?directory=/home/devuser/workspace" "$prompt_body" >/dev/null \
+    || { fail "$agent child: prompt submission failed"; exit 1; }
+
+  actual_model=""
+  for _ in $(seq 1 120); do
+    messages="$(opencode_api GET "/session/$CHILD_SESSION/message?directory=/home/devuser/workspace" 2>/dev/null || echo '[]')"
+    actual_model="$(printf '%s' "$messages" | jq -r '[.[] | .info | select(.role == "assistant" and .time.completed != null)] | last | if . then .providerID + "/" + .modelID else empty end')"
+    [ -n "$actual_model" ] && break
+    sleep 1
+  done
+  assert_eq "child: completed $agent session used configured model" "$target" "$actual_model"
+
+  opencode_api DELETE "/session/$CHILD_SESSION" >/dev/null 2>&1 || true
+  opencode_api DELETE "/session/$PARENT_SESSION" >/dev/null 2>&1 || true
+  CHILD_SESSION=""
+  PARENT_SESSION=""
+}
+
+verify_child_model "general" "$GENERAL_TARGET"
+verify_child_model "librarian" "$LIBRARIAN_TARGET"
+
 docker exec -i "$CONTAINER" sh -c 'cat > ~/.omo/omo.jsonc' < "$BASELINE" >/dev/null 2>&1
 assert_eq "restore: file byte-identical to baseline" "0" "$(cmp -s <(in_container 'cat ~/.omo/omo.jsonc') "$BASELINE"; echo $?)"
 docker restart "$CONTAINER" >/dev/null 2>&1
-RESTORED=1  # trap restore already satisfied by explicit restore
+RESTORED=1
 
-sleep 5
-RESTORED_MODEL="$(get_agent_model "$TEST_AGENT" 2>/dev/null || echo '')"
-assert_contains "restore: /agent reachable after final restart" '@' "$RESTORED_MODEL"
+if wait_for_server 120; then
+  pass "restore: /agent reachable after final restart"
+else
+  fail "restore: /agent unavailable after final restart"
+fi
 
-# ----------------------------------------------------------------
 echo ""
 echo "============================================"
-echo " Agent Model Config E2E: ${GREEN}$PASS passed${NC}, ${RED}$FAIL failed${NC}"
+echo " Agent Model E2E: ${GREEN}$PASS passed${NC}, ${RED}$FAIL failed${NC}"
 echo "============================================"
 
 [ "$FAIL" -gt 0 ] && exit 1

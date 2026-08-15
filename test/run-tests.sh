@@ -579,59 +579,18 @@ assert_contains "hephaestus agent defined" 'hephaestus'      "$OMO_AGENTS"
 assert_contains "atlas agent defined"    'atlas'             "$OMO_AGENTS"
 assert_contains "sisyphus-junior defined" 'sisyphus-junior'  "$OMO_AGENTS"
 
-# 8.3.4 Read-only subagents: explore/oracle/librarian/multimodal-looker
-EXPLORE_BASH=$(docker exec "$CONTAINER" jq -r '.agents.explore.permission.bash' "$OMO_CONFIG_FILE" 2>/dev/null || echo "")
-ORACLE_BASH=$(docker exec "$CONTAINER" jq -r '.agents.oracle.permission.bash' "$OMO_CONFIG_FILE" 2>/dev/null || echo "")
-LIBRARIAN_BASH=$(docker exec "$CONTAINER" jq -r '.agents.librarian.permission.bash' "$OMO_CONFIG_FILE" 2>/dev/null || echo "")
-assert_eq "explore bash=allow (supports ctx_shell)"   "allow" "$EXPLORE_BASH"
-assert_eq "oracle bash=deny"                          "deny"  "$ORACLE_BASH"
-assert_eq "librarian bash=deny"                       "deny"  "$LIBRARIAN_BASH"
+# 8.3.4 Runtime config uses schema-valid tools and no stale migration layer
+OMO_PERMISSION_COUNT=$(docker exec "$CONTAINER" jq '[.agents[] | select(has("permission"))] | length' "$OMO_CONFIG_FILE" 2>/dev/null || echo "")
+OMO_STALE_AGENT_LAYER=$(docker exec "$CONTAINER" jq '.["[opencode]"] | type == "object" and has("agents")' "$OMO_CONFIG_FILE" 2>/dev/null || echo "")
+assert_eq "OMO agents contain no unsupported permission keys" "0" "$OMO_PERMISSION_COUNT"
+assert_eq "OMO config contains no stale [opencode].agents layer" "false" "$OMO_STALE_AGENT_LAYER"
 
-EXPLORE_READ=$(docker exec "$CONTAINER" jq -r '.agents.explore.permission.read' "$OMO_CONFIG_FILE" 2>/dev/null || echo "")
-ORACLE_READ=$(docker exec "$CONTAINER" jq -r '.agents.oracle.permission.read' "$OMO_CONFIG_FILE" 2>/dev/null || echo "")
-LIBRARIAN_READ=$(docker exec "$CONTAINER" jq -r '.agents.librarian.permission.read' "$OMO_CONFIG_FILE" 2>/dev/null || echo "")
-MM_LOOKER_READ=$(docker exec "$CONTAINER" jq -r '.agents["multimodal-looker"].permission.read' "$OMO_CONFIG_FILE" 2>/dev/null || echo "")
-assert_eq "explore read=allow"            "allow" "$EXPLORE_READ"
-assert_eq "oracle read=allow"             "allow" "$ORACLE_READ"
-assert_eq "librarian read=allow"          "allow" "$LIBRARIAN_READ"
-assert_eq "multimodal-looker read=allow"  "allow" "$MM_LOOKER_READ"
-
-EXPLORE_EDIT=$(docker exec "$CONTAINER" jq -r '.agents.explore.permission.edit' "$OMO_CONFIG_FILE" 2>/dev/null || echo "")
-ORACLE_EDIT=$(docker exec "$CONTAINER" jq -r '.agents.oracle.permission.edit' "$OMO_CONFIG_FILE" 2>/dev/null || echo "")
-LIBRARIAN_EDIT=$(docker exec "$CONTAINER" jq -r '.agents.librarian.permission.edit' "$OMO_CONFIG_FILE" 2>/dev/null || echo "")
-assert_eq "explore edit=deny"             "deny" "$EXPLORE_EDIT"
-assert_eq "oracle edit=deny"              "deny" "$ORACLE_EDIT"
-assert_eq "librarian edit=deny"           "deny" "$LIBRARIAN_EDIT"
-
-# 8.3.5 librarian has webfetch allow
-LIBRARIAN_WEBFETCH=$(docker exec "$CONTAINER" jq -r '.agents.librarian.permission.webfetch' "$OMO_CONFIG_FILE" 2>/dev/null || echo "")
-assert_eq "librarian webfetch=allow (docs search)" "allow" "$LIBRARIAN_WEBFETCH"
-
-# 8.3.6 Analysis/planning subagents: metis/momus/prometheus — read-only
-for agent in metis momus prometheus; do
-  AGENT_READ=$(docker exec "$CONTAINER" jq -r ".agents[\"$agent\"].permission.read" "$OMO_CONFIG_FILE" 2>/dev/null || echo "")
-  AGENT_BASH=$(docker exec "$CONTAINER" jq -r ".agents[\"$agent\"].permission.bash" "$OMO_CONFIG_FILE" 2>/dev/null || echo "")
-  AGENT_EDIT=$(docker exec "$CONTAINER" jq -r ".agents[\"$agent\"].permission.edit" "$OMO_CONFIG_FILE" 2>/dev/null || echo "")
-  assert_eq "$agent read=allow"  "allow" "$AGENT_READ"
-  assert_eq "$agent bash=deny"   "deny"  "$AGENT_BASH"
-  assert_eq "$agent edit=deny"   "deny"  "$AGENT_EDIT"
-done
-
-# 8.3.7 Execution/coordination agents: sisyphus/hephaestus/atlas/sisyphus-junior — full access
-for agent in sisyphus hephaestus atlas "sisyphus-junior"; do
-  AGENT_READ=$(docker exec "$CONTAINER" jq -r ".agents[\"$agent\"].permission.read" "$OMO_CONFIG_FILE" 2>/dev/null || echo "")
-  AGENT_BASH=$(docker exec "$CONTAINER" jq -r ".agents[\"$agent\"].permission.bash" "$OMO_CONFIG_FILE" 2>/dev/null || echo "")
-  AGENT_EDIT=$(docker exec "$CONTAINER" jq -r ".agents[\"$agent\"].permission.edit" "$OMO_CONFIG_FILE" 2>/dev/null || echo "")
-  AGENT_WRITE=$(docker exec "$CONTAINER" jq -r ".agents[\"$agent\"].permission.write" "$OMO_CONFIG_FILE" 2>/dev/null || echo "")
-  assert_eq "$agent read=allow"   "allow" "$AGENT_READ"
-  assert_eq "$agent bash=allow"   "allow" "$AGENT_BASH"
-  assert_eq "$agent edit=allow"   "allow" "$AGENT_EDIT"
-  assert_eq "$agent write=allow"  "allow" "$AGENT_WRITE"
-done
-
-# 8.3.8 opencode.json must NOT have an inline agent section
-OPCODE_HAS_AGENT=$(docker exec "$CONTAINER" jq 'has("agent")' /home/devuser/.config/opencode/opencode.json 2>/dev/null || echo "")
-assert_eq "opencode.json has no inline agent section" "false" "$OPCODE_HAS_AGENT"
+# 8.3.8 Only allowlisted native agents may be generated inline
+OPCODE_UNEXPECTED_AGENTS=$(docker exec "$CONTAINER" jq -r '[(.agent // {}) | keys[] | select(. != "general")] | join(",")' /home/devuser/.config/opencode/opencode.json 2>/dev/null || echo "")
+assert_eq "opencode.json has no unexpected inline agents" "" "$OPCODE_UNEXPECTED_AGENTS"
+OMO_GENERAL_MODEL=$(docker exec "$CONTAINER" jq -r '.agents.general.model // empty' "$OMO_CONFIG_FILE" 2>/dev/null || echo "")
+OPCODE_GENERAL_MODEL=$(docker exec "$CONTAINER" jq -r '.agent.general.model // empty' /home/devuser/.config/opencode/opencode.json 2>/dev/null || echo "")
+assert_eq "general native model matches persisted OMO override" "$OMO_GENERAL_MODEL" "$OPCODE_GENERAL_MODEL"
 
 # --------------------------------------------------
 # 8.4 Superpowers (Agentic Skills Framework)
