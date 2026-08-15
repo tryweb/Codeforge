@@ -12,9 +12,11 @@ import {
   OMO_CONFIG,
   VARIANTS,
   type AgentModelConfig,
+  type AgentModelEntry,
   type AgentModelsDeps,
   type ApplyResult,
   type FallbackModelEntry,
+  type ResolvedModel,
 } from "./agent-model-types";
 import { execInAiDev } from "./docker";
 import { readEnvFile } from "./env";
@@ -158,3 +160,84 @@ export function createAgentModelsLib(deps: AgentModelsDeps = REAL_DEPS) {
 }
 
 export type AgentModelsLib = ReturnType<typeof createAgentModelsLib>;
+
+/** Per-agent view state shared by the admin UI and the center agent protocol. */
+export type AgentModelsViewState = {
+  agents: AgentModelEntry[];
+  catalog: string[];
+  hasPassword: boolean;
+};
+
+/** Merge configured agents with live /agent names into per-agent view entries. */
+export async function collectAgentModelState(
+  lib: AgentModelsLib,
+  password: string | null,
+): Promise<AgentModelsViewState> {
+  const [config, resolvedMap, catalog, subagentNames] = await Promise.all([
+    lib.readAgentModelsConfig(),
+    password !== null ? lib.fetchResolvedAgentModels(password) : Promise.resolve(null),
+    lib.fetchConnectedCatalog(password),
+    password !== null ? lib.fetchSubagentNames(password) : Promise.resolve([]),
+  ]);
+
+  const knownKeys = new Set(Object.keys(config));
+  // /agent returns display names ("Sisyphus - ultraworker"); map them back to
+  // config keys so configured rows and resolved models line up.
+  const resolvedByKey = new Map<string, ResolvedModel>();
+  for (const [displayName, resolved] of resolvedMap ?? []) {
+    const key = displayNameToKey(displayName, knownKeys) ?? displayName;
+    if (!resolvedByKey.has(key)) resolvedByKey.set(key, resolved);
+  }
+
+  // Include the opencode-native subagents that are safe to configure (e.g.
+  // general); internal mechanism agents (compaction, summary, title, build)
+  // stay out because changing their model can break opencode internals.
+  const configurableKeys = new Set<string>();
+  for (const displayName of subagentNames) {
+    const key = displayNameToKey(displayName, knownKeys) ?? displayName.toLowerCase();
+    if (knownKeys.has(key) || (CONFIGURABLE_NATIVE_AGENTS as readonly string[]).includes(key)) {
+      configurableKeys.add(key);
+    }
+  }
+
+  const names = [...configurableKeys].sort();
+
+  const agents: AgentModelEntry[] = names.map((name) => {
+    const entry = config[name];
+    const configured = entry?.model
+      ? [{ model: entry.model, ...(entry.variant ? { variant: entry.variant } : {}) }]
+      : [];
+    const resolved = resolvedByKey.get(name) ?? null;
+    let source: AgentModelEntry["source"] = "plugin";
+    if (configured.length > 0) {
+      source = "configured";
+    } else if (name === "plan" && config["prometheus"]?.model !== undefined) {
+      source = "inherited";
+    }
+    let effectiveness: AgentModelEntry["effectiveness"] = "plugin";
+    if (entry?.invalid === true) {
+      effectiveness = "invalid";
+    } else if (configured.length > 0) {
+      const configuredModel = configured[0]?.model;
+      if (resolved === null || configuredModel === undefined) {
+        effectiveness = "unverified";
+      } else if (`${resolved.providerID}/${resolved.modelID}` === configuredModel) {
+        effectiveness = "effective";
+      } else {
+        effectiveness = "runtime_mismatch";
+      }
+    } else if (resolved === null) {
+      effectiveness = "unverified";
+    }
+    return {
+      name,
+      configured,
+      resolved,
+      source,
+      invalid: entry?.invalid ?? false,
+      effectiveness,
+    };
+  });
+
+  return { agents, catalog: [...catalog], hasPassword: password !== null };
+}
