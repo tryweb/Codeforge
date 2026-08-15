@@ -1,6 +1,24 @@
 ## [Unreleased]
 
 
+## [1.14.5] - 2026-08-15
+
+### Added
+- Support remote agent model query and set commands
+- Add agent-models protocol command catalog
+- Support clearing configured agent models
+
+### Fixed
+- Clarify agent model rollback failure
+
+### Documentation
+- Document agent-models protocol commands
+
+### Changed
+- Move agent model state collection into lib
+- Verify clearing restores automatic model selection
+- Cover agent model clear route
+
 ## [1.14.4] - 2026-08-15
 
 ### Added
@@ -1343,7 +1361,7 @@
 
 ## Format
 
-[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.14.4...HEAD
+[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.14.5...HEAD
 [0.3.0]: https://github.com/tryweb/ai-engkit/releases/tag/v0.3.0
 [0.3.3]: https://github.com/tryweb/ai-engkit/compare/v0.3.0...v0.3.3
 [0.5.0]: https://github.com/tryweb/ai-engkit/compare/v0.3.3...v0.5.0
@@ -1476,3 +1494,4 @@
 [1.14.2]: https://github.com/tryweb/ai-engkit/compare/v1.14.1...v1.14.2
 [1.14.3]: https://github.com/tryweb/ai-engkit/compare/v1.14.2...v1.14.3
 [1.14.4]: https://github.com/tryweb/ai-engkit/compare/v1.14.3...v1.14.4
+[1.14.5]: https://github.com/tryweb/ai-engkit/compare/v1.14.4...v1.14.5
