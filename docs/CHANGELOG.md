@@ -1,6 +1,45 @@
 ## [Unreleased]
 
 
+## [1.14.4] - 2026-08-15
+
+### Added
+- Bump OpenChamber 1.18.3 → 1.18.4
+- Include configurable native subagents in agent-models
+- Restrict agent models UI to primary model only
+- Surface invalid agent config in model list
+- Write agent model config with schema-valid keys
+- Wire agent models routes and navigation
+- Add agent model config UI page
+- Add agent model config API routes
+- Add agent model config domain library
+
+### Fixed
+- Report effective agent model resolution
+- Normalize legacy agent configuration
+- Verify managed server port reachability when discovering /agent
+- Drop legacy permission key when writing agent model
+- Space between invalid badge and source badge
+- Write primary model only for agent model config
+
+### Documentation
+- Archive librarian model precedence change
+- Sync and archive admin-agent-model-config change
+- Sync and archive center-agent-remote-management change
+
+### Changed
+- Run OMO normalization regression
+- Verify librarian Nemotron execution
+- Cover agent model route resolution
+- Cover split agent model configuration
+- Split agent model configuration modules
+- Align default config template with 4.19.4 schema
+- Use schema-valid models key in agent-model e2e
+- Add agent model config e2e script
+
+### Changed
+- Upgrade OpenChamber from 1.18.3 to 1.18.4.
+
 ## [1.14.3] - 2026-08-14
 
 ### Added
@@ -1304,7 +1343,7 @@
 
 ## Format
 
-[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.14.3...HEAD
+[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.14.4...HEAD
 [0.3.0]: https://github.com/tryweb/ai-engkit/releases/tag/v0.3.0
 [0.3.3]: https://github.com/tryweb/ai-engkit/compare/v0.3.0...v0.3.3
 [0.5.0]: https://github.com/tryweb/ai-engkit/compare/v0.3.3...v0.5.0
@@ -1436,3 +1475,4 @@
 [1.14.1]: https://github.com/tryweb/ai-engkit/compare/v1.14.0...v1.14.1
 [1.14.2]: https://github.com/tryweb/ai-engkit/compare/v1.14.1...v1.14.2
 [1.14.3]: https://github.com/tryweb/ai-engkit/compare/v1.14.2...v1.14.3
+[1.14.4]: https://github.com/tryweb/ai-engkit/compare/v1.14.3...v1.14.4
