@@ -38,33 +38,54 @@ async function collectAgentModelState(
   // Include the opencode-native subagents that are safe to configure (e.g.
   // general); internal mechanism agents (compaction, summary, title, build)
   // stay out because changing their model can break opencode internals.
-  const nativeKeys = new Set<string>();
+  const configurableKeys = new Set<string>();
   for (const displayName of subagentNames) {
     const key = displayNameToKey(displayName, knownKeys) ?? displayName.toLowerCase();
-    if ((CONFIGURABLE_NATIVE_AGENTS as readonly string[]).includes(key)) nativeKeys.add(key);
+    if (knownKeys.has(key) || (CONFIGURABLE_NATIVE_AGENTS as readonly string[]).includes(key)) {
+      configurableKeys.add(key);
+    }
   }
 
-  const names = [...new Set([...knownKeys, ...resolvedByKey.keys(), ...nativeKeys])].sort();
+  const names = [...configurableKeys].sort();
 
   const agents: AgentModelEntry[] = names.map((name) => {
     const entry = config[name];
-    const configured = entry?.models ?? [];
+    const configured = entry?.model
+      ? [{ model: entry.model, ...(entry.variant ? { variant: entry.variant } : {}) }]
+      : [];
+    const resolved = resolvedByKey.get(name) ?? null;
     let source: AgentModelEntry["source"] = "plugin";
     if (configured.length > 0) {
       source = "configured";
-    } else if (name === "plan" && (config["prometheus"]?.models?.length ?? 0) > 0) {
+    } else if (name === "plan" && config["prometheus"]?.model !== undefined) {
       source = "inherited";
+    }
+    let effectiveness: AgentModelEntry["effectiveness"] = "plugin";
+    if (entry?.invalid === true) {
+      effectiveness = "invalid";
+    } else if (configured.length > 0) {
+      const configuredModel = configured[0]?.model;
+      if (resolved === null || configuredModel === undefined) {
+        effectiveness = "unverified";
+      } else if (`${resolved.providerID}/${resolved.modelID}` === configuredModel) {
+        effectiveness = "effective";
+      } else {
+        effectiveness = "runtime_mismatch";
+      }
+    } else if (resolved === null) {
+      effectiveness = "unverified";
     }
     return {
       name,
       configured,
-      resolved: resolvedByKey.get(name) ?? null,
+      resolved,
       source,
       invalid: entry?.invalid ?? false,
+      effectiveness,
     };
   });
 
-  return { agents, catalog, hasPassword: password !== null };
+  return { agents, catalog: [...catalog], hasPassword: password !== null };
 }
 
 export function createAgentModelsRoutes(deps: AgentModelsDeps): Hono {
@@ -101,6 +122,14 @@ export function createAgentModelsRoutes(deps: AgentModelsDeps): Hono {
     }
 
     const entries = (body as { entries: Array<{ model: string; variant?: string }> }).entries;
+    const state = await collectAgentModelState(lib, password);
+    if (!state.agents.some((entry) => entry.name === agent)) {
+      return c.json({ error: "agent is not a configurable live subagent" }, 403);
+    }
+    const catalog = new Set(state.catalog);
+    if (entries.some((entry) => !catalog.has(entry.model))) {
+      return c.json({ error: "model is not available in the current environment catalog" }, 400);
+    }
     const result = await lib.applyAndVerify(agent, entries);
     return c.json(result);
   });
