@@ -32,7 +32,7 @@
 | `hello` | A→C | `{agent_id, protocol_version: 1}` | 連線後第一個訊息 |
 | `hello_ack` | C→A | `{}` | **必須**在第一個訊息回;否則 agent 斷線重連 |
 | `heartbeat` | A→C | StatusReport(§5) | 每 60s 一次 |
-| `ack` | A→C | `{status, message, started_at, finished_at, data?}` | command 執行結果(`data` 為可選欄位,目前僅 `gh.auth.start` 使用) |
+| `ack` | A→C | `{status, message, started_at, finished_at, data?}` | command 執行結果(`data` 為可選欄位,目前僅 `gh.auth.start` 與 `agent-models.set` 使用) |
 | `error` | 雙向 | `{code, message}` | 錯誤;agent 對 malformed 用 |
 | `command` | C→A | 見 §4 | center 下指令 |
 | `result` | A→C | 見 §6 | query 的回應,`id` 對應 command id |
@@ -72,11 +72,13 @@
 | `projects.disable` | `{"name"}` | 標記 disabled + 註銷 OpenChamber(失敗回滾);單次 ack |
 | `projects.enable-feature` | `{"name", "feature"}` — `feature` ∈ `knowledge` \| `maintenance` \| `openspec` | 佈建 skill scaffold;單次 ack |
 | `projects.sync` | `{"add"?: [name], "remove"?: [name]}` | 對帳 workspace ↔ OpenChamber 註冊;先 ack `"syncing projects"` 再 ack 結果 |
+| `agent-models.set` | `{"agent", "entries": [{model, variant?}]}` | 寫入 omo.jsonc fallback model + restart ai-dev + 驗證 live 解析(`entries: []` = 清除,恢復自動選模);先 ack `"applying agent model"` 再 ack 結果 |
+| `agent-models.list` | `{}` (query) | 回 result:per-agent model state(§6) |
 
 **重要語意**:
-- 長操作 action(`upgrade`/`reconfigure`/`restart`、四個 provider-key command、`projects.create`/`projects.set-remote`/`projects.sync`)會對**同一個 command id 送兩次 ack** — 第一次 = accepted/starting(此時 `status` 恆為 `"success"`),第二次 = 最終 outcome。center 端必須處理「同 id 兩次 ack」。
+- 長操作 action(`upgrade`/`reconfigure`/`restart`、四個 provider-key command、`projects.create`/`projects.set-remote`/`projects.sync`、`agent-models.set`)會對**同一個 command id 送兩次 ack** — 第一次 = accepted/starting(此時 `status` 恆為 `"success"`),第二次 = 最終 outcome。center 端必須處理「同 id 兩次 ack」。
 - 快速 action(`secrets.set`/`ssh.key.*`/`git.config.set`/`gh.auth.*`/`glab.instance.*`/`projects.enable`/`projects.disable`/`projects.enable-feature`)只送**一次 ack**(最終 outcome)。
-- `gh.auth.start` 的 ack payload 額外帶 `data: {device_code, verification_uri}` — 這是唯一的 ack `data` 使用場合,center 需把它顯示給操作者。
+- `gh.auth.start` 的 ack payload 額外帶 `data: {device_code, verification_uri}`;`agent-models.set` 的最終 ack 在成功時帶 `data`(ApplyResult:`{ok, status, resolved}`)。center 需把 device code 顯示給操作者。
 
 **Deferral**:upgrade 執行中(`isUpgradeRunning()`)時,收到的 command 進 FIFO queue;收到終態 upgrade 事件(任一 step 的 `failure`,或 `cleanup` 的 `success`,經 event bridge 轉發)後才 drain 執行。center 送出的 command 在 upgrade 期間不會立刻得到 ack。
 
@@ -232,6 +234,27 @@
 ```
 
   不含 private key 或 public key 內容
+
+- **agent-models.list** →
+
+```json
+{
+  "agents": [
+    {
+      "name": "general",
+      "configured": [{ "model": "anthropic/claude-sonnet-4-5" }],
+      "resolved": { "providerID": "anthropic", "modelID": "claude-sonnet-4-5" },
+      "source": "configured",
+      "invalid": false,
+      "effectiveness": "effective"
+    }
+  ],
+  "catalog": ["anthropic/claude-sonnet-4-5"],
+  "hasPassword": true
+}
+```
+
+  `agents` 只含**可設定**的 live subagents(live `/agent` 名稱 ∩ 已設定 config keys ∪ native allowlist);`configured`/`resolved` 為 `[]`/`null` 表示未設定;`source` ∈ `plugin | configured | inherited`;`effectiveness` ∈ `plugin | unverified | effective | runtime_mismatch | invalid`;無 server password 時不查 live(`resolved` 全為 `null`);`catalog` 為環境可用 model 清單,`agent-models.set` 會據此拒絕清單外的 model
 
 ## 7. Events(A→C)
 
