@@ -3,6 +3,27 @@ import { createAgentModelsRoutes } from "./agent-models";
 import { listHandlers, stubDeps } from "./agent-models-test-support";
 
 describe("createAgentModelsRoutes — PUT /api/agent-models/:agent", () => {
+  test("clears an existing configured model", async () => {
+    const { deps, cleanup } = stubDeps([
+      { match: /jq -c '\.agents/, stdout: '{"librarian":{"model":"opencode/nemotron-3.5-lightning-free"}}' },
+      { match: /connected-providers\.json/, stdout: '{"connected":["opencode-go"]}' },
+      { match: /provider-models\.json/, stdout: "opencode-go/qwen3.7-plus\n" },
+      { match: /\/agent\b/, stdout: JSON.stringify([
+        { name: "librarian", mode: "subagent", model: { modelID: "qwen3.7-plus", providerID: "opencode-go" } },
+      ]) },
+      { match: /cat ~\/\.omo\/omo\.jsonc/, stdout: '{"agents":{}}' },
+      { match: /del\(\.agents\[\$agent\]\.model/, stdout: "" },
+    ]);
+    const response = await createAgentModelsRoutes(deps).request("http://localhost/api/agent-models/librarian", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ entries: [] }),
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ ok: true, status: "cleared" });
+    cleanup();
+  });
+
   test("rejects invalid entries with 400 and does not write", async () => {
     const { deps, calls, cleanup } = stubDeps([]);
     const app = createAgentModelsRoutes(deps);
@@ -144,6 +165,7 @@ describe("createAgentModelsRoutes — GET /agent-models page", () => {
     expect(html).toContain("Agent Models");
     expect(html).toContain("plan");
     expect(html).toContain("kimi-k3");
+    expect(html).toContain("Use automatic model");
     cleanup();
   });
 
