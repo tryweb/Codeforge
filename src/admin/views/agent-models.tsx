@@ -47,7 +47,8 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
                   <span class="text-muted">—</span>
                 ) : (
                   (() => {
-                    const e = a.configured[0]!;
+                    const e = a.configured[0];
+                    if (!e) return "—";
                     return `${e.model}${e.variant ? ` (${e.variant})` : ""}`;
                   })()
                 )}
@@ -107,6 +108,7 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
           <div id="model-rows"></div>
           <div class="flex gap-2" style="justify-content:flex-end;margin-top:14px;">
             <button class="btn-outline" onclick="closeModal()">Cancel</button>
+            <button id="btn-clear" class="btn-outline" style="display:none;" onclick="clearAgent()">Use automatic model</button>
             <button id="btn-save" onclick="saveAgent()">Save &amp; Restart</button>
           </div>
           <div id="save-result" class="text-sm" style="margin-top:12px;"></div>
@@ -137,6 +139,7 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
           rows.innerHTML = '';
           var primary = agent && agent.configured.length ? agent.configured[0] : {};
           rows.insertAdjacentHTML('beforeend', rowTemplate(primary.model || '', primary.variant || ''));
+          document.getElementById('btn-clear').style.display = agent && agent.configured.length ? 'inline-block' : 'none';
           document.getElementById('save-result').textContent = '';
           document.getElementById('edit-modal').style.display = 'flex';
         }
@@ -158,13 +161,20 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
 
         function renderResult(r) {
           var el = document.getElementById('save-result');
-          if (r.ok && r.status === 'verified') {
+          if (r.ok && r.status === 'cleared') {
+            var automatic = r.resolved ? r.resolved.modelID + ' @ ' + r.resolved.providerID : 'n/a';
+            el.style.color = '#22c55e';
+            el.textContent = 'Configured model cleared. Automatic model: ' + automatic;
+          } else if (r.ok && r.status === 'verified') {
             var resolved = r.resolved ? r.resolved.modelID + ' @ ' + r.resolved.providerID : 'n/a';
             el.style.color = '#22c55e';
             el.textContent = 'Applied and restarted. Current model (plugin default): ' + resolved;
           } else if (!r.ok && r.status === 'unverified') {
             el.style.color = '#f59e0b';
             el.textContent = 'Applied but could not confirm the server came back: ' + r.error;
+          } else if (!r.ok && r.status === 'rollback_failed') {
+            el.style.color = 'var(--danger)';
+            el.textContent = 'Restart and rollback failed; configuration state may have changed: ' + r.error;
           } else if (!r.ok && (r.status === 'write_failed' || r.status === 'restart_failed')) {
             el.style.color = 'var(--danger)';
             el.textContent = 'Failed (configuration was not changed): ' + r.error;
@@ -176,10 +186,20 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
 
         async function saveAgent() {
           var entries = collectEntries();
-          if (!confirm('Save & restart ai-dev? Active OpenCode sessions will be interrupted.')) return;
+          await submitAgentModel(entries, 'Save & restart ai-dev? Active OpenCode sessions will be interrupted.');
+        }
+
+        async function clearAgent() {
+          await submitAgentModel([], 'Clear the configured model and restore automatic selection? Active OpenCode sessions will be interrupted.');
+        }
+
+        async function submitAgentModel(entries, confirmation) {
+          if (!confirm(confirmation)) return;
           var btn = document.getElementById('btn-save');
+          var clearBtn = document.getElementById('btn-clear');
           var status = document.getElementById('restart-status');
           btn.disabled = true;
+          clearBtn.disabled = true;
           status.textContent = 'Applying & restarting…';
           try {
             var res = await fetch('/api/agent-models/' + encodeURIComponent(editAgentName), {
@@ -191,15 +211,23 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
             if (!res.ok) {
               renderResult({ ok: false, error: data.error || ('HTTP ' + res.status) });
               btn.disabled = false;
+              clearBtn.disabled = false;
               status.textContent = '';
               return;
             }
             renderResult(data);
-            status.textContent = 'Restarted ✔';
-            setTimeout(function () { status.textContent = ''; btn.disabled = false; location.reload(); }, 2500);
+            if (data.ok === true) {
+              status.textContent = 'Restarted ✔';
+              setTimeout(function () { status.textContent = ''; btn.disabled = false; clearBtn.disabled = false; location.reload(); }, 2500);
+            } else {
+              btn.disabled = false;
+              clearBtn.disabled = false;
+              status.textContent = '';
+            }
           } catch (e) {
             renderResult({ ok: false, error: e.message });
             btn.disabled = false;
+            clearBtn.disabled = false;
             status.textContent = '';
           }
         }
