@@ -6,7 +6,11 @@ import { createAgentModelsLib, type AgentModelsDeps } from "./agent-models";
 import type { ExecResult as DockerExecResult } from "./docker";
 
 type ExecResponse = { stdout: string; stderr?: string; exitCode?: number };
-type StubOptions = { readonly password?: string | null; readonly restart?: AgentModelsDeps["restart"] };
+type StubOptions = {
+  readonly password?: string | null;
+  readonly restart?: AgentModelsDeps["restart"];
+  readonly snapshotDir?: string;
+};
 
 function stubDeps(responses: ExecResponse[] = [], options: StubOptions = {}) {
   const calls: string[] = [];
@@ -20,7 +24,7 @@ function stubDeps(responses: ExecResponse[] = [], options: StubOptions = {}) {
     },
     restart: options.restart ?? (async () => { restartCount += 1; return { ok: true }; }),
     readEnv: (): Record<string, string> => options.password === null ? {} : { OPENCODE_SERVER_PASSWORD: options.password ?? "testpass" },
-    snapshotDir: dir,
+    snapshotDir: options.snapshotDir ?? dir,
   };
   return {
     deps,
@@ -180,6 +184,65 @@ describe("fetchConnectedCatalog", () => {
 });
 
 describe("applyAndVerify", () => {
+  test("refuses to apply when the config snapshot cannot be created", async () => {
+    const ctx = stubDeps([{ stdout: "", exitCode: 1 }]);
+    const result = await createAgentModelsLib(ctx.deps).applyAndVerify("librarian", []);
+    expect(result).toMatchObject({ ok: false, status: "write_failed" });
+    expect(ctx.restartCount).toBe(0);
+    ctx.cleanup();
+  });
+
+  test("reports snapshot filesystem failure as write_failed", async () => {
+    const ctx = stubDeps([{ stdout: '{"agents":{}}' }], { snapshotDir: "/proc/agent-models" });
+    const result = await createAgentModelsLib(ctx.deps).applyAndVerify("librarian", []);
+    expect(result).toMatchObject({ ok: false, status: "write_failed" });
+    expect(ctx.restartCount).toBe(0);
+    ctx.cleanup();
+  });
+
+  test("clears the configured model and verifies automatic resolution", async () => {
+    const agentsJson = JSON.stringify([
+      { name: "librarian", model: { modelID: "qwen3.7-plus", providerID: "opencode-go" } },
+    ]);
+    const ctx = stubDeps([
+      { stdout: '{"agents":{"librarian":{"model":"opencode/nemotron-3.5-lightning-free"}}}' },
+      { stdout: "" },
+      { stdout: agentsJson },
+    ]);
+    const result = await createAgentModelsLib(ctx.deps).applyAndVerify("librarian", []);
+    expect(result).toEqual({
+      ok: true,
+      status: "cleared",
+      resolved: { modelID: "qwen3.7-plus", providerID: "opencode-go" },
+    });
+    expect(ctx.calls[1]).toContain("del(.agents[$agent].model");
+    ctx.cleanup();
+  });
+
+  test("resolves decorated live names while clearing a config key", async () => {
+    const ctx = stubDeps([
+      { stdout: '{"agents":{"librarian":{"model":"opencode/nemotron-3.5-lightning-free"}}}' },
+      { stdout: "" },
+      { stdout: JSON.stringify([
+        { name: "Librarian - research assistant", model: { modelID: "qwen3.7-plus", providerID: "opencode-go" } },
+      ]) },
+    ]);
+    const result = await createAgentModelsLib(ctx.deps).applyAndVerify("librarian", []);
+    expect(result).toMatchObject({ ok: true, status: "cleared", resolved: { modelID: "qwen3.7-plus", providerID: "opencode-go" } });
+    ctx.cleanup();
+  });
+
+  test("reports rollback_failed when restart failure cannot restore the snapshot", async () => {
+    const ctx = stubDeps([
+      { stdout: '{"agents":{}}' },
+      { stdout: "" },
+      { stdout: "", exitCode: 1, stderr: "restore failed" },
+    ], { restart: async () => ({ ok: false, error: "restart failed" }) });
+    const result = await createAgentModelsLib(ctx.deps).applyAndVerify("librarian", []);
+    expect(result).toEqual({ ok: false, status: "rollback_failed", error: "restart failed; restore failed" });
+    ctx.cleanup();
+  });
+
   test("success: verified when write, restart and /agent reachability succeed", async () => {
     const agentsJson = JSON.stringify([
       { name: "explore", model: { modelID: "gpt-5.6-luna-fast", providerID: "openai" } },

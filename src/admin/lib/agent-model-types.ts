@@ -27,7 +27,7 @@ export interface AgentModelConfig {
 }
 
 export type ApplyResult =
-  | { readonly ok: true; readonly status: "verified"; readonly resolved: ResolvedModel | null }
+  | { readonly ok: true; readonly status: "verified" | "cleared"; readonly resolved: ResolvedModel | null }
   | {
       readonly ok: false;
       readonly status: "runtime_mismatch";
@@ -37,6 +37,7 @@ export type ApplyResult =
     }
   | { readonly ok: false; readonly status: "write_failed"; readonly error: string }
   | { readonly ok: false; readonly status: "restart_failed"; readonly error: string }
+  | { readonly ok: false; readonly status: "rollback_failed"; readonly error: string }
   | { readonly ok: false; readonly status: "unverified"; readonly error: string };
 
 export interface AgentModelsDeps {

@@ -66,10 +66,14 @@ export function createAgentModelsLib(deps: AgentModelsDeps = REAL_DEPS) {
   async function snapshotAgentModelsConfig(): Promise<string | null> {
     const result = await deps.exec(`cat ${OMO_CONFIG} 2>/dev/null`, 10_000);
     if (result.exitCode !== 0 || !result.stdout) return null;
-    if (!existsSync(deps.snapshotDir)) mkdirSync(deps.snapshotDir, { recursive: true });
-    const file = join(deps.snapshotDir, `omo.jsonc.snapshot-${Date.now()}`);
-    writeFileSync(file, result.stdout, "utf-8");
-    return file;
+    try {
+      if (!existsSync(deps.snapshotDir)) mkdirSync(deps.snapshotDir, { recursive: true });
+      const file = join(deps.snapshotDir, `omo.jsonc.snapshot-${Date.now()}`);
+      writeFileSync(file, result.stdout, "utf-8");
+      return file;
+    } catch {
+      return null;
+    }
   }
 
   async function restoreAgentModelsConfig(snapshotFile: string): Promise<{ readonly ok: boolean; readonly error?: string }> {
@@ -94,6 +98,9 @@ export function createAgentModelsLib(deps: AgentModelsDeps = REAL_DEPS) {
 
   async function applyAndVerify(agent: string, entries: readonly FallbackModelEntry[]): Promise<ApplyResult> {
     const snapshot = await snapshotAgentModelsConfig();
+    if (snapshot === null) {
+      return { ok: false, status: "write_failed", error: "could not snapshot ~/.omo/omo.jsonc before applying the model" };
+    }
     const write = await writeAgentFallbackModels(agent, entries);
     if (!write.ok) {
       return { ok: false, status: "write_failed", error: write.error ?? "write failed" };
@@ -101,7 +108,10 @@ export function createAgentModelsLib(deps: AgentModelsDeps = REAL_DEPS) {
 
     const restart = await deps.restart();
     if (!restart.ok) {
-      if (snapshot !== null) await restoreAgentModelsConfig(snapshot);
+      const rollback = await restoreAgentModelsConfig(snapshot);
+      if (!rollback.ok) {
+        return { ok: false, status: "rollback_failed", error: `${restart.error ?? "restart failed"}; ${rollback.error ?? "rollback failed"}` };
+      }
       return { ok: false, status: "restart_failed", error: restart.error ?? "restart failed" };
     }
 
@@ -114,10 +124,15 @@ export function createAgentModelsLib(deps: AgentModelsDeps = REAL_DEPS) {
       return { ok: false, status: "unverified", error: "could not reach the managed opencode /agent endpoint after restart" };
     }
 
-    const resolved = resolvedMap.get(agent) ?? null;
+    const resolved = resolvedMap.get(agent)
+      ?? [...resolvedMap.entries()].find(([name]) => displayNameToKey(name, new Set([agent])) === agent)?.[1]
+      ?? null;
+    if (resolved === null) {
+      return { ok: false, status: "unverified", error: `live agent ${agent} did not resolve a model after restart` };
+    }
     const configured = entries[0]?.model;
-    if (configured !== undefined && (resolved === null || `${resolved.providerID}/${resolved.modelID}` !== configured)) {
-      const actual = resolved === null ? "unavailable" : `${resolved.providerID}/${resolved.modelID}`;
+    if (configured !== undefined && `${resolved.providerID}/${resolved.modelID}` !== configured) {
+      const actual = `${resolved.providerID}/${resolved.modelID}`;
       return {
         ok: false,
         status: "runtime_mismatch",
@@ -126,7 +141,7 @@ export function createAgentModelsLib(deps: AgentModelsDeps = REAL_DEPS) {
         error: `Configured model ${configured} was persisted, but the live agent resolved ${actual}`,
       };
     }
-    return { ok: true, status: "verified", resolved };
+    return { ok: true, status: entries.length === 0 ? "cleared" : "verified", resolved };
   }
 
   return {
