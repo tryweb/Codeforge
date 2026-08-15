@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import type { FallbackModelEntry } from "../lib/agent-models";
 import { PASSWORD_KEYS } from "../lib/env-schema";
 import { readEnvFile } from "../lib/env";
 import { KEY_MANAGED_PROVIDERS } from "../lib/opencode-auth";
@@ -54,6 +55,8 @@ interface Fixture {
   projectDisables: string[];
   projectFeatures: Array<[string, string]>;
   projectSyncs: Array<[string[], string[]]>;
+  agentModelReads: string[];
+  agentModelApplies: Array<{ agent: string; entries: FallbackModelEntry[] }>;
 }
 
 const STATUS_REPORT: StatusReport = {
@@ -149,6 +152,8 @@ function createFixture(overrides: Partial<CommandDeps> = {}): Fixture {
   const projectDisables: string[] = [];
   const projectFeatures: Array<[string, string]> = [];
   const projectSyncs: Array<[string[], string[]]> = [];
+  const agentModelReads: string[] = [];
+  const agentModelApplies: Array<{ agent: string; entries: FallbackModelEntry[] }> = [];
   const deps: CommandDeps = Object.assign(
     {
       isUpgradeRunning: () => upgradeRunning,
@@ -282,6 +287,24 @@ function createFixture(overrides: Partial<CommandDeps> = {}): Fixture {
         projectSyncs.push([add, remove]);
         return { ok: true, messages: ["Added alpha to OpenChamber"] };
       },
+      readAgentModelsState: async () => {
+        agentModelReads.push("agent-models.list");
+        return {
+          agents: [
+            { name: "general", configured: [], resolved: null, source: "plugin", invalid: false, effectiveness: "plugin" },
+          ],
+          catalog: ["anthropic/claude-sonnet-4-5"],
+          hasPassword: true,
+        };
+      },
+      applyAgentModel: async (agent: string, entries: FallbackModelEntry[]) => {
+        agentModelApplies.push({ agent, entries });
+        return {
+          ok: true,
+          status: entries.length === 0 ? "cleared" : "verified",
+          resolved: { providerID: "anthropic", modelID: "claude-sonnet-4-5" },
+        };
+      },
     },
     {
       readStatus: async () => {
@@ -339,6 +362,8 @@ function createFixture(overrides: Partial<CommandDeps> = {}): Fixture {
     projectDisables,
     projectFeatures,
     projectSyncs,
+    agentModelReads,
+    agentModelApplies,
   };
 }
 
@@ -1938,5 +1963,140 @@ describe("query result contracts", () => {
       type: MESSAGE_TYPES.error,
       payload: { code: ERROR_CODES.malformed_command },
     });
+  });
+});
+
+describe("agent model remote management", () => {
+  test("agent-models.list returns the per-agent model state without acknowledgements", async () => {
+    const fixture = createFixture();
+    const dispatcher = createCommandDispatcher(fixture.sender, fixture.deps);
+
+    dispatcher.handle(commandEnvelope("agent-models-query-1", { type: "agent-models.list" }));
+    await flushAsyncWork();
+
+    expect(fixture.agentModelReads).toEqual(["agent-models.list"]);
+    const payload = expectSingleQueryResult(fixture.sent, "agent-models-query-1");
+    expect(payload).toMatchObject({
+      agents: [{ name: "general" }],
+      catalog: ["anthropic/claude-sonnet-4-5"],
+      hasPassword: true,
+    });
+  });
+
+  test("agent-models.set applies entries and acknowledges twice like other long operations", async () => {
+    const fixture = createFixture();
+    const dispatcher = createCommandDispatcher(fixture.sender, fixture.deps);
+
+    dispatcher.handle(commandEnvelope("agent-models-set-1", {
+      type: "agent-models.set",
+      agent: "general",
+      entries: [{ model: "anthropic/claude-sonnet-4-5" }],
+    }));
+    await flushAsyncWork();
+
+    expect(fixture.agentModelApplies).toEqual([
+      { agent: "general", entries: [{ model: "anthropic/claude-sonnet-4-5" }] },
+    ]);
+    expect(fixture.sent).toHaveLength(2);
+    expect(fixture.sent[0]).toMatchObject({
+      type: MESSAGE_TYPES.ack,
+      id: "agent-models-set-1",
+      payload: { status: "success", message: "applying agent model" },
+    });
+    expect(fixture.sent[1]).toMatchObject({
+      type: MESSAGE_TYPES.ack,
+      id: "agent-models-set-1",
+      payload: { status: "success", message: "Agent model applied for general" },
+    });
+  });
+
+  test("agent-models.set with empty entries clears the configured model", async () => {
+    const fixture = createFixture();
+    const dispatcher = createCommandDispatcher(fixture.sender, fixture.deps);
+
+    dispatcher.handle(commandEnvelope("agent-models-clear-1", {
+      type: "agent-models.set",
+      agent: "general",
+      entries: [],
+    }));
+    await flushAsyncWork();
+
+    expect(fixture.agentModelApplies).toEqual([{ agent: "general", entries: [] }]);
+    expect(fixture.sent[1]).toMatchObject({
+      type: MESSAGE_TYPES.ack,
+      payload: { status: "success", message: "Agent model cleared for general; automatic selection restored" },
+    });
+  });
+
+  test("agent-models.set rejects an unknown agent as a failure without applying", async () => {
+    const fixture = createFixture();
+    const dispatcher = createCommandDispatcher(fixture.sender, fixture.deps);
+
+    dispatcher.handle(commandEnvelope("agent-models-unknown-1", {
+      type: "agent-models.set",
+      agent: "ghost",
+      entries: [{ model: "anthropic/claude-sonnet-4-5" }],
+    }));
+    await flushAsyncWork();
+
+    expect(fixture.agentModelApplies).toEqual([]);
+    expect(fixture.sent[1]).toMatchObject({
+      type: MESSAGE_TYPES.ack,
+      payload: { status: "failure", message: "agent ghost is not a configurable live subagent" },
+    });
+  });
+
+  test("agent-models.set rejects a model outside the environment catalog", async () => {
+    const fixture = createFixture();
+    const dispatcher = createCommandDispatcher(fixture.sender, fixture.deps);
+
+    dispatcher.handle(commandEnvelope("agent-models-catalog-1", {
+      type: "agent-models.set",
+      agent: "general",
+      entries: [{ model: "openrouter/not-in-catalog" }],
+    }));
+    await flushAsyncWork();
+
+    expect(fixture.agentModelApplies).toEqual([]);
+    expect(fixture.sent[1]).toMatchObject({
+      type: MESSAGE_TYPES.ack,
+      payload: {
+        status: "failure",
+        message: "model openrouter/not-in-catalog is not available in the current environment catalog",
+      },
+    });
+  });
+
+  test("agent-models.set surfaces an apply failure in the final acknowledgement", async () => {
+    const fixture = createFixture({
+      applyAgentModel: async () => ({ ok: false, status: "write_failed", error: "jq write failed" }),
+    });
+    const dispatcher = createCommandDispatcher(fixture.sender, fixture.deps);
+
+    dispatcher.handle(commandEnvelope("agent-models-fail-1", {
+      type: "agent-models.set",
+      agent: "general",
+      entries: [{ model: "anthropic/claude-sonnet-4-5" }],
+    }));
+    await flushAsyncWork();
+
+    expect(fixture.sent[1]).toMatchObject({
+      type: MESSAGE_TYPES.ack,
+      payload: { status: "failure", message: "jq write failed" },
+    });
+  });
+
+  test("agent-models.set rejects malformed payloads without applying", async () => {
+    const fixture = createFixture();
+    const dispatcher = createCommandDispatcher(fixture.sender, fixture.deps);
+
+    dispatcher.handle(commandEnvelope("agent-models-bad-1", { type: "agent-models.set", agent: "General" }));
+    dispatcher.handle(commandEnvelope("agent-models-bad-2", { type: "agent-models.set", agent: "general", entries: [{ model: "not-a-model-ref" }] }));
+    dispatcher.handle(commandEnvelope("agent-models-bad-3", { type: "agent-models.set", agent: "general", entries: "nope" }));
+    await flushAsyncWork();
+
+    expect(fixture.agentModelApplies).toEqual([]);
+    expect(fixture.sent).toHaveLength(3);
+    expect(fixture.sent.every((env) => env.type === MESSAGE_TYPES.error && (env.payload as { code?: string })?.code === ERROR_CODES.malformed_command)).toBe(true);
   });
 });

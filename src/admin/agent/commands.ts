@@ -1,7 +1,9 @@
+import { existsSync } from "node:fs";
 import {
   dockerCommand,
   execInAiDev,
   getAiDevContainerRef,
+  getComposeProject,
   getSelfContainerRef,
 } from "../lib/docker";
 import { PASSWORD_KEYS } from "../lib/env-schema";
@@ -48,6 +50,15 @@ import {
   readProviderAuthSnapshot as realReadProviderAuthSnapshot,
   removeAuthKey as realRemoveAuthKey,
 } from "../lib/opencode-auth";
+import {
+  collectAgentModelState,
+  createAgentModelsLib,
+  validateFallbackModels,
+  REAL_DEPS as AGENT_MODEL_REAL_DEPS,
+  type AgentModelsViewState,
+  type ApplyResult,
+  type FallbackModelEntry,
+} from "../lib/agent-models";
 import { collectStatus } from "../lib/status";
 import { restartAiDev as restartRealAiDev } from "../lib/restart-ai-dev";
 import { getState, runUpgrade as runRealUpgrade } from "../lib/upgrade";
@@ -75,6 +86,8 @@ const DEFAULT_WORKSPACE_ROOT = "/home/devuser/workspace";
 const DEFAULT_OPENCHAMBER_SETTINGS = "/home/devuser/.config/openchamber/settings.json";
 const DEFAULT_OPENCHAMBER_DISABLED = "/home/devuser/.config/openchamber/disabled-projects.json";
 const SECRET_MASK = "••••••";
+const COMPOSE_FILE = "/opt/ai-engkit/compose.yml";
+const ENV_FILE = "/opt/ai-engkit/.env";
 
 /** Runtime operations used to execute commands and serve read-only queries. */
 export interface CommandDeps {
@@ -117,6 +130,8 @@ export interface CommandDeps {
   projectDisable: (name: string) => Promise<ProjectActionResult>;
   projectEnableFeature: (name: string, feature: string) => Promise<ProjectActionResult>;
   projectSync: (add: string[], remove: string[]) => Promise<ProjectActionResult>;
+  readAgentModelsState: () => Promise<AgentModelsViewState>;
+  applyAgentModel: (agent: string, entries: readonly FallbackModelEntry[]) => Promise<ApplyResult>;
 }
 
 /** Transport boundary for protocol envelopes emitted by the dispatcher. */
@@ -162,6 +177,11 @@ interface ProviderKeyNotePayload {
 interface SecretSetPayload {
   key: string;
   value: string;
+}
+
+interface AgentModelSetPayload {
+  agent: string;
+  entries: FallbackModelEntry[];
 }
 
 interface SshKeyAddPayload {
@@ -287,6 +307,24 @@ function parseSecretSet(payload: unknown): SecretSetPayload | null {
   if (typeof key !== "string" || !realIsSecretKey(key)) return null;
   if (typeof value !== "string" || value.trim() === "") return null;
   return { key, value };
+}
+
+const AGENT_MODEL_KEY_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
+
+function parseAgentModelSet(payload: unknown): AgentModelSetPayload | null {
+  if (!isRecord(payload)) return null;
+  const agent = payload["agent"];
+  if (typeof agent !== "string" || !AGENT_MODEL_KEY_PATTERN.test(agent.trim())) return null;
+  if (validateFallbackModels(payload) !== null) return null;
+  const rawEntries = payload["entries"];
+  const entries: FallbackModelEntry[] = Array.isArray(rawEntries)
+    ? rawEntries.map((entry) => {
+        const record = entry as Record<string, unknown>;
+        const variant = typeof record["variant"] === "string" ? record["variant"] : undefined;
+        return { model: record["model"] as string, ...(variant ? { variant } : {}) };
+      })
+    : [];
+  return { agent: agent.trim(), entries };
 }
 
 function parseSshKeyAdd(payload: unknown): SshKeyAddPayload | null {
@@ -1275,6 +1313,56 @@ export function createCommandDispatcher(sender: CommandSender, deps: CommandDeps
     }
   }
 
+  function dispatchAgentModelSet(env: Envelope, payload: AgentModelSetPayload): void {
+    const startedAt = deps.now();
+    sender.send(buildAck(env.id, {
+      status: "success",
+      message: "applying agent model",
+      started_at: startedAt,
+      finished_at: deps.now(),
+    }));
+    void finishAgentModelSet(env, payload, startedAt);
+  }
+
+  async function finishAgentModelSet(env: Envelope, payload: AgentModelSetPayload, startedAt: string): Promise<void> {
+    const fail = (message: string): void => {
+      sender.send(buildAck(env.id, {
+        status: "failure",
+        message,
+        started_at: startedAt,
+        finished_at: deps.now(),
+      }));
+    };
+    try {
+      const state = await deps.readAgentModelsState();
+      if (!state.agents.some((entry) => entry.name === payload.agent)) {
+        fail(`agent ${payload.agent} is not a configurable live subagent`);
+        return;
+      }
+      const catalog = new Set(state.catalog);
+      const unsupported = payload.entries.find((entry) => !catalog.has(entry.model));
+      if (unsupported !== undefined) {
+        fail(`model ${unsupported.model} is not available in the current environment catalog`);
+        return;
+      }
+      const result = await deps.applyAgentModel(payload.agent, payload.entries);
+      const message = result.ok
+        ? result.status === "cleared"
+          ? `Agent model cleared for ${payload.agent}; automatic selection restored`
+          : `Agent model applied for ${payload.agent}`
+        : result.error;
+      sender.send(buildAck(env.id, {
+        status: result.ok ? "success" : "failure",
+        message,
+        started_at: startedAt,
+        finished_at: deps.now(),
+        ...(result.ok ? { data: result } : {}),
+      }));
+    } catch (error: unknown) {
+      fail(error instanceof Error ? error.message : String(error));
+    }
+  }
+
   async function dispatchQuery(env: Envelope, query: QueryName): Promise<void> {
     let payload: unknown;
     switch (query) {
@@ -1298,6 +1386,9 @@ export function createCommandDispatcher(sender: CommandSender, deps: CommandDeps
         break;
       case "ssh.key.list":
         payload = await deps.sshListKeys();
+        break;
+      case "agent-models.list":
+        payload = await deps.readAgentModelsState();
         break;
     }
     sender.send(buildResult(env.id, maskResultKeyMaterial(payload)));
@@ -1540,6 +1631,15 @@ export function createCommandDispatcher(sender: CommandSender, deps: CommandDeps
         dispatchProjectSync(env, payload);
         return;
       }
+      case "agent-models.set": {
+        const payload = parseAgentModelSet(env.payload);
+        if (payload === null) {
+          sendMalformed(env);
+          return;
+        }
+        dispatchAgentModelSet(env, payload);
+        return;
+      }
       case "status":
       case "env.get":
       case "projects.list":
@@ -1547,6 +1647,7 @@ export function createCommandDispatcher(sender: CommandSender, deps: CommandDeps
       case "git.config.get":
       case "glab.instances":
       case "ssh.key.list":
+      case "agent-models.list":
         void dispatchQuery(env, command);
         return;
     }
@@ -1572,6 +1673,7 @@ export function createCommandDispatcher(sender: CommandSender, deps: CommandDeps
 
 /** Create production command dependencies backed by shared read and action helpers. */
 export function createRealCommandDeps(): CommandDeps {
+  const agentModelsLib = createAgentModelsLib(AGENT_MODEL_REAL_DEPS);
   return {
     isUpgradeRunning: () => getState() === "running",
     runUpgrade: async () => {
@@ -1588,18 +1690,25 @@ export function createRealCommandDeps(): CommandDeps {
     },
     restartContainer: async (service) => {
       try {
-        let containerName: string;
-        switch (service) {
-          case "ai-dev":
-            containerName = await getAiDevContainerRef();
-            break;
-          case "ai-admin":
-            containerName = await getSelfContainerRef();
-            break;
-          default:
-            return { success: false, message: `Unknown service: ${service}` };
+        if (service !== "ai-dev" && service !== "ai-admin") {
+          return { success: false, message: `Unknown service: ${service}` };
+        }
+        // Mirror restartAiDev: when the compose file is present, recreate the
+        // service from compose so a newly pulled image is applied. A plain
+        // `docker restart` keeps the container on its old image.
+        if (existsSync(COMPOSE_FILE)) {
+          const project = await getComposeProject();
+          const result = await dockerCommand(
+            `compose -p ${project} --env-file ${ENV_FILE} -f ${COMPOSE_FILE} up -d --force-recreate ${service} 2>&1`,
+            120_000,
+          );
+          return result.exitCode === 0
+            ? { success: true }
+            : { success: false, message: result.stderr || result.stdout || "Compose recreate failed" };
         }
 
+        const containerName =
+          service === "ai-admin" ? await getSelfContainerRef() : await getAiDevContainerRef();
         const result = await dockerCommand(`restart ${containerName}`, 30_000);
         return result.exitCode === 0
           ? { success: true }
@@ -1649,5 +1758,7 @@ export function createRealCommandDeps(): CommandDeps {
     projectDisable: (name) => realDisableProject(name, {}),
     projectEnableFeature: (name, feature) => realEnableProjectFeature(name, feature, {}),
     projectSync: (add, remove) => realSyncProjects(add, remove, {}),
+    readAgentModelsState: () => collectAgentModelState(agentModelsLib, agentModelsLib.getServerPassword()),
+    applyAgentModel: (agent, entries) => agentModelsLib.applyAndVerify(agent, entries),
   };
 }
