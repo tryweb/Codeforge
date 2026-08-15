@@ -222,11 +222,13 @@ describe("agent protocol", () => {
     expect(parseCommandName({ type: "projects.disable" })).toBe("projects.disable");
     expect(parseCommandName({ type: "projects.enable-feature" })).toBe("projects.enable-feature");
     expect(parseCommandName({ type: "projects.sync" })).toBe("projects.sync");
+    expect(parseCommandName({ type: "agent-models.set" })).toBe("agent-models.set");
     expect(parseCommandName({ type: "delete" })).toBeNull();
     expect(parseCommandName({})).toBeNull();
     expect(parseCommandName(null)).toBeNull();
     expect(parseCommandName("upgrade")).toBeNull();
     expect(parseCommandName({ type: "git.config.get" })).toBeNull();
+    expect(parseCommandName({ type: "agent-models.list" })).toBeNull();
   });
 
   it("parses action and query command types", () => {
@@ -252,6 +254,7 @@ describe("agent protocol", () => {
       "projects.disable",
       "projects.enable-feature",
       "projects.sync",
+      "agent-models.set",
       "status",
       "env.get",
       "projects.list",
@@ -259,6 +262,7 @@ describe("agent protocol", () => {
       "git.config.get",
       "glab.instances",
       "ssh.key.list",
+      "agent-models.list",
     ];
 
     for (const commandType of commandTypes) {

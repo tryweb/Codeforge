@@ -48,7 +48,8 @@ export type CommandName =
   | "projects.enable"
   | "projects.disable"
   | "projects.enable-feature"
-  | "projects.sync";
+  | "projects.sync"
+  | "agent-models.set";
 
 /** Supported read-only query command names. */
 export type QueryName =
@@ -58,7 +59,8 @@ export type QueryName =
   | "providers.list"
   | "git.config.get"
   | "glab.instances"
-  | "ssh.key.list";
+  | "ssh.key.list"
+  | "agent-models.list";
 
 /** Supported action and query command types. */
 export type CommandType = CommandName | QueryName;
@@ -232,6 +234,7 @@ export function parseCommandName(payload: unknown): CommandName | null {
     case "projects.disable":
     case "projects.enable-feature":
     case "projects.sync":
+    case "agent-models.set":
       return commandName;
     default:
       return null;
@@ -265,6 +268,7 @@ export function parseCommandType(payload: unknown): CommandType | null {
     case "projects.disable":
     case "projects.enable-feature":
     case "projects.sync":
+    case "agent-models.set":
     case "status":
     case "env.get":
     case "projects.list":
@@ -272,6 +276,7 @@ export function parseCommandType(payload: unknown): CommandType | null {
     case "git.config.get":
     case "glab.instances":
     case "ssh.key.list":
+    case "agent-models.list":
       return commandType;
     default:
       return null;
