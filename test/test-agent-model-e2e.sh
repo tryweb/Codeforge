@@ -167,6 +167,23 @@ verify_child_model() {
 verify_child_model "general" "$GENERAL_TARGET"
 verify_child_model "librarian" "$LIBRARIAN_TARGET"
 
+jq 'del(.agents.librarian.model, .agents.librarian.variant, .agents.librarian.models, .agents.librarian.fallback_models)' "$BASELINE" \
+  | docker exec -i "$CONTAINER" sh -c 'cat > ~/.omo/omo.jsonc' \
+  || { fail "clear: writing automatic-model config failed"; exit 1; }
+assert_eq "clear: persisted librarian model removed" "null" "$(in_container 'jq -r .agents.librarian.model ~/.omo/omo.jsonc')"
+
+docker restart "$CONTAINER" >/dev/null 2>&1 || { fail "clear: docker restart failed"; exit 1; }
+if wait_for_server 120; then
+  pass "clear: /agent reachable after restart"
+else
+  fail "clear: /agent not reachable within 120s"
+fi
+AUTOMATIC_LIBRARIAN_MODEL="$(get_agents_json | jq -r '.[] | select(.name == "librarian") | .model.providerID + "/" + .model.modelID')"
+[ -n "$AUTOMATIC_LIBRARIAN_MODEL" ] && [ "$AUTOMATIC_LIBRARIAN_MODEL" != "null/null" ] \
+  && pass "clear: librarian has an automatic resolved model" \
+  || fail "clear: librarian automatic model is unavailable"
+verify_child_model "librarian" "$AUTOMATIC_LIBRARIAN_MODEL"
+
 docker exec -i "$CONTAINER" sh -c 'cat > ~/.omo/omo.jsonc' < "$BASELINE" >/dev/null 2>&1
 assert_eq "restore: file byte-identical to baseline" "0" "$(cmp -s <(in_container 'cat ~/.omo/omo.jsonc') "$BASELINE"; echo $?)"
 docker restart "$CONTAINER" >/dev/null 2>&1
