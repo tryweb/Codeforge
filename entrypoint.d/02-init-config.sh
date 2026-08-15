@@ -198,6 +198,7 @@ OMO_CONFIG_FILE="$OMO_CONFIG_DIR/omo.jsonc"
 # Kept in a non-.sh file so the entrypoint runner does not execute it separately.
 source "$(dirname "$0")/lib-omo-model-defaults.bash"
 source "$(dirname "$0")/lib-openchamber-settings.bash"
+source "$(dirname "$0")/lib-native-agent-overrides.bash"
 
 archive_legacy_omo_configs() {
   local legacy_name legacy_file backup_file
@@ -217,6 +218,10 @@ archive_legacy_omo_configs
 mkdir -p "$OMO_CONFIG_DIR"
 
 initialize_omo_permissions "$OMO_CONFIG_FILE" "$DEFAULT_OMO_CONFIG"
+if ! normalize_omo_config "$OMO_CONFIG_FILE"; then
+  echo "Warning: OMO config normalization was not applied; review the reported path" >&2
+fi
+merge_native_agent_overrides "$OPCODE_CONFIG_FILE" "$OMO_CONFIG_FILE"
 
 if command -v lean-ctx &>/dev/null; then
   if ! grep -qF 'lean-ctx shell hook' "$HOME/.bashrc" 2>/dev/null; then

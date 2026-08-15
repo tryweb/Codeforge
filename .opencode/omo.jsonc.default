@@ -29,14 +29,63 @@
         {
           "model": "openai/gpt-5.6-luna"
         }
-      ]
+      ],
+      "tools": {
+        "read": true,
+        "bash": false,
+        "edit": false,
+        "write": false
+      }
     },
-    "explore": {},
-    "oracle": {},
-    "librarian": {},
-    "multimodal-looker": {},
-    "metis": {},
-    "momus": {},
+    "explore": {
+      "tools": {
+        "read": true,
+        "bash": true,
+        "edit": false,
+        "write": false
+      }
+    },
+    "oracle": {
+      "tools": {
+        "read": true,
+        "bash": false,
+        "edit": false,
+        "write": false
+      }
+    },
+    "librarian": {
+      "tools": {
+        "read": true,
+        "bash": false,
+        "edit": false,
+        "write": false,
+        "webfetch": true
+      }
+    },
+    "multimodal-looker": {
+      "tools": {
+        "read": true,
+        "bash": false,
+        "edit": false,
+        "write": false
+      }
+    },
+    "metis": {
+      "tools": {
+        "read": true,
+        "bash": false,
+        "edit": false,
+        "write": false
+      }
+    },
+    "momus": {
+      "tools": {
+        "read": true,
+        "bash": false,
+        "edit": false,
+        "write": false
+      }
+    },
     "sisyphus": {},
     "hephaestus": {},
     "atlas": {},
