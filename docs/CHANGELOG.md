@@ -1,5 +1,11 @@
 ## [Unreleased]
 
+## [1.14.10] - 2026-08-16
+
+### Changed
+- Record the tracked latest version for @colbymchenry/codegraph as 1.5.0.
+- Record the tracked latest version for @fission-ai/openspec as 1.9.0.
+- Update the Ubuntu 24.04 APT package snapshot (3 packages have updates: libssl3t64 (3.0.13-0ubuntu3.11),libsystemd0 (255.4-1ubuntu8.16),libudev1 (255.4-1ubuntu8.16)).
 
 ## [1.14.9] - 2026-08-16
 
@@ -510,7 +516,6 @@
 ### Documentation
 - Add troubleshooting entry for admin restart self-destruct
 
-
 ## [1.6.1] - 2026-07-26
 
 ### Added
@@ -523,7 +528,6 @@
 - Add troubleshooting entry for OpenCode project skill discovery format
 - Update pattern docs for skill folder format and add migration guide
 - Update enable skill doc references to folder format
-
 
 ## [1.6.0] - 2026-07-26
 
@@ -1394,11 +1398,13 @@
 
 ### Changed
 - Improve the `README.md` document structure.
+
+
 ---
 
 ## Format
 
-[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.14.9...HEAD
+[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.14.10...HEAD
 [0.3.0]: https://github.com/tryweb/ai-engkit/releases/tag/v0.3.0
 [0.3.3]: https://github.com/tryweb/ai-engkit/compare/v0.3.0...v0.3.3
 [0.5.0]: https://github.com/tryweb/ai-engkit/compare/v0.3.3...v0.5.0
@@ -1536,3 +1542,4 @@
 [1.14.7]: https://github.com/tryweb/ai-engkit/compare/v1.14.6...v1.14.7
 [1.14.8]: https://github.com/tryweb/ai-engkit/compare/v1.14.7...v1.14.8
 [1.14.9]: https://github.com/tryweb/ai-engkit/compare/v1.14.8...v1.14.9
+[1.14.10]: https://github.com/tryweb/ai-engkit/compare/v1.14.9...v1.14.10
