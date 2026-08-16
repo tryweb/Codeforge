@@ -1,6 +1,7 @@
 import type { FC } from "hono/jsx";
 import { html } from "hono/html";
 import { Layout } from "./layout";
+import type { GainStats, LeanCtxSiteStats } from "../lib/project-tool-status";
 
 interface UpdateCheckResult {
   current: string;
@@ -26,6 +27,8 @@ interface DashboardData {
   glab_auth: string;
   git_user: string;
   project_count: number;
+  leanctx: LeanCtxSiteStats | null;
+  gain: GainStats | null;
   update_check: UpdateCheckResult;
   upgrade_state: string;
   upgrade_events: UpgradeEvent[];
@@ -87,7 +90,63 @@ const DashboardContent: FC<{ data: DashboardData }> = ({ data }) => {
           <h3>Projects</h3>
           <p class="stat-number">{data.project_count}</p>
           <p class="text-sm text-muted">workspace projects</p>
+          {data.leanctx ? (
+            <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+                <span class="text-sm text-muted">projects with leanCTX facts</span>
+                <span class="badge" style="font-size:0.8rem;">{data.leanctx.projectsWithFacts}</span>
+              </div>
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+                <span class="text-sm text-muted">total memory facts</span>
+                <span class="badge" style="font-size:0.8rem;">{data.leanctx.totalMemoryFacts.toLocaleString()}</span>
+              </div>
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+                <span class="text-sm text-muted">active in last 24h</span>
+                <span class="badge" style="font-size:0.8rem;">{data.leanctx.activeProjects24h}</span>
+              </div>
+              <div style="display:flex;align-items:center;justify-content:space-between;">
+                <span class="text-sm text-muted">projects with health score</span>
+                <span class="badge" style="font-size:0.8rem;">{data.leanctx.healthCoverage}</span>
+              </div>
+            </div>
+          ) : (
+            <p class="text-sm text-muted" style="margin-top:12px;">leanCTX statistics unavailable</p>
+          )}
         </div>
+      </div>
+      <div class="card">
+        <h3>Token Savings <span class="text-sm text-muted">· leanCTX</span></h3>
+        {data.gain ? (
+          <div>
+            <div class="flex items-center gap-2" style="margin-bottom:12px;">
+              <span class="stat-number">{data.gain.netTokensSaved.toLocaleString()}</span>
+              <span class="text-sm text-muted">tokens net saved</span>
+              <span class="badge badge-success" style="font-size:0.8rem;">{data.gain.compressionPct.toFixed(1)}% compression</span>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+              <span class="text-sm text-muted">gross saved</span>
+              <span class="text-sm">${data.gain.grossUsdSaved.toFixed(2)} ({data.gain.tokensSaved.toLocaleString()} tokens)</span>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+              <span class="text-sm text-muted">stream overhead</span>
+              <span class="text-sm">${data.gain.overheadUsd.toFixed(2)} ({data.gain.bounceTokens.toLocaleString()} bounce tokens)</span>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+              <span class="text-sm text-muted">net saved</span>
+              <span class="text-sm">${data.gain.netUsdSaved.toFixed(2)}</span>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;padding-top:12px;border-top:1px solid var(--border);">
+              <span class="text-sm text-muted">savings ledger</span>
+              {data.gain.ledgerVerified ? (
+                <span class="badge badge-success" style="font-size:0.8rem;">✓ SHA-256 chain intact · {data.gain.ledgerEvents.toLocaleString()} events</span>
+              ) : (
+                <span class="badge badge-warning" style="font-size:0.8rem;">⚠ chain unverified</span>
+              )}
+            </div>
+          </div>
+        ) : (
+          <p class="text-sm text-muted">Token savings unavailable</p>
+        )}
       </div>
       <div class="card">
         <h3>Auth Status</h3>

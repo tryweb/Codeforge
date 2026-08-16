@@ -26,7 +26,8 @@ import openChamberRoutes from "./routes/openchamber";
 import { getUpdateCheck } from "./routes/versions";
 import { getStatus as getUpgradeStatus } from "./lib/upgrade";
 import { DashboardPage } from "./views/dashboard";
-import { getSelfContainerRef, dockerCommand } from "./lib/docker";
+import { getSelfContainerRef, dockerCommand, execInAiDev } from "./lib/docker";
+import { createToolStatusProbe } from "./lib/project-tool-status";
 
 export const app = new Hono();
 
@@ -152,6 +153,8 @@ app.get("/", async (c) => {
     ? "authenticated" : "not authenticated";
   const gitUser = gitResult.stdout.trim();
   const projectCount = parseInt(projectsResult.stdout.trim() || "0", 10);
+  const toolStatus = createToolStatusProbe({ command: execInAiDev, workspaceRoot: "/home/devuser/workspace" });
+  const [leanctx, gain] = await Promise.all([toolStatus.probeSite(), toolStatus.probeGain()]);
 
   let aiEngkitVer = await getVer("cat /opt/ai-engkit/VERSION") || "dev";
   let adminVer = "dev";
@@ -194,6 +197,8 @@ app.get("/", async (c) => {
       glab_auth: glabAuth,
       git_user: gitUser,
       project_count: projectCount,
+      leanctx,
+      gain,
       update_check: updateCheck,
       upgrade_state: upgradeStatus.state,
       upgrade_events: upgradeStatus.events,

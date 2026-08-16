@@ -35,6 +35,8 @@ const STATUS: StatusResponse = {
   glab_auth: "not authenticated",
   git_user: "Integration Agent",
   project_count: 2,
+  leanctx: null,
+  gain: null,
   admin_version: "1.2.3",
   admin_version_mismatch: false,
 };

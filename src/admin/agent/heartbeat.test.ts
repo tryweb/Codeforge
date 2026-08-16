@@ -21,6 +21,8 @@ describe("heartbeat status report", () => {
       glab_auth: "not authenticated",
       git_user: "Agent User",
       project_count: 4,
+      leanctx: null,
+      gain: null,
       admin_version: "1.2.3",
       admin_version_mismatch: true,
     };

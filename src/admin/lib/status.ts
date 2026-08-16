@@ -7,6 +7,7 @@ import {
   type ExecResult,
 } from "./docker";
 import { readFileSync } from "node:fs";
+import type { GainStats, LeanCtxSiteStats } from "./project-tool-status";
 
 export type AuthStatus = "authenticated" | "not authenticated";
 
@@ -33,6 +34,10 @@ export interface StatusResponse {
   glab_auth: AuthStatus;
   git_user: string;
   project_count: number;
+  /** Site-level leanCTX statistics; null when no probe is wired or the scan fails. */
+  leanctx: LeanCtxSiteStats | null;
+  /** LeanCTX token-savings telemetry; null when no probe is wired or the probe fails. */
+  gain: GainStats | null;
   admin_version: string;
   admin_version_mismatch: boolean;
 }
@@ -43,6 +48,8 @@ export interface StatusDeps {
   getSelfContainerRef: () => Promise<string>;
   dockerCommand: (subcommand: string, timeoutMs: number) => Promise<ExecResult>;
   execInAiDev: (command: string, timeoutMs: number) => Promise<ExecResult>;
+  probeLeanCtxSite?: () => Promise<LeanCtxSiteStats | null>;
+  probeGain?: () => Promise<GainStats | null>;
 }
 
 const DEFAULT_DEPS: StatusDeps = {
@@ -101,7 +108,7 @@ async function getSelfUptime(deps: StatusDeps): Promise<number | null> {
 
 export async function collectStatus(overrides: Partial<StatusDeps> = {}): Promise<StatusResponse> {
   const deps: StatusDeps = { ...DEFAULT_DEPS, ...overrides };
-  const [containerRunning, uptime, ghResult, glabResult, gitResult, projectsResult, adminVersion, adminDigest, aiDevDigest, aiDevVersion, selfUptime] =
+  const [containerRunning, uptime, ghResult, glabResult, gitResult, projectsResult, leanctx, gain, adminVersion, adminDigest, aiDevDigest, aiDevVersion, selfUptime] =
     await Promise.all([
       deps.isAiDevRunning(),
       deps.getAiDevUptime(),
@@ -109,6 +116,8 @@ export async function collectStatus(overrides: Partial<StatusDeps> = {}): Promis
       deps.execInAiDev("glab auth status 2>&1 || true", 10_000),
       deps.execInAiDev("git config --global user.name 2>/dev/null || echo ''", 10_000),
       deps.execInAiDev("ls ~/workspace/ 2>/dev/null | wc -l || echo '0'", 10_000),
+      deps.probeLeanCtxSite ? deps.probeLeanCtxSite() : Promise.resolve(null),
+      deps.probeGain ? deps.probeGain() : Promise.resolve(null),
       getAdminVersion(),
       getAdminImageDigest(deps),
       getAiDevImageDigest(deps),
@@ -148,6 +157,8 @@ export async function collectStatus(overrides: Partial<StatusDeps> = {}): Promis
     glab_auth: glabAuth,
     git_user: gitUser,
     project_count: projectCount,
+    leanctx,
+    gain,
     admin_version: adminVersion,
     admin_version_mismatch: adminVersionMismatch,
   };

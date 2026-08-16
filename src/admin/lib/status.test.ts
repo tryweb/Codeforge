@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { collectStatus, type StatusDeps } from "./status";
 import type { ExecResult } from "./docker";
+import type { GainStats, LeanCtxSiteStats } from "./project-tool-status";
 
 const ok = (stdout: string): ExecResult => ({ stdout, stderr: "", exitCode: 0 });
 
@@ -9,6 +10,8 @@ interface DepOverrides {
   aiDevDigest?: string;
   running?: boolean;
   uptime?: number | null;
+  leanctx?: LeanCtxSiteStats | null;
+  gain?: GainStats | null;
 }
 
 /** Full fake dep set: gh/glab authenticated, git user "u", 3 projects. */
@@ -31,6 +34,8 @@ function makeDeps(overrides: DepOverrides = {}): StatusDeps {
       if (command.startsWith("cat /opt/ai-engkit/VERSION")) return ok("1.2.3");
       return ok("");
     },
+    probeLeanCtxSite: overrides.leanctx === undefined ? undefined : async () => overrides.leanctx,
+    probeGain: overrides.gain === undefined ? undefined : async () => overrides.gain,
   };
 }
 
@@ -42,9 +47,11 @@ describe("collectStatus", () => {
       "admin_version_mismatch",
       "container_status",
       "containers",
+      "gain",
       "gh_auth",
       "git_user",
       "glab_auth",
+      "leanctx",
       "project_count",
       "restart_count",
       "uptime_seconds",
@@ -99,5 +106,37 @@ describe("collectStatus", () => {
     expect(status.gh_auth).toBe("not authenticated");
     expect(status.glab_auth).toBe("not authenticated");
     expect(status.project_count).toBe(0);
+  });
+
+  test("includes site-level leanCTX statistics when a probe is wired", async () => {
+    const leanctx: LeanCtxSiteStats = { projectsWithFacts: 3, totalMemoryFacts: 42, activeProjects24h: 2, healthCoverage: 1 };
+    const status = await collectStatus(makeDeps({ leanctx }));
+    expect(status.leanctx).toEqual(leanctx);
+  });
+
+  test("yields null leanctx when no probe is wired", async () => {
+    const status = await collectStatus(makeDeps());
+    expect(status.leanctx).toBeNull();
+  });
+
+  test("includes gain stats when a probe is wired", async () => {
+    const gain: GainStats = {
+      tokensSaved: 19469611,
+      netTokensSaved: 19351773,
+      compressionPct: 40.31,
+      grossUsdSaved: 55.86,
+      netUsdSaved: 51.21,
+      overheadUsd: 4.65,
+      bounceTokens: 1858165,
+      ledgerVerified: true,
+      ledgerEvents: 5812,
+    };
+    const status = await collectStatus(makeDeps({ gain }));
+    expect(status.gain).toEqual(gain);
+  });
+
+  test("yields null gain when no probe is wired", async () => {
+    const status = await collectStatus(makeDeps());
+    expect(status.gain).toBeNull();
   });
 });
