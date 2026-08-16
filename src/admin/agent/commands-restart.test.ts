@@ -33,7 +33,8 @@ mock.module("../lib/docker", () => ({
 // /opt/ai-engkit/compose.yml does not exist.
 mock.module("node:fs", () => ({
   ...realNodeFs,
-  existsSync: () => true,
+  existsSync: (path: Parameters<typeof realNodeFs.existsSync>[0]) =>
+    path.toString() === "/opt/ai-engkit/compose.yml" || realNodeFs.existsSync(path),
 }));
 
 const PULL_CMD = "pull ghcr.io/tryweb/ai-engkit:latest 2>&1";
