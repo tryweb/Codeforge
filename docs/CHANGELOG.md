@@ -1,6 +1,14 @@
 ## [Unreleased]
 
 
+## [1.14.9] - 2026-08-16
+
+### Fixed
+- Add content-hashed static asset URLs
+
+### Changed
+- Isolate filesystem mock in restart tests
+
 ## [1.14.8] - 2026-08-16
 
 ### Fixed
@@ -1390,7 +1398,7 @@
 
 ## Format
 
-[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.14.8...HEAD
+[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.14.9...HEAD
 [0.3.0]: https://github.com/tryweb/ai-engkit/releases/tag/v0.3.0
 [0.3.3]: https://github.com/tryweb/ai-engkit/compare/v0.3.0...v0.3.3
 [0.5.0]: https://github.com/tryweb/ai-engkit/compare/v0.3.3...v0.5.0
@@ -1527,3 +1535,4 @@
 [1.14.6]: https://github.com/tryweb/ai-engkit/compare/v1.14.5...v1.14.6
 [1.14.7]: https://github.com/tryweb/ai-engkit/compare/v1.14.6...v1.14.7
 [1.14.8]: https://github.com/tryweb/ai-engkit/compare/v1.14.7...v1.14.8
+[1.14.9]: https://github.com/tryweb/ai-engkit/compare/v1.14.8...v1.14.9
