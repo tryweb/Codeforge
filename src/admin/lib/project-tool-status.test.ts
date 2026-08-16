@@ -1,0 +1,370 @@
+import { describe, expect, test } from "bun:test";
+import { createToolStatusProbe } from "./project-tool-status";
+import type { ProjectCommand } from "./projects-overview";
+
+type CmdResult = { exitCode: number; stdout: string; stderr: string };
+
+interface FakeHandlers {
+  codegraph?: (source: string) => CmdResult;
+  site?: (source: string) => CmdResult;
+  gain?: (source: string) => CmdResult;
+  verify?: (source: string) => CmdResult;
+}
+
+/**
+ * Routes each probe source to a fake handler. Defaults model a healthy but
+ * empty environment: codegraph CLI missing (exit 127 → null), no leanCTX
+ * install (exit 0, empty output → null site stats, exit 127 → null gain).
+ */
+function fakeCommand(handlers: FakeHandlers = {}): ProjectCommand {
+  return async (source) => {
+    if (source.includes("gain --json")) {
+      return handlers.gain ? handlers.gain(source) : { exitCode: 127, stdout: "", stderr: "" };
+    }
+    if (source.includes("savings verify")) {
+      return handlers.verify ? handlers.verify(source) : { exitCode: 127, stdout: "", stderr: "" };
+    }
+    if (source.includes("codegraph status")) {
+      return handlers.codegraph ? handlers.codegraph(source) : { exitCode: 127, stdout: "", stderr: "" };
+    }
+    if (source.includes("knowledge/*/knowledge.json")) {
+      return handlers.site ? handlers.site(source) : { exitCode: 0, stdout: "", stderr: "" };
+    }
+    return { exitCode: 0, stdout: "", stderr: "" };
+  };
+}
+
+describe("codegraph probe", () => {
+  test("parses a valid --json status", async () => {
+    const command = fakeCommand({
+      codegraph: () => ({
+        exitCode: 0,
+        stdout: JSON.stringify({
+          initialized: true,
+          version: "1.2.3",
+          fileCount: 10,
+          nodeCount: 100,
+          edgeCount: 200,
+          index: { reindexRecommended: false, state: "ok" },
+        }),
+        stderr: "",
+      }),
+    });
+    const provider = createToolStatusProbe({ command, workspaceRoot: "/workspace", ttlMs: 60_000 });
+
+    const result = await provider.probe("alpha");
+    expect(result.codegraph).not.toBeNull();
+    expect(result.codegraph?.initialized).toBe(true);
+    expect(result.codegraph?.fileCount).toBe(10);
+    expect(result.codegraph?.index?.state).toBe("ok");
+  });
+
+  test("reports an uninitialized index as a status, not a failure", async () => {
+    const command = fakeCommand({
+      codegraph: () => ({ exitCode: 0, stdout: JSON.stringify({ initialized: false }), stderr: "" }),
+    });
+    const provider = createToolStatusProbe({ command, workspaceRoot: "/workspace", ttlMs: 60_000 });
+
+    expect((await provider.probe("alpha")).codegraph).toEqual({ initialized: false });
+  });
+
+  test("returns null when the CLI is missing or fails", async () => {
+    const command = fakeCommand({
+      codegraph: () => ({ exitCode: 127, stdout: "", stderr: "not found" }),
+    });
+    const provider = createToolStatusProbe({ command, workspaceRoot: "/workspace", ttlMs: 60_000 });
+
+    expect((await provider.probe("alpha")).codegraph).toBeNull();
+  });
+
+  test("returns null on empty stdout", async () => {
+    const command = fakeCommand({
+      codegraph: () => ({ exitCode: 0, stdout: "", stderr: "" }),
+    });
+    const provider = createToolStatusProbe({ command, workspaceRoot: "/workspace", ttlMs: 60_000 });
+
+    expect((await provider.probe("alpha")).codegraph).toBeNull();
+  });
+
+  test("returns null on malformed JSON", async () => {
+    const command = fakeCommand({
+      codegraph: () => ({ exitCode: 0, stdout: "not json", stderr: "" }),
+    });
+    const provider = createToolStatusProbe({ command, workspaceRoot: "/workspace", ttlMs: 60_000 });
+
+    expect((await provider.probe("alpha")).codegraph).toBeNull();
+  });
+
+  test("returns null when initialized is not a boolean", async () => {
+    const command = fakeCommand({
+      codegraph: () => ({ exitCode: 0, stdout: JSON.stringify({ initialized: "yes" }), stderr: "" }),
+    });
+    const provider = createToolStatusProbe({ command, workspaceRoot: "/workspace", ttlMs: 60_000 });
+
+    expect((await provider.probe("alpha")).codegraph).toBeNull();
+  });
+
+  test("returns null when the command throws (timeout)", async () => {
+    const command = fakeCommand({
+      codegraph: () => { throw new Error("timed out"); },
+    });
+    const provider = createToolStatusProbe({ command, workspaceRoot: "/workspace", ttlMs: 60_000 });
+
+    expect((await provider.probe("alpha")).codegraph).toBeNull();
+  });
+});
+
+describe("leanCTX site probe", () => {
+  test("parses aggregated site statistics", async () => {
+    const command = fakeCommand({
+      site: () => ({
+        exitCode: 0,
+        stdout: "projects_with_facts=3\ntotal_memory_facts=42\nactive_24h=2\nhealth_coverage=1\n",
+        stderr: "",
+      }),
+    });
+    const provider = createToolStatusProbe({ command, workspaceRoot: "/workspace", ttlMs: 60_000 });
+
+    expect(await provider.probeSite()).toEqual({
+      projectsWithFacts: 3,
+      totalMemoryFacts: 42,
+      activeProjects24h: 2,
+      healthCoverage: 1,
+    });
+  });
+
+  test("parses a zeroed scan as valid stats", async () => {
+    const command = fakeCommand({
+      site: () => ({
+        exitCode: 0,
+        stdout: "projects_with_facts=0\ntotal_memory_facts=0\nactive_24h=0\nhealth_coverage=0\n",
+        stderr: "",
+      }),
+    });
+    const provider = createToolStatusProbe({ command, workspaceRoot: "/workspace", ttlMs: 60_000 });
+
+    expect(await provider.probeSite()).toEqual({
+      projectsWithFacts: 0,
+      totalMemoryFacts: 0,
+      activeProjects24h: 0,
+      healthCoverage: 0,
+    });
+  });
+
+  test("returns null on malformed output", async () => {
+    const command = fakeCommand({ site: () => ({ exitCode: 0, stdout: "garbage", stderr: "" }) });
+    const provider = createToolStatusProbe({ command, workspaceRoot: "/workspace", ttlMs: 60_000 });
+
+    expect(await provider.probeSite()).toBeNull();
+  });
+
+  test("returns null when the scan fails", async () => {
+    const command = fakeCommand({ site: () => ({ exitCode: 1, stdout: "", stderr: "jq missing" }) });
+    const provider = createToolStatusProbe({ command, workspaceRoot: "/workspace", ttlMs: 60_000 });
+
+    expect(await provider.probeSite()).toBeNull();
+  });
+
+  test("returns null when the command throws (timeout)", async () => {
+    const command = fakeCommand({ site: () => { throw new Error("timed out"); } });
+    const provider = createToolStatusProbe({ command, workspaceRoot: "/workspace", ttlMs: 60_000 });
+
+    expect(await provider.probeSite()).toBeNull();
+  });
+
+  test("caches the site scan and re-probes after invalidate", async () => {
+    let calls = 0;
+    const command = fakeCommand({
+      site: () => {
+        calls += 1;
+        return { exitCode: 0, stdout: "projects_with_facts=1\ntotal_memory_facts=5\nactive_24h=1\nhealth_coverage=0\n", stderr: "" };
+      },
+    });
+    const provider = createToolStatusProbe({ command, workspaceRoot: "/workspace", ttlMs: 60_000 });
+
+    await provider.probeSite();
+    await provider.probeSite();
+    expect(calls).toBe(1);
+
+    provider.invalidate();
+    await provider.probeSite();
+    expect(calls).toBe(2);
+  });
+});
+
+describe("leanCTX gain probe", () => {
+  const gainJson = JSON.stringify({
+    summary: {
+      tokens_saved: 19469611,
+      net_tokens_saved: 19351773,
+      effective_compression_pct: 40.31,
+      stream_savings: {
+        gross_usd_saved: 55.86,
+        overhead_usd: 4.65,
+        net_usd_saved: 51.21,
+        bounce_tokens: 1858165,
+      },
+    },
+  });
+
+  test("parses gain stats with a verified ledger", async () => {
+    const command = fakeCommand({
+      gain: () => ({ exitCode: 0, stdout: gainJson, stderr: "" }),
+      verify: () => ({ exitCode: 0, stdout: "Savings ledger: OK — 5812 event(s), SHA-256 chain intact.", stderr: "" }),
+    });
+    const provider = createToolStatusProbe({ command, workspaceRoot: "/workspace", ttlMs: 60_000 });
+
+    expect(await provider.probeGain()).toEqual({
+      tokensSaved: 19469611,
+      netTokensSaved: 19351773,
+      compressionPct: 40.31,
+      grossUsdSaved: 55.86,
+      netUsdSaved: 51.21,
+      overheadUsd: 4.65,
+      bounceTokens: 1858165,
+      ledgerVerified: true,
+      ledgerEvents: 5812,
+    });
+  });
+
+  test("keeps gain data but reports an unverified ledger when verify fails", async () => {
+    const command = fakeCommand({
+      gain: () => ({ exitCode: 0, stdout: gainJson, stderr: "" }),
+      verify: () => ({ exitCode: 1, stdout: "", stderr: "ledger missing" }),
+    });
+    const provider = createToolStatusProbe({ command, workspaceRoot: "/workspace", ttlMs: 60_000 });
+
+    const stats = await provider.probeGain();
+    expect(stats).not.toBeNull();
+    expect(stats?.netTokensSaved).toBe(19351773);
+    expect(stats?.ledgerVerified).toBe(false);
+    expect(stats?.ledgerEvents).toBe(0);
+  });
+
+  test("returns null when the gain JSON is malformed", async () => {
+    const command = fakeCommand({
+      gain: () => ({ exitCode: 0, stdout: "not json", stderr: "" }),
+      verify: () => ({ exitCode: 0, stdout: "Savings ledger: OK — 1 event(s), SHA-256 chain intact.", stderr: "" }),
+    });
+    const provider = createToolStatusProbe({ command, workspaceRoot: "/workspace", ttlMs: 60_000 });
+
+    expect(await provider.probeGain()).toBeNull();
+  });
+
+  test("returns null when the gain command fails or is missing", async () => {
+    const command = fakeCommand({ verify: () => ({ exitCode: 0, stdout: "", stderr: "" }) });
+    const provider = createToolStatusProbe({ command, workspaceRoot: "/workspace", ttlMs: 60_000 });
+
+    expect(await provider.probeGain()).toBeNull();
+  });
+
+  test("returns null when the command throws (timeout)", async () => {
+    const command = fakeCommand({ gain: () => { throw new Error("timed out"); } });
+    const provider = createToolStatusProbe({ command, workspaceRoot: "/workspace", ttlMs: 60_000 });
+
+    expect(await provider.probeGain()).toBeNull();
+  });
+
+  test("caches the gain probe and re-probes after invalidate", async () => {
+    let calls = 0;
+    const command = fakeCommand({
+      gain: () => {
+        calls += 1;
+        return { exitCode: 0, stdout: gainJson, stderr: "" };
+      },
+      verify: () => ({ exitCode: 0, stdout: "Savings ledger: OK — 1 event(s), SHA-256 chain intact.", stderr: "" }),
+    });
+    const provider = createToolStatusProbe({ command, workspaceRoot: "/workspace", ttlMs: 60_000 });
+
+    await provider.probeGain();
+    await provider.probeGain();
+    expect(calls).toBe(1);
+
+    provider.invalidate();
+    await provider.probeGain();
+    expect(calls).toBe(2);
+  });
+});
+
+describe("cache and invalidation", () => {
+  test("reuses results within the TTL and re-probes after invalidate", async () => {
+    let calls = 0;
+    const command = fakeCommand({
+      codegraph: () => {
+        calls += 1;
+        return { exitCode: 0, stdout: JSON.stringify({ initialized: false }), stderr: "" };
+      },
+    });
+    const provider = createToolStatusProbe({ command, workspaceRoot: "/workspace", ttlMs: 60_000 });
+
+    await provider.probe("alpha");
+    await provider.probe("alpha");
+    expect(calls).toBe(1);
+
+    provider.invalidate("alpha");
+    await provider.probe("alpha");
+    expect(calls).toBe(2);
+
+    await provider.probe("beta");
+    expect(calls).toBe(3);
+
+    provider.invalidate();
+    await provider.probe("alpha");
+    expect(calls).toBe(4);
+  });
+
+  test("caches null results too", async () => {
+    let calls = 0;
+    const command = fakeCommand({
+      codegraph: () => {
+        calls += 1;
+        return { exitCode: 127, stdout: "", stderr: "" };
+      },
+    });
+    const provider = createToolStatusProbe({ command, workspaceRoot: "/workspace", ttlMs: 60_000 });
+
+    await provider.probe("alpha");
+    await provider.probe("alpha");
+    expect(calls).toBe(1);
+    expect((await provider.probe("alpha")).codegraph).toBeNull();
+  });
+
+  test("re-probes after the TTL expires", async () => {
+    let calls = 0;
+    const command = fakeCommand({
+      codegraph: () => {
+        calls += 1;
+        return { exitCode: 0, stdout: JSON.stringify({ initialized: false }), stderr: "" };
+      },
+    });
+    const provider = createToolStatusProbe({ command, workspaceRoot: "/workspace", ttlMs: 1 });
+
+    await provider.probe("alpha");
+    await new Promise((r) => setTimeout(r, 5));
+    await provider.probe("alpha");
+    expect(calls).toBe(2);
+  });
+
+  test("bounds concurrent probes by the configured concurrency", async () => {
+    let codegraphInFlight = 0;
+    let maxCodegraphInFlight = 0;
+    const command: ProjectCommand = async (source) => {
+      if (source.includes("codegraph status")) {
+        codegraphInFlight += 1;
+        maxCodegraphInFlight = Math.max(maxCodegraphInFlight, codegraphInFlight);
+        await new Promise((r) => setTimeout(r, 10));
+        codegraphInFlight -= 1;
+        return { exitCode: 0, stdout: JSON.stringify({ initialized: false }), stderr: "" };
+      }
+      await new Promise((r) => setTimeout(r, 5));
+      return { exitCode: 0, stdout: "", stderr: "" };
+    };
+    const provider = createToolStatusProbe({ command, workspaceRoot: "/workspace", concurrency: 4, ttlMs: 60_000 });
+
+    await Promise.all(
+      ["p1", "p2", "p3", "p4", "p5", "p6", "p7", "p8", "p9", "p10"].map((n) => provider.probe(n)),
+    );
+    expect(maxCodegraphInFlight).toBeLessThanOrEqual(4);
+    expect(maxCodegraphInFlight).toBeGreaterThan(1);
+  });
+});
