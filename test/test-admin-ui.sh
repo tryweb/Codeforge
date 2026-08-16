@@ -385,6 +385,7 @@ fi
 # Creates a real project, asserts registration + dedupe, then cleans up.
 # ============================================================
 E2E_PROJ="e2e-reg-$(date +%s)"
+TOOL_PROJ="e2e-tool-$(date +%s)"
 # Resolve the ai-dev container: prefer the legacy name (matches dev setups),
 # then fall back to the compose service label, which survives container_name
 # overrides (CI renames the container to "ci-test").
@@ -396,8 +397,9 @@ AI_DEV_CONTAINER="${AI_DEV_CONTAINER:-ai-engkit-dev}"
 e2e_project_cleanup() {
   curl -s -o /dev/null -b "$COOKIE_JAR" -X POST "$BASE/api/projects/sync" \
     -H "Content-Type: application/json" \
-    -d "{\"remove\":[\"$E2E_PROJ\"]}" >/dev/null 2>&1 || true
+    -d "{\"remove\":[\"$E2E_PROJ\",\"$TOOL_PROJ\"]}" >/dev/null 2>&1 || true
   docker exec "$AI_DEV_CONTAINER" sh -c "rm -rf /home/devuser/workspace/$E2E_PROJ" >/dev/null 2>&1 || true
+  docker exec "$AI_DEV_CONTAINER" sh -c "rm -rf /home/devuser/workspace/$TOOL_PROJ" >/dev/null 2>&1 || true
 }
 trap e2e_project_cleanup EXIT
 
@@ -487,6 +489,18 @@ fi
 # ============================================================
 # 19b. Projects page + overview tool status (codegraph)
 # ============================================================
+TOOL_CREATE_RES=$(curl -s -w "\n%{http_code}" -b "$COOKIE_JAR" \
+  -X POST "$BASE/api/projects" \
+  -H "Content-Type: application/json" \
+  -d "{\"name\":\"$TOOL_PROJ\",\"git_init\":false}" 2>/dev/null || echo "")
+TOOL_CREATE_CODE=$(echo "$TOOL_CREATE_RES" | tail -1)
+TOOL_CREATE_OK=$(echo "$TOOL_CREATE_RES" | head -n -1 | jq -r '.ok // false' 2>/dev/null || echo "false")
+if [ "$TOOL_CREATE_CODE" = "200" ] && [ "$TOOL_CREATE_OK" = "true" ]; then
+  pass "Created tool-status project fixture"
+else
+  fail "Could not create tool-status project fixture ($TOOL_CREATE_CODE)"
+fi
+
 PROJECTS_HTML=$(curl -s -b "$COOKIE_JAR" "$BASE/projects" 2>/dev/null || echo "")
 assert_contains "Projects page renders CodeGraph column" "CodeGraph" "$PROJECTS_HTML"
 assert_not_contains "Projects page has no leanCTX column" "leanCTX" "$PROJECTS_HTML"
