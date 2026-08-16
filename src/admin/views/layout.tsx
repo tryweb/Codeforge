@@ -1,5 +1,7 @@
 import type { FC, Child } from "hono/jsx";
 import { html } from "hono/html";
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 
 const NAV_ITEMS = [
   { href: "/", label: "Dashboard", icon: "⊞" },
@@ -20,6 +22,19 @@ const NAV_ITEMS = [
   { href: "/env", label: "Environment", icon: "⚙" },
   { href: "/upgrade", label: "Upgrade", icon: "▲" },
 ];
+
+const ASSET_DATE = "20260816";
+const ASSET_ROOT = new URL("../static/", import.meta.url);
+
+function assetHash(name: string): string {
+  return createHash("sha256")
+    .update(readFileSync(new URL(name, ASSET_ROOT)))
+    .digest("hex")
+    .slice(0, 12);
+}
+
+const STYLE_ASSET_VERSION = `${ASSET_DATE}-${assetHash("style.css")}`;
+const APP_ASSET_VERSION = `${ASSET_DATE}-${assetHash("app.js")}`;
 
 interface LayoutProps {
   title: string;
@@ -54,7 +69,7 @@ export const Layout: FC<LayoutProps> = ({ title, children, currentPath }) => {
             window.addEventListener("resize", checkMobile);
           })();
         `}</script>
-        <link rel="stylesheet" href="/static/style.css?v=20260728b" />
+        <link rel="stylesheet" href={`/static/style.css?v=${STYLE_ASSET_VERSION}`} />
       </head>
       <body>
         <div class="app-layout">
@@ -119,7 +134,7 @@ export const Layout: FC<LayoutProps> = ({ title, children, currentPath }) => {
             <button class="btn-outline" onclick="document.getElementById('about-modal').style.display='none';">Close</button>
           </div>
         </div>
-        <script src="/static/app.js?v=20260728b" />
+        <script src={`/static/app.js?v=${APP_ASSET_VERSION}`} />
       </body>
     </html>
   );
