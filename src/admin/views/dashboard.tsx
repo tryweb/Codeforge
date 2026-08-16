@@ -48,18 +48,98 @@ const UpdateBadge: FC<{ check: UpdateCheckResult }> = ({ check }) => {
   return <span class="badge badge-success" style="font-size:0.65rem;">✓ Latest</span>;
 };
 
+type PillTone = "success" | "danger" | "warning" | "neutral";
+
+/** Reusable status pill — tone maps to .status-pill--{tone}; ariaLabel for glyph-only labels. */
+const StatusPill: FC<{ tone: PillTone; label: string; ariaLabel?: string }> = ({ tone, label, ariaLabel }) => (
+  <span class={`status-pill status-pill--${tone}`} aria-label={ariaLabel}>{label}</span>
+);
+
+/** Reusable overview metric card — dl/dt/dd semantics; optional accent tone for the headline metric. */
+const MetricCard: FC<{
+  title: string;
+  value: string;
+  sub?: string;
+  foot?: string;
+  tone?: "default" | "accent";
+}> = ({ title, value, sub, foot, tone = "default" }) => (
+  <dl class={`metric-card${tone === "accent" ? " metric-card--accent" : ""}`}>
+    <dt class="metric-card__title">{title}</dt>
+    <dd class="metric-card__value">{value}</dd>
+    {sub && <dd class="metric-card__sub">{sub}</dd>}
+    {foot && <dd class="metric-card__foot">{foot}</dd>}
+  </dl>
+);
+
 const DashboardContent: FC<{ data: DashboardData }> = ({ data }) => {
   const isRunning = data.container_status === "running";
   const isUpgrading = data.upgrade_state === "running";
+  const { gain, leanctx } = data;
+  const uptime = data.uptime_seconds != null ? `${Math.floor(data.uptime_seconds / 60)}m` : null;
   return (
     <div>
-      <h2 style="margin-bottom:24px;">Dashboard</h2>
+      <h2 style="margin-bottom:16px;">Dashboard</h2>
+
+      <section class="site-summary" aria-label="Site summary">
+        <span class="site-summary__item">
+          <StatusPill tone={isRunning ? "success" : "danger"} label={data.container_status} />
+          {uptime && <span class="site-summary__value">{uptime} uptime</span>}
+        </span>
+        <span class="site-summary__item">
+          <span class="site-summary__label">Projects</span>
+          <strong class="site-summary__value">{data.project_count}</strong>
+        </span>
+        <span class="site-summary__item">
+          <span class="site-summary__label">GitHub</span>
+          <StatusPill tone={data.gh_auth === "authenticated" ? "success" : "warning"} label={data.gh_auth === "authenticated" ? "✓" : "✗"} ariaLabel={`GitHub ${data.gh_auth}`} />
+        </span>
+        <span class="site-summary__item">
+          <span class="site-summary__label">GitLab</span>
+          <StatusPill tone={data.glab_auth === "authenticated" ? "success" : "warning"} label={data.glab_auth === "authenticated" ? "✓" : "✗"} ariaLabel={`GitLab ${data.glab_auth}`} />
+        </span>
+        <span class="site-summary__item">
+          <span class="site-summary__label">Git</span>
+          <span class={`site-summary__value${data.git_user ? "" : " text-muted"}`}>{data.git_user || "not configured"}</span>
+        </span>
+        {data.admin_version_mismatch && (
+          <span class="site-summary__item">
+            <StatusPill tone="warning" label={`⚠ ${data.admin_version}`} ariaLabel="Admin container version mismatch" />
+          </span>
+        )}
+        <span class="site-summary__item">
+          <UpdateBadge check={data.update_check} />
+        </span>
+      </section>
+
       {!isRunning && (
         <div class="card" style="border-color:var(--danger);margin-bottom:16px;">
           <strong class="text-danger">⚠ ai-dev container is not running</strong>
           <p class="text-sm text-muted mt-4">Some features (auth, SSH, git, projects, upgrade) are unavailable while ai-dev is down.</p>
         </div>
       )}
+
+      <section class="metric-row" aria-label="Overview metrics">
+        <MetricCard
+          title="Token Savings"
+          tone="accent"
+          value={gain ? gain.netTokensSaved.toLocaleString() : "—"}
+          sub={gain ? `$${gain.netUsdSaved.toFixed(2)} net saved` : "unavailable"}
+          foot={gain ? `${gain.compressionPct.toFixed(1)}% compression` : undefined}
+        />
+        <MetricCard
+          title="leanCTX Memory"
+          value={leanctx ? leanctx.totalMemoryFacts.toLocaleString() : "—"}
+          sub={leanctx ? `${leanctx.projectsWithFacts} projects with facts` : "unavailable"}
+          foot={leanctx ? `${leanctx.healthCoverage} projects with health score` : undefined}
+        />
+        <MetricCard
+          title="leanCTX Activity"
+          value={leanctx ? String(leanctx.activeProjects24h) : "—"}
+          sub={leanctx ? "active in last 24h" : "unavailable"}
+          foot={gain ? (gain.ledgerVerified ? `✓ ledger intact · ${gain.ledgerEvents.toLocaleString()} events` : "⚠ ledger unverified") : undefined}
+        />
+      </section>
+
       <div class="grid-2">
         <div class="card">
           <h3>Container Status</h3>
@@ -118,7 +198,7 @@ const DashboardContent: FC<{ data: DashboardData }> = ({ data }) => {
         <h3>Token Savings <span class="text-sm text-muted">· leanCTX</span></h3>
         {data.gain ? (
           <div>
-            <div class="flex items-center gap-2" style="margin-bottom:12px;">
+            <div class="dashboard-token-summary flex items-center gap-2" style="margin-bottom:12px;">
               <span class="stat-number">{data.gain.netTokensSaved.toLocaleString()}</span>
               <span class="text-sm text-muted">tokens net saved</span>
               <span class="badge badge-success" style="font-size:0.8rem;">{data.gain.compressionPct.toFixed(1)}% compression</span>
@@ -166,7 +246,7 @@ const DashboardContent: FC<{ data: DashboardData }> = ({ data }) => {
           </tr>
         </table>
       </div>
-      <div class="card">
+      <div class="card" id="versions-card">
         <h3>Component Versions</h3>
         <table>
           <tr><th>Component</th><th>Version</th></tr>
@@ -196,6 +276,7 @@ const DashboardContent: FC<{ data: DashboardData }> = ({ data }) => {
           </div>
         )}
       </div>
+      {/* allow: SIZE_OK — file dominated by the pre-existing inline upgrade/restart JS; splitting into app.js is out of scope */}
       <script>{html`
         let inlineEventSource = null;
         let lastEventId = 0;
@@ -262,7 +343,7 @@ const DashboardContent: FC<{ data: DashboardData }> = ({ data }) => {
           }
         }
         function ensureProgressElements() {
-          var card = document.querySelector(".card h3");
+          var card = document.getElementById("versions-card");
           if (!card) return null;
           var existing = document.getElementById("upgrade-inline-progress");
           if (existing) return existing;
@@ -270,7 +351,7 @@ const DashboardContent: FC<{ data: DashboardData }> = ({ data }) => {
           container.id = "upgrade-inline-progress";
           container.style.marginTop = "12px";
           container.innerHTML = '<div class="progress-bar mb-4"><div class="fill" id="inline-progress-fill" style="width:0%;"></div></div><div id="inline-log-viewer" class="log-viewer" style="max-height:200px;"></div>';
-          card.closest(".card").appendChild(container);
+          card.appendChild(container);
           return container;
         }
         function connectUpgradeSSE() {
