@@ -13,10 +13,12 @@ export interface ProjectSyncRoutesOptions {
   disabledPath: string;
   workspaceRoot: string;
   listProjects: () => Promise<string[]>;
+  /** Called after an applied sync so callers can drop cached project state. */
+  invalidateToolStatus?: () => void;
 }
 
 export function createProjectSyncRoutes(options: ProjectSyncRoutesOptions) {
-  const { command, settingsPath, disabledPath, workspaceRoot, listProjects } = options;
+  const { command, settingsPath, disabledPath, workspaceRoot, listProjects, invalidateToolStatus } = options;
   const sync = new Hono();
 
   sync.get("/api/projects/sync", async (c) => {
@@ -64,7 +66,14 @@ export function createProjectSyncRoutes(options: ProjectSyncRoutesOptions) {
       return c.json({ error: "add/remove must be arrays of valid project names" }, 400);
     }
 
-    const result = await syncProjects(add, remove, { command, settingsPath, workspaceRoot });
+    const result = await syncProjects(add, remove, {
+      command,
+      settingsPath,
+      workspaceRoot,
+      // The overview cache reflects workspace/OpenChamber state; any applied
+      // sync invalidates it so the next overview re-probes tool status.
+      onSyncDone: invalidateToolStatus,
+    });
     if (!result.ok) {
       return c.json({ error: result.error, messages: result.messages ?? [] }, 500);
     }

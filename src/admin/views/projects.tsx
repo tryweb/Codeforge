@@ -8,6 +8,7 @@ const ProjectsContent: FC<{ projects: string[] }> = ({ projects }) => (
       <h2>OpenCode Projects</h2>
       <div class="flex gap-2">
         <button onclick="syncProjects()" class="btn-outline">↻ Sync</button>
+        <button id="btn-tool-refresh" onclick="refreshToolStatus()" class="btn-outline">⟳ Re-scan</button>
         <button onclick="showCreateForm()" class="btn-outline">+ New Project</button>
       </div>
     </div>
@@ -24,16 +25,17 @@ const ProjectsContent: FC<{ projects: string[] }> = ({ projects }) => (
     </div>
     <div class="card">
       <table id="projects-table">
-        <tr><th>Name</th><th class="text-center">Knowledge</th><th class="text-center">Maintenance</th><th class="text-center">OpenSpec</th></tr>
+        <tr><th>Name</th><th class="text-center">Knowledge</th><th class="text-center">Maintenance</th><th class="text-center">OpenSpec</th><th class="text-center">CodeGraph</th></tr>
         {projects.map(name => (
           <tr data-project={name}>
             <td><code>{name}</code></td>
             <td class="feat-cell text-center" data-feat="knowledge"><span class="text-muted">...</span></td>
             <td class="feat-cell text-center" data-feat="maintenance"><span class="text-muted">...</span></td>
             <td class="feat-cell text-center" data-feat="openspec"><span class="text-muted">...</span></td>
+            <td class="tool-cell text-center" data-tool="codegraph"><span class="text-muted">...</span></td>
           </tr>
         ))}
-        {projects.length === 0 && <tr><td colspan="4" class="text-muted">No projects yet</td></tr>}
+        {projects.length === 0 && <tr><td colspan="5" class="text-muted">No projects yet</td></tr>}
       </table>
     </div>
     <div id="create-modal" class="modal-overlay" style="display:none;">
@@ -58,6 +60,25 @@ const ProjectsContent: FC<{ projects: string[] }> = ({ projects }) => (
       </div>
     </div>
     <script>{html`
+      function formatWhen(value) {
+        const t = new Date(value);
+        if (isNaN(t.getTime())) return value;
+        const diff = Date.now() - t.getTime();
+        if (diff < 0) return "now";
+        const mins = Math.floor(diff / 60000);
+        if (mins < 1) return "just now";
+        if (mins < 60) return mins + "m ago";
+        const hours = Math.floor(mins / 60);
+        if (hours < 24) return hours + "h ago";
+        const days = Math.floor(hours / 24);
+        if (days < 30) return days + "d ago";
+        return t.toISOString().slice(0, 10);
+      }
+
+      function escapeHtml(s) {
+        return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+      }
+
       async function loadFeatures() {
         const rows = document.querySelectorAll("#projects-table tr[data-project]");
         const res = await fetch("/api/projects/overview").then(r => r.json()).catch(() => null);
@@ -80,6 +101,24 @@ const ProjectsContent: FC<{ projects: string[] }> = ({ projects }) => (
             }
           });
 
+          row.querySelectorAll(".tool-cell").forEach(cell => {
+            const status = data.codegraph;
+            if (!status) {
+              cell.innerHTML = '<span class="text-muted">unknown</span>';
+            } else if (status.initialized) {
+              const parts = [];
+              if (typeof status.lastIndexed === "string") parts.push("last indexed " + formatWhen(status.lastIndexed));
+              if (typeof status.fileCount === "number") parts.push(status.fileCount.toLocaleString() + " files");
+              if (typeof status.nodeCount === "number") parts.push(status.nodeCount.toLocaleString() + " nodes");
+              if (typeof status.edgeCount === "number") parts.push(status.edgeCount.toLocaleString() + " edges");
+              if (status.index && status.index.reindexRecommended) parts.push("reindex recommended");
+              if (status.index && typeof status.index.state === "string") parts.push("state: " + status.index.state);
+              cell.innerHTML = '<span class="badge badge-success" style="font-size:0.85rem;" title="' + parts.map(escapeHtml).join("&#10;") + '">&#10003;</span>';
+            } else {
+              cell.innerHTML = '<span class="badge" style="font-size:0.75rem;color:var(--text-muted);">not indexed</span>';
+            }
+          });
+
           const nameCell = row.querySelector("td:first-child");
           const existing = nameCell.querySelector(".git-remote-info");
           if (existing) existing.remove();
@@ -94,7 +133,10 @@ const ProjectsContent: FC<{ projects: string[] }> = ({ projects }) => (
           }
           nameCell.appendChild(info);
           const disabled = !!data.disabled;
+          const existingState = nameCell.querySelector(".state-wrap");
+          if (existingState) existingState.remove();
           const stateWrap = document.createElement("span");
+          stateWrap.className = "state-wrap";
           stateWrap.style.cssText = "display:flex;align-items:center;gap:6px;margin-top:2px;";
           if (disabled) {
             const badge = document.createElement("span");
@@ -112,6 +154,23 @@ const ProjectsContent: FC<{ projects: string[] }> = ({ projects }) => (
           stateWrap.appendChild(toggle);
           nameCell.appendChild(stateWrap);
         });
+      }
+
+      let refreshBusy = false;
+      async function refreshToolStatus() {
+        if (refreshBusy) return;
+        refreshBusy = true;
+        const btn = document.getElementById("btn-tool-refresh");
+        if (btn) { btn.disabled = true; btn.textContent = "Scanning..."; }
+        try {
+          await fetch("/api/projects/tool-status/refresh", { method: "POST" });
+          await loadFeatures();
+        } catch (e) {
+          if (btn) { btn.textContent = "Error"; }
+        } finally {
+          if (btn) { btn.disabled = false; btn.textContent = "⟳ Re-scan"; }
+          refreshBusy = false;
+        }
       }
 
       async function setGitRemote(el) {

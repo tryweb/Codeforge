@@ -120,4 +120,65 @@ describe("collectProjectOverviews", () => {
       await f.cleanup();
     }
   });
+
+  test("attaches tool status fields when a provider is supplied", async () => {
+    const f = await fixture();
+    try {
+      const command = createCommand(f.workspaceRoot);
+      const toolStatus = {
+        probe: async () => ({
+          codegraph: { initialized: false },
+        }),
+        probeSite: async () => null,
+        probeGain: async () => null,
+        invalidate: () => {},
+      };
+
+      const overviews = await collectProjectOverviews(command, f.workspaceRoot, f.settingsPath, f.disabledPath, toolStatus);
+      const byName = new Map(overviews.map((o) => [o.name, o]));
+
+      expect(byName.get("alpha")?.codegraph).toEqual({ initialized: false });
+      expect(byName.get("beta")?.codegraph).toEqual({ initialized: false });
+    } finally {
+      await f.cleanup();
+    }
+  });
+
+  test("omits tool status fields when no provider is supplied", async () => {
+    const f = await fixture();
+    try {
+      const overviews = await collectProjectOverviews(
+        createCommand(f.workspaceRoot),
+        f.workspaceRoot,
+        f.settingsPath,
+        f.disabledPath,
+      );
+      const alpha = overviews.find((o) => o.name === "alpha");
+      expect(alpha?.codegraph).toBeUndefined();
+      expect(alpha?.features).toEqual({ knowledge: true, maintenance: false, openspec: true });
+    } finally {
+      await f.cleanup();
+    }
+  });
+
+  test("keeps the project listed when a probe rejects", async () => {
+    const f = await fixture();
+    try {
+      const command = createCommand(f.workspaceRoot);
+      const toolStatus = {
+        probe: async () => { throw new Error("probe boom"); },
+        probeSite: async () => null,
+        probeGain: async () => null,
+        invalidate: () => {},
+      };
+
+      const overviews = await collectProjectOverviews(command, f.workspaceRoot, f.settingsPath, f.disabledPath, toolStatus);
+      const byName = new Map(overviews.map((o) => [o.name, o]));
+
+      expect(byName.get("alpha")?.features).toEqual({ knowledge: true, maintenance: false, openspec: true });
+      expect(byName.get("alpha")?.codegraph).toBeUndefined();
+    } finally {
+      await f.cleanup();
+    }
+  });
 });

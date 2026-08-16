@@ -204,6 +204,50 @@ describe("POST /api/projects/sync", () => {
       await f.cleanup();
     }
   });
+
+  test("invalidates tool status cache after an applied sync", async () => {
+    const f = await fixture();
+    let invalidated = 0;
+    const app = createProjectRoutes({
+      command: createCommand(),
+      settingsPath: f.settingsPath,
+      disabledPath: f.disabledPath,
+      workspaceRoot: f.workspaceRoot,
+      toolStatus: {
+        probe: async () => ({ codegraph: null, leanctx: null }),
+        invalidate: () => { invalidated += 1; },
+      },
+    });
+    try {
+      const response = await syncProjects(app, { add: ["demo"], remove: [] });
+      expect(response.status).toBe(200);
+      expect(invalidated).toBe(1);
+    } finally {
+      await f.cleanup();
+    }
+  });
+
+  test("does not invalidate when a sync changes nothing", async () => {
+    const f = await fixture();
+    let invalidated = 0;
+    const app = createProjectRoutes({
+      command: createCommand(),
+      settingsPath: f.settingsPath,
+      disabledPath: f.disabledPath,
+      workspaceRoot: f.workspaceRoot,
+      toolStatus: {
+        probe: async () => ({ codegraph: null, leanctx: null }),
+        invalidate: () => { invalidated += 1; },
+      },
+    });
+    try {
+      const response = await syncProjects(app, { add: [], remove: [] });
+      expect(response.status).toBe(200);
+      expect(invalidated).toBe(0);
+    } finally {
+      await f.cleanup();
+    }
+  });
 });
 
 describe("GET /api/projects/sync", () => {

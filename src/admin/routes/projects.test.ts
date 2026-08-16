@@ -315,3 +315,95 @@ describe("POST /api/projects/:name/disable and enable", () => {
     }
   });
 });
+
+describe("GET /api/projects/overview tool status", () => {
+  /** Runs real shell for listing, feature checks, and state files; fakes probes and git. */
+  function overviewCommand(): ProjectCommand {
+    return async (source) => source.includes("jq") || source.includes("find ") || source.includes("test -e") || source.includes("test -d")
+      ? shellCommand(source)
+      : { exitCode: 0, stdout: "", stderr: "" };
+  }
+
+  test("passes codegraph through from the shared provider", async () => {
+    const f = await fixture();
+    const toolStatus = {
+      probe: async () => ({
+        codegraph: { initialized: true, nodeCount: 42 },
+      }),
+      probeSite: async () => null,
+      probeGain: async () => null,
+      invalidate: () => {},
+    };
+    try {
+      await mkdir(join(f.workspaceRoot, "demo"), { recursive: true });
+      const app = createProjectRoutes({
+        command: overviewCommand(),
+        settingsPath: f.settingsPath,
+        disabledPath: f.disabledPath,
+        workspaceRoot: f.workspaceRoot,
+        toolStatus,
+      });
+
+      const res = await app.request("http://localhost/api/projects/overview");
+      expect(res.status).toBe(200);
+      const body = await res.json() as Record<string, unknown>;
+      const demo = body["demo"] as Record<string, unknown>;
+      expect(demo.codegraph).toEqual({ initialized: true, nodeCount: 42 });
+      expect(demo.features).toEqual({ knowledge: false, maintenance: false, openspec: false });
+      expect(demo.disabled).toBe(false);
+      expect(demo.remote).toBeNull();
+    } finally {
+      await f.cleanup();
+    }
+  });
+
+  test("yields null codegraph when default probes find nothing", async () => {
+    const f = await fixture();
+    try {
+      await mkdir(join(f.workspaceRoot, "demo"), { recursive: true });
+      const app = createProjectRoutes({
+        command: overviewCommand(),
+        settingsPath: f.settingsPath,
+        disabledPath: f.disabledPath,
+        workspaceRoot: f.workspaceRoot,
+      });
+
+      const res = await app.request("http://localhost/api/projects/overview");
+      expect(res.status).toBe(200);
+      const body = await res.json() as Record<string, unknown>;
+      const demo = body["demo"] as Record<string, unknown>;
+      expect(demo.codegraph).toBeNull();
+      expect(demo.features).toEqual({ knowledge: false, maintenance: false, openspec: false });
+    } finally {
+      await f.cleanup();
+    }
+  });
+
+  test("POST /api/projects/tool-status/refresh invalidates the shared provider cache", async () => {
+    const f = await fixture();
+    let invalidations = 0;
+    const toolStatus = {
+      probe: async () => ({ codegraph: null }),
+      probeSite: async () => null,
+      probeGain: async () => null,
+      invalidate: () => { invalidations += 1; },
+    };
+    try {
+      await mkdir(join(f.workspaceRoot, "demo"), { recursive: true });
+      const app = createProjectRoutes({
+        command: overviewCommand(),
+        settingsPath: f.settingsPath,
+        disabledPath: f.disabledPath,
+        workspaceRoot: f.workspaceRoot,
+        toolStatus,
+      });
+
+      const res = await app.request("http://localhost/api/projects/tool-status/refresh", { method: "POST" });
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ ok: true });
+      expect(invalidations).toBe(1);
+    } finally {
+      await f.cleanup();
+    }
+  });
+});

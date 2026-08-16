@@ -26,6 +26,7 @@ RED='\033[0;31m'; GREEN='\033[0;32m'; NC='\033[0m'
 pass() { PASS=$((PASS+1)); echo -e "  ${GREEN}PASS${NC} $1"; }
 fail() { FAIL=$((FAIL+1)); echo -e "  ${RED}FAIL${NC} $1"; }
 assert_contains() { local label="$1" n="$2" h="$3"; if echo "$h" | grep -qi "$n"; then pass "$label"; else fail "$label (expected '$n')"; fi; }
+assert_not_contains() { local label="$1" n="$2" h="$3"; if echo "$h" | grep -qi "$n"; then fail "$label (unexpected '$n')"; else pass "$label"; fi; }
 
 rm -f "$COOKIE_JAR"
 
@@ -443,6 +444,25 @@ if docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "$AI_DEV_CONTAINER"; t
     fail "OpenChamber settings shape=$OC_SHAPE (expected object/array)"
   fi
 
+  # Overview must expose typed tool status fields for the created project
+  OVERVIEW_API=$(curl -s -b "$COOKIE_JAR" "$BASE/api/projects/overview" 2>/dev/null || echo "{}")
+  OV_TOOL_OK=$(echo "$OVERVIEW_API" | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+p=d.get('$E2E_PROJ')
+if not p: print('missing')
+else:
+  ok='codegraph' in p
+  cg=p.get('codegraph')
+  if ok and cg is not None: ok=isinstance(cg.get('initialized'),bool)
+  print('yes' if ok else 'no')
+" 2>/dev/null || echo "parse-error")
+  if [ "$OV_TOOL_OK" = "yes" ]; then
+    pass "Overview exposes codegraph field for created project"
+  else
+    fail "Overview tool status wrong for $E2E_PROJ ($OV_TOOL_OK)"
+  fi
+
   # Explicit cleanup (trap above is the backstop)
   SYNC_DEL=$(curl -s -o /dev/null -w "%{http_code}" -b "$COOKIE_JAR" \
     -X POST "$BASE/api/projects/sync" \
@@ -462,6 +482,84 @@ if docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "$AI_DEV_CONTAINER"; t
   fi
 else
   echo "  SKIP project registration E2E ($AI_DEV_CONTAINER container not running)"
+fi
+
+# ============================================================
+# 19b. Projects page + overview tool status (codegraph)
+# ============================================================
+PROJECTS_HTML=$(curl -s -b "$COOKIE_JAR" "$BASE/projects" 2>/dev/null || echo "")
+assert_contains "Projects page renders CodeGraph column" "CodeGraph" "$PROJECTS_HTML"
+assert_not_contains "Projects page has no leanCTX column" "leanCTX" "$PROJECTS_HTML"
+assert_contains "Projects page has codegraph tool cells" 'data-tool="codegraph"' "$PROJECTS_HTML"
+assert_contains "Projects page has re-scan button" "btn-tool-refresh" "$PROJECTS_HTML"
+
+REFRESH_CODE=$(curl -s -o /dev/null -w "%{http_code}" -b "$COOKIE_JAR" \
+  -X POST "$BASE/api/projects/tool-status/refresh" 2>/dev/null || echo "000")
+if [ "$REFRESH_CODE" = "200" ]; then
+  pass "POST /api/projects/tool-status/refresh returns 200"
+else
+  fail "POST /api/projects/tool-status/refresh returned $REFRESH_CODE (expected 200)"
+fi
+
+OVERVIEW_API=$(curl -s -b "$COOKIE_JAR" "$BASE/api/projects/overview" 2>/dev/null || echo "{}")
+OV_PROJECT_COUNT=$(echo "$OVERVIEW_API" | python3 -c "import sys,json; print(len(json.load(sys.stdin)))" 2>/dev/null || echo "-1")
+OV_SHAPE=$(echo "$OVERVIEW_API" | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+if not d: print('empty')
+ok=True
+for name,p in d.items():
+  if not isinstance(p,dict) or 'codegraph' not in p: ok=False; break
+  cg=p['codegraph']
+  if cg is not None and not isinstance(cg.get('initialized'),bool): ok=False; break
+print('yes' if ok else 'no')
+" 2>/dev/null || echo "parse-error")
+if [ "$OV_SHAPE" = "yes" ]; then
+  pass "Overview entries carry typed codegraph fields ($OV_PROJECT_COUNT projects)"
+elif [ "$OV_SHAPE" = "empty" ]; then
+  pass "Overview empty (no projects to inspect)"
+else
+  fail "Overview tool status shape invalid ($OV_SHAPE)"
+fi
+
+# Dashboard must present site-level leanCTX statistics
+DASHBOARD_HTML=$(curl -s -b "$COOKIE_JAR" "$BASE/" 2>/dev/null || echo "")
+assert_contains "Dashboard renders leanCTX statistics" "leanCTX" "$DASHBOARD_HTML"
+STATUS_API=$(curl -s -b "$COOKIE_JAR" "$BASE/api/status" 2>/dev/null || echo "{}")
+LC_SHAPE=$(echo "$STATUS_API" | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+lc=d.get('leanctx')
+if lc is None: print('null'); sys.exit(0)
+if not isinstance(lc.get('projectsWithFacts'),int): print('bad'); sys.exit(0)
+if not isinstance(lc.get('totalMemoryFacts'),int): print('bad'); sys.exit(0)
+if not isinstance(lc.get('activeProjects24h'),int): print('bad'); sys.exit(0)
+if not isinstance(lc.get('healthCoverage'),int): print('bad'); sys.exit(0)
+print('yes')
+" 2>/dev/null || echo "parse-error")
+if [ "$LC_SHAPE" = "yes" ] || [ "$LC_SHAPE" = "null" ]; then
+  pass "Status API exposes typed leanCTX site stats ($LC_SHAPE)"
+else
+  fail "Status API leanCTX stats invalid ($LC_SHAPE)"
+fi
+
+# Dashboard must present leanCTX token-savings telemetry
+assert_contains "Dashboard renders Token Savings card" "Token Savings" "$DASHBOARD_HTML"
+GAIN_SHAPE=$(echo "$STATUS_API" | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+g=d.get('gain')
+if g is None: print('null'); sys.exit(0)
+for k in ('tokensSaved','netTokensSaved','grossUsdSaved','netUsdSaved','overheadUsd','bounceTokens','ledgerEvents'):
+  if not isinstance(g.get(k),(int,float)): print('bad:'+k); sys.exit(0)
+if not isinstance(g.get('compressionPct'),(int,float)): print('bad:compressionPct'); sys.exit(0)
+if not isinstance(g.get('ledgerVerified'),bool): print('bad:ledgerVerified'); sys.exit(0)
+print('yes')
+" 2>/dev/null || echo "parse-error")
+if [ "$GAIN_SHAPE" = "yes" ] || [ "$GAIN_SHAPE" = "null" ]; then
+  pass "Status API exposes typed leanCTX gain stats ($GAIN_SHAPE)"
+else
+  fail "Status API gain stats invalid ($GAIN_SHAPE)"
 fi
 
 # ============================================================

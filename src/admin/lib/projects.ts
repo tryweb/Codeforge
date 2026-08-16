@@ -18,6 +18,8 @@ export interface ProjectLibOptions {
   settingsPath?: string;
   disabledPath?: string;
   workspaceRoot?: string;
+  /** Called after a sync applied add/remove changes (no-op by default). */
+  onSyncDone?: () => void;
 }
 
 export type ProjectActionResult =
@@ -36,6 +38,7 @@ function resolveOptions(options: ProjectLibOptions): Required<ProjectLibOptions>
     settingsPath: options.settingsPath ?? DEFAULT_OPENCHAMBER_SETTINGS,
     disabledPath: options.disabledPath ?? DEFAULT_OPENCHAMBER_DISABLED,
     workspaceRoot: options.workspaceRoot ?? DEFAULT_WORKSPACE_ROOT,
+    onSyncDone: options.onSyncDone ?? (() => {}),
   };
 }
 
@@ -261,7 +264,7 @@ export async function syncProjects(
   remove: string[],
   options: ProjectLibOptions = {},
 ): Promise<ProjectActionResult> {
-  const { command, settingsPath, workspaceRoot } = resolveOptions(options);
+  const { command, settingsPath, workspaceRoot, onSyncDone } = resolveOptions(options);
 
   const messages: string[] = [];
   const failures: string[] = [];
@@ -286,6 +289,10 @@ export async function syncProjects(
     if (merged.ok) messages.push(`Removed ${name} from OpenChamber`);
     else failures.push(`Failed to remove ${name}: ${merged.error}`);
   }
+
+  // Tool status (codegraph index, leanCTX facts) can change with the project
+  // set; drop cached probes whenever a sync actually changed something.
+  if (add.length > 0 || remove.length > 0) onSyncDone();
 
   if (failures.length > 0) {
     return { ok: false, error: failures.join("; "), messages };

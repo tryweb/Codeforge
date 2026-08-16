@@ -1,5 +1,7 @@
 import { Hono } from "hono";
 import { execInAiDev } from "../lib/docker";
+import { createToolStatusProbe, type ProjectToolStatusProvider } from "../lib/project-tool-status";
+import type { ProjectOverview } from "../lib/projects-overview";
 import {
   checkFeature,
   collectProjectOverviews,
@@ -25,6 +27,8 @@ export interface ProjectRoutesOptions {
   settingsPath?: string;
   disabledPath?: string;
   workspaceRoot?: string;
+  /** Test seam: inject a probe provider to stub codegraph/leanCTX status. */
+  toolStatus?: ProjectToolStatusProvider;
 }
 
 const DEFAULT_WORKSPACE_ROOT = "/home/devuser/workspace";
@@ -37,6 +41,10 @@ export function createProjectRoutes(options: ProjectRoutesOptions = {}) {
   const disabledPath = options.disabledPath ?? DEFAULT_OPENCHAMBER_DISABLED;
   const workspaceRoot = options.workspaceRoot ?? DEFAULT_WORKSPACE_ROOT;
 
+  // One shared provider per app instance: its cache is reused across overview
+  // requests and invalidated after project sync mutates the project set.
+  const toolStatus = options.toolStatus ?? createToolStatusProbe({ command, workspaceRoot });
+
   const projects = new Hono();
   const projectDir = (name: string) => JSON.stringify(`${workspaceRoot}/${name}`);
 
@@ -46,16 +54,27 @@ export function createProjectRoutes(options: ProjectRoutesOptions = {}) {
   });
 
   projects.get("/api/projects/overview", async (c) => {
-    const overviews = await collectProjectOverviews(command, workspaceRoot, settingsPath, disabledPath);
-    const data: Record<string, { features: { knowledge: boolean; maintenance: boolean; openspec: boolean }; remote: string | null; disabled: boolean }> = {};
+    const overviews = await collectProjectOverviews(command, workspaceRoot, settingsPath, disabledPath, toolStatus);
+    const data: Record<string, {
+      features: { knowledge: boolean; maintenance: boolean; openspec: boolean };
+      remote: string | null;
+      disabled: boolean;
+      codegraph: ProjectOverview["codegraph"];
+    }> = {};
     for (const overview of overviews) {
       data[overview.name] = {
         features: overview.features,
         remote: overview.remote,
         disabled: overview.disabled,
+        codegraph: overview.codegraph ?? null,
       };
     }
     return c.json(data);
+  });
+
+  projects.post("/api/projects/tool-status/refresh", async (c) => {
+    toolStatus.invalidate();
+    return c.json({ ok: true });
   });
 
   projects.get("/api/projects/:name/features", async (c) => {
@@ -125,7 +144,14 @@ export function createProjectRoutes(options: ProjectRoutesOptions = {}) {
     return c.json({ ok: true });
   });
 
-  projects.route("/", createProjectSyncRoutes({ command, settingsPath, disabledPath, workspaceRoot, listProjects: () => listProjects(command, workspaceRoot) }));
+  projects.route("/", createProjectSyncRoutes({
+    command,
+    settingsPath,
+    disabledPath,
+    workspaceRoot,
+    listProjects: () => listProjects(command, workspaceRoot),
+    invalidateToolStatus: () => toolStatus.invalidate(),
+  }));
 
   projects.post("/api/projects/:name/disable", async (c) => {
     const name = c.req.param("name");
