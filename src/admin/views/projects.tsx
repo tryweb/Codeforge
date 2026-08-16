@@ -79,6 +79,23 @@ const ProjectsContent: FC<{ projects: string[] }> = ({ projects }) => (
         return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
       }
 
+      function featureStatsTip(f, stats) {
+        const NL = String.fromCharCode(10);
+        if (f === "knowledge") {
+          const parts = [stats.files + (stats.files === 1 ? " knowledge entry" : " knowledge entries")];
+          parts.push(stats.patterns + " patterns · " + stats.architecture + " architecture · " + stats.tooling + " tooling · " + stats.troubleshooting + " troubleshooting");
+          if (stats.lastModified) parts.push("Last updated " + formatWhen(stats.lastModified));
+          return parts.join(NL);
+        }
+        if (f === "maintenance") {
+          const parts = [stats.reports + (stats.reports === 1 ? " maintenance report" : " maintenance reports")];
+          parts.push("Covers " + stats.months + (stats.months === 1 ? " month" : " months"));
+          if (stats.lastReportDate) parts.push("Last report " + formatWhen(stats.lastReportDate));
+          return parts.join(NL);
+        }
+        return [stats.active + " active · " + stats.archived + " archived", stats.specs + " specs"].join(NL);
+      }
+
       async function loadFeatures() {
         const rows = document.querySelectorAll("#projects-table tr[data-project]");
         const res = await fetch("/api/projects/overview").then(r => r.json()).catch(() => null);
@@ -95,7 +112,9 @@ const ProjectsContent: FC<{ projects: string[] }> = ({ projects }) => (
             const f = cell.getAttribute("data-feat");
             const enabled = data.features && data.features[f];
             if (enabled) {
-              cell.innerHTML = '<span class="badge badge-success" style="font-size:0.85rem;">&#10003;</span>';
+              const stats = data.stats && data.stats[f];
+              const title = stats ? featureStatsTip(f, stats) : "";
+              cell.innerHTML = '<span class="badge badge-success" style="font-size:0.85rem;"' + (title ? ' title="' + escapeHtml(title) + '"' : "") + '>&#10003;</span>';
             } else {
               cell.innerHTML = '<button class="btn-outline" style="padding:2px 8px;font-size:0.75rem;" onclick="event.stopPropagation();enableFeature(this)">Enable</button>';
             }
@@ -107,12 +126,12 @@ const ProjectsContent: FC<{ projects: string[] }> = ({ projects }) => (
               cell.innerHTML = '<span class="text-muted">unknown</span>';
             } else if (status.initialized) {
               const parts = [];
-              if (typeof status.lastIndexed === "string") parts.push("last indexed " + formatWhen(status.lastIndexed));
               if (typeof status.fileCount === "number") parts.push(status.fileCount.toLocaleString() + " files");
               if (typeof status.nodeCount === "number") parts.push(status.nodeCount.toLocaleString() + " nodes");
               if (typeof status.edgeCount === "number") parts.push(status.edgeCount.toLocaleString() + " edges");
               if (status.index && status.index.reindexRecommended) parts.push("reindex recommended");
               if (status.index && typeof status.index.state === "string") parts.push("state: " + status.index.state);
+              if (typeof status.lastIndexed === "string") parts.push("Last indexed " + formatWhen(status.lastIndexed));
               cell.innerHTML = '<span class="badge badge-success" style="font-size:0.85rem;" title="' + parts.map(escapeHtml).join("&#10;") + '">&#10003;</span>';
             } else {
               cell.innerHTML = '<span class="badge" style="font-size:0.75rem;color:var(--text-muted);">not indexed</span>';

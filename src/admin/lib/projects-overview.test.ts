@@ -3,10 +3,13 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  buildFeatureStatsCommand,
   checkFeature,
   collectProjectOverviews,
   listProjects,
+  parseFeatureStats,
   type ProjectCommand,
+  type ProjectFeatures,
 } from "./projects-overview";
 
 async function shellCommand(source: string): Promise<{ exitCode: number; stdout: string; stderr: string }> {
@@ -28,6 +31,7 @@ function createCommand(workspaceRoot: string): ProjectCommand {
     if (source.includes("DISABLED=")) return shellCommand(source);
     if (source.startsWith("find ")) return shellCommand(source);
     if (source.includes("test -e")) return shellCommand(source);
+    if (source.startsWith("P=")) return shellCommand(source);
     if (source.includes("git remote get-url")) {
       return source.includes(`${workspaceRoot}/alpha`)
         ? { exitCode: 0, stdout: "https://example.com/alpha.git", stderr: "" }
@@ -53,7 +57,14 @@ async function fixture(): Promise<Fixture> {
   // alpha: knowledge + openspec enabled, no maintenance, has a git remote.
   await mkdir(join(workspaceRoot, "alpha", "docs", "knowledge"), { recursive: true });
   await writeFile(join(workspaceRoot, "alpha", "docs", "knowledge", "README.md"), "# knowledge\n");
+  await mkdir(join(workspaceRoot, "alpha", "docs", "knowledge", "patterns"), { recursive: true });
+  await writeFile(join(workspaceRoot, "alpha", "docs", "knowledge", "patterns", "one.md"), "# one\n");
+  await mkdir(join(workspaceRoot, "alpha", "docs", "knowledge", "architecture"), { recursive: true });
+  await writeFile(join(workspaceRoot, "alpha", "docs", "knowledge", "architecture", "two.md"), "# two\n");
   await mkdir(join(workspaceRoot, "alpha", "openspec"), { recursive: true });
+  await mkdir(join(workspaceRoot, "alpha", "openspec", "changes", "active-c"), { recursive: true });
+  await mkdir(join(workspaceRoot, "alpha", "openspec", "changes", "archive", "old-a"), { recursive: true });
+  await mkdir(join(workspaceRoot, "alpha", "openspec", "specs", "s1"), { recursive: true });
   // beta: no features, disabled.
   await mkdir(join(workspaceRoot, "beta"), { recursive: true });
   await writeFile(disabledPath, JSON.stringify({ disabled: ["beta"] }) + "\n");
@@ -144,6 +155,37 @@ describe("collectProjectOverviews", () => {
     }
   });
 
+  test("collects feature stats from the filesystem when a provider is supplied", async () => {
+    const f = await fixture();
+    try {
+      const command = createCommand(f.workspaceRoot);
+      const toolStatus = {
+        probe: async () => ({ codegraph: { initialized: false } }),
+        probeSite: async () => null,
+        probeGain: async () => null,
+        invalidate: () => {},
+      };
+
+      const overviews = await collectProjectOverviews(command, f.workspaceRoot, f.settingsPath, f.disabledPath, toolStatus);
+      const byName = new Map(overviews.map((o) => [o.name, o]));
+
+      const alpha = byName.get("alpha");
+      expect(alpha?.stats?.knowledge).toEqual({
+        files: 2,
+        patterns: 1,
+        architecture: 1,
+        tooling: 0,
+        troubleshooting: 0,
+        lastModified: expect.any(Number),
+      });
+      expect(alpha?.stats?.maintenance).toBeNull();
+      expect(alpha?.stats?.openspec).toEqual({ active: 1, archived: 1, specs: 1 });
+      expect(byName.get("beta")?.stats, "no enabled features -> no stats").toBeUndefined();
+    } finally {
+      await f.cleanup();
+    }
+  });
+
   test("omits tool status fields when no provider is supplied", async () => {
     const f = await fixture();
     try {
@@ -177,6 +219,83 @@ describe("collectProjectOverviews", () => {
 
       expect(byName.get("alpha")?.features).toEqual({ knowledge: true, maintenance: false, openspec: true });
       expect(byName.get("alpha")?.codegraph).toBeUndefined();
+    } finally {
+      await f.cleanup();
+    }
+  });
+});
+
+describe("parseFeatureStats", () => {
+  const features: ProjectFeatures = { knowledge: true, maintenance: true, openspec: true };
+
+  test("parses per-feature stats from command output", () => {
+    const stats = parseFeatureStats(
+      '{"knowledge":{"files":2,"patterns":1,"architecture":1,"tooling":0,"troubleshooting":0,"lastModified":1750000000000},'
+      + '"maintenance":{"reports":3,"lastReportDate":"2026-08-10","months":2},'
+      + '"openspec":{"active":1,"archived":4,"specs":9}}',
+      features,
+    );
+    expect(stats.knowledge).toEqual({
+      files: 2,
+      patterns: 1,
+      architecture: 1,
+      tooling: 0,
+      troubleshooting: 0,
+      lastModified: 1750000000000,
+    });
+    expect(stats.maintenance).toEqual({ reports: 3, lastReportDate: "2026-08-10", months: 2 });
+    expect(stats.openspec).toEqual({ active: 1, archived: 4, specs: 9 });
+  });
+
+  test("returns null for features that are not enabled", () => {
+    const stats = parseFeatureStats(
+      '{"knowledge":null,"maintenance":null,"openspec":{"active":2,"archived":0,"specs":3}}',
+      { knowledge: true, maintenance: true, openspec: true },
+    );
+    expect(stats.knowledge).toBeNull();
+    expect(stats.maintenance).toBeNull();
+    expect(stats.openspec).toEqual({ active: 2, archived: 0, specs: 3 });
+  });
+
+  test("handles malformed output as all-null", () => {
+    expect(parseFeatureStats("not-json", features)).toEqual({
+      knowledge: null,
+      maintenance: null,
+      openspec: null,
+    });
+    expect(parseFeatureStats("", features)).toEqual({
+      knowledge: null,
+      maintenance: null,
+      openspec: null,
+    });
+  });
+
+  test("does not parse a feature that is disabled in the feature set", () => {
+    const stats = parseFeatureStats(
+      '{"knowledge":null,"maintenance":{"reports":1,"lastReportDate":null,"months":0},"openspec":null}',
+      { knowledge: false, maintenance: true, openspec: false },
+    );
+    expect(stats).toEqual({
+      knowledge: null,
+      maintenance: { reports: 1, lastReportDate: null, months: 0 },
+      openspec: null,
+    });
+  });
+});
+
+describe("buildFeatureStatsCommand", () => {
+  test("emits a JSON object the shell can produce", async () => {
+    const f = await fixture();
+    try {
+      const source = buildFeatureStatsCommand(`${f.workspaceRoot}/alpha`);
+      const result = await shellCommand(source);
+      expect(result.exitCode).toBe(0);
+      const parsed: unknown = JSON.parse(result.stdout);
+      expect(parsed).toEqual({
+        knowledge: { files: 2, patterns: 1, architecture: 1, tooling: 0, troubleshooting: 0, lastModified: expect.any(Number) },
+        maintenance: null,
+        openspec: { active: 1, archived: 1, specs: 1 },
+      });
     } finally {
       await f.cleanup();
     }

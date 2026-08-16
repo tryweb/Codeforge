@@ -357,6 +357,52 @@ describe("GET /api/projects/overview tool status", () => {
     }
   });
 
+  test("passes feature stats through when features are enabled", async () => {
+    const f = await fixture();
+    const toolStatus = {
+      probe: async () => ({ codegraph: null }),
+      probeSite: async () => null,
+      probeGain: async () => null,
+      invalidate: () => {},
+    };
+    const command: ProjectCommand = async (source) => {
+      if (source.startsWith("P=")) {
+        return {
+          exitCode: 0,
+          stdout: '{"knowledge":{"files":1,"patterns":1,"architecture":0,"tooling":0,"troubleshooting":0,"lastModified":1750000000000},"maintenance":null,"openspec":{"active":2,"archived":1,"specs":5}}',
+          stderr: "",
+        };
+      }
+      if (source.includes("jq") || source.includes("find ") || source.includes("test -e") || source.includes("test -d")) {
+        return shellCommand(source);
+      }
+      return { exitCode: 0, stdout: "", stderr: "" };
+    };
+    try {
+      await mkdir(join(f.workspaceRoot, "demo", "docs", "knowledge"), { recursive: true });
+      await writeFile(join(f.workspaceRoot, "demo", "docs", "knowledge", "README.md"), "# k\n");
+      const app = createProjectRoutes({
+        command,
+        settingsPath: f.settingsPath,
+        disabledPath: f.disabledPath,
+        workspaceRoot: f.workspaceRoot,
+        toolStatus,
+      });
+
+      const res = await app.request("http://localhost/api/projects/overview");
+      expect(res.status).toBe(200);
+      const body = await res.json() as Record<string, unknown>;
+      const demo = body["demo"] as Record<string, unknown>;
+      expect(demo.stats).toEqual({
+        knowledge: { files: 1, patterns: 1, architecture: 0, tooling: 0, troubleshooting: 0, lastModified: 1750000000000 },
+        maintenance: null,
+        openspec: null,
+      });
+    } finally {
+      await f.cleanup();
+    }
+  });
+
   test("yields null codegraph when default probes find nothing", async () => {
     const f = await fixture();
     try {

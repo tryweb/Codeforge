@@ -522,6 +522,31 @@ else
   fail "Overview tool status shape invalid ($OV_SHAPE)"
 fi
 
+OV_STATS=$(echo "$OVERVIEW_API" | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+ok=False
+for name,p in d.items():
+  st=p.get('stats')
+  if st is None: continue
+  if not isinstance(st,dict): print('bad'); sys.exit(0)
+  for key in ('knowledge','maintenance','openspec'):
+    v=st.get(key)
+    if v is None: continue
+    if not isinstance(v,dict): print('bad'); sys.exit(0)
+    counter=v.get('files',v.get('reports',v.get('active',0)))
+    if not isinstance(counter,int): print('bad'); sys.exit(0)
+  ok=True
+print('yes' if ok else 'none')
+" 2>/dev/null || echo "parse-error")
+if [ "$OV_STATS" = "yes" ]; then
+  pass "Overview exposes typed feature stats for enabled features"
+elif [ "$OV_STATS" = "none" ]; then
+  pass "Overview stats absent (no project has an enabled feature)"
+else
+  fail "Overview feature stats shape invalid ($OV_STATS)"
+fi
+
 # Dashboard must present site-level leanCTX statistics
 DASHBOARD_HTML=$(curl -s -b "$COOKIE_JAR" "$BASE/" 2>/dev/null || echo "")
 assert_contains "Dashboard renders leanCTX statistics" "leanCTX" "$DASHBOARD_HTML"

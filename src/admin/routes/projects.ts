@@ -60,6 +60,7 @@ export function createProjectRoutes(options: ProjectRoutesOptions = {}) {
       remote: string | null;
       disabled: boolean;
       codegraph: ProjectOverview["codegraph"];
+      stats: ProjectOverview["stats"];
     }> = {};
     for (const overview of overviews) {
       data[overview.name] = {
@@ -67,6 +68,7 @@ export function createProjectRoutes(options: ProjectRoutesOptions = {}) {
         remote: overview.remote,
         disabled: overview.disabled,
         codegraph: overview.codegraph ?? null,
+        stats: overview.stats ?? null,
       };
     }
     return c.json(data);
