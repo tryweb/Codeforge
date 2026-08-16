@@ -1,6 +1,22 @@
 ## [Unreleased]
 
 
+## [1.14.7] - 2026-08-16
+
+### Added
+- Improve dashboard site overview UX
+- Show feature stats tooltips for knowledge, maintenance, and openspec on projects overview
+- Remove leanCTX column from projects overview and update e2e
+- Surface leanCTX site and gain telemetry in status API and dashboard
+- Add tool status probe with leanCTX site and gain telemetry
+
+### Documentation
+- Record dashboard overview UX pattern
+- Document admin dashboard design contract
+
+### Changed
+- Archive admin-project-codegraph-leanctx-status and sync spec
+
 ## [1.14.6] - 2026-08-15
 
 ### Fixed
@@ -1369,7 +1385,7 @@
 
 ## Format
 
-[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.14.6...HEAD
+[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.14.7...HEAD
 [0.3.0]: https://github.com/tryweb/ai-engkit/releases/tag/v0.3.0
 [0.3.3]: https://github.com/tryweb/ai-engkit/compare/v0.3.0...v0.3.3
 [0.5.0]: https://github.com/tryweb/ai-engkit/compare/v0.3.3...v0.5.0
@@ -1504,3 +1520,4 @@
 [1.14.4]: https://github.com/tryweb/ai-engkit/compare/v1.14.3...v1.14.4
 [1.14.5]: https://github.com/tryweb/ai-engkit/compare/v1.14.4...v1.14.5
 [1.14.6]: https://github.com/tryweb/ai-engkit/compare/v1.14.5...v1.14.6
+[1.14.7]: https://github.com/tryweb/ai-engkit/compare/v1.14.6...v1.14.7
