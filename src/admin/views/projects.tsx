@@ -59,6 +59,26 @@ const ProjectsContent: FC<{ projects: string[] }> = ({ projects }) => (
         </div>
       </div>
     </div>
+    <div id="delete-modal" class="modal-overlay" style="display:none;">
+      <div class="modal">
+        <h3 style="color:var(--color-danger,#dc3545);">Delete Project</h3>
+        <p class="text-sm" style="margin-bottom:12px;">This action <strong>cannot be undone</strong>. It will permanently remove:</p>
+        <ul class="text-sm" style="margin-bottom:12px;padding-left:20px;">
+          <li>Project directory and all files</li>
+          <li>OpenChamber registration</li>
+          <li>OpenCode session data</li>
+        </ul>
+        <div class="form-group">
+          <label for="delete-confirm-name">Type the project name to confirm</label>
+          <input type="text" id="delete-confirm-name" placeholder="" oninput="validateDeleteConfirm()" />
+        </div>
+        <div id="delete-error" class="text-sm text-danger" style="display:none;margin-bottom:8px;" />
+        <div class="flex gap-2" style="justify-content:flex-end;">
+          <button class="btn-outline" onclick="closeDelete()">Cancel</button>
+          <button id="btn-delete-confirm" onclick="confirmDelete()" disabled style="background:var(--color-danger,#dc3545);color:#fff;border-color:var(--color-danger,#dc3545);">Delete Project</button>
+        </div>
+      </div>
+    </div>
     <script>{html`
       function formatWhen(value) {
         const t = new Date(value);
@@ -171,6 +191,13 @@ const ProjectsContent: FC<{ projects: string[] }> = ({ projects }) => (
           toggle.title = "Show or hide this project in OpenChamber. Project files are never deleted.";
           toggle.onclick = () => toggleProjectState(name, disabled);
           stateWrap.appendChild(toggle);
+          const del = document.createElement("button");
+          del.className = "btn-outline";
+          del.style.cssText = "padding:2px 8px;font-size:0.75rem;color:var(--color-danger,#dc3545);border-color:var(--color-danger,#dc3545);";
+          del.textContent = "Delete";
+          del.title = "Permanently delete this project and all its data. This cannot be undone.";
+          del.onclick = () => showDeleteForm(name);
+          stateWrap.appendChild(del);
           nameCell.appendChild(stateWrap);
         });
       }
@@ -303,6 +330,50 @@ const ProjectsContent: FC<{ projects: string[] }> = ({ projects }) => (
         else { alert("Sync failed"); btn.disabled = false; btn.textContent = "Fix All"; }
       }
       function closeSync() { document.getElementById("sync-modal").style.display = "none"; }
+
+      let deleteTargetName = null;
+      function showDeleteForm(name) {
+        deleteTargetName = name;
+        document.getElementById("delete-confirm-name").value = "";
+        document.getElementById("delete-confirm-name").placeholder = name;
+        document.getElementById("delete-error").style.display = "none";
+        document.getElementById("btn-delete-confirm").disabled = true;
+        document.getElementById("delete-modal").style.display = "flex";
+        document.getElementById("delete-confirm-name").focus();
+      }
+      function closeDelete() {
+        document.getElementById("delete-modal").style.display = "none";
+        deleteTargetName = null;
+      }
+      function validateDeleteConfirm() {
+        const input = document.getElementById("delete-confirm-name").value;
+        document.getElementById("btn-delete-confirm").disabled = input !== deleteTargetName;
+      }
+      async function confirmDelete() {
+        const btn = document.getElementById("btn-delete-confirm");
+        btn.disabled = true;
+        btn.textContent = "Deleting...";
+        const errEl = document.getElementById("delete-error");
+        errEl.style.display = "none";
+        try {
+          const res = await fetch("/api/projects/" + encodeURIComponent(deleteTargetName) + "/delete", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ confirmation_name: deleteTargetName }),
+          });
+          if (res.ok) { location.reload(); return; }
+          const d = await res.json().catch(() => null);
+          errEl.textContent = d?.error || "Failed to delete project";
+          errEl.style.display = "block";
+          btn.disabled = false;
+          btn.textContent = "Delete Project";
+        } catch (e) {
+          errEl.textContent = "Network error";
+          errEl.style.display = "block";
+          btn.disabled = false;
+          btn.textContent = "Delete Project";
+        }
+      }
       loadFeatures();
     `}</script>
   </div>
