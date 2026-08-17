@@ -447,7 +447,136 @@ describe("GET /api/projects/overview tool status", () => {
       const res = await app.request("http://localhost/api/projects/tool-status/refresh", { method: "POST" });
       expect(res.status).toBe(200);
       expect(await res.json()).toEqual({ ok: true });
-      expect(invalidations).toBe(1);
+       expect(invalidations).toBe(1);
+    } finally {
+      await f.cleanup();
+    }
+  });
+});
+
+describe("POST /api/projects/:name/delete", () => {
+  function realCommand(): ProjectCommand {
+    return async (source) => source.includes("jq") || source.includes("find ") || source.includes("test -d") || source.includes("rm ")
+      ? shellCommand(source)
+      : { exitCode: 0, stdout: "", stderr: "" };
+  }
+
+  function requestDelete(app: ReturnType<typeof createProjectRoutes>, name: string, confirmationName: string) {
+    return app.request(`http://localhost/api/projects/${encodeURIComponent(name)}/delete`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ confirmation_name: confirmationName }),
+    });
+  }
+
+  test("deletes the project directory and unregisters from OpenChamber", async () => {
+    const f = await fixture();
+    try {
+      await mkdir(join(f.workspaceRoot, "demo"), { recursive: true });
+      await writeFile(join(f.workspaceRoot, "demo", "file.txt"), "hello");
+      const fullPath = `${f.workspaceRoot}/demo`;
+      await writeFile(f.settingsPath, JSON.stringify({
+        projects: [{ id: projectId(fullPath), path: fullPath, addedAt: 1, lastOpenedAt: 1 }],
+      }) + "\n");
+
+      const response = await requestDelete(appFor(f, realCommand()), "demo", "demo");
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ ok: true });
+
+      const lsResult = await shellCommand(`test -d ${JSON.stringify(f.workspaceRoot + "/demo")} && echo exists || echo gone`);
+      expect(lsResult.stdout.trim()).toBe("gone");
+      expect((await readSettings(f)).projects).toEqual([]);
+    } finally {
+      await f.cleanup();
+    }
+  });
+
+  test("removes the project from the disabled list if it was disabled", async () => {
+    const f = await fixture();
+    try {
+      await mkdir(join(f.workspaceRoot, "demo"), { recursive: true });
+      await writeFile(f.disabledPath, JSON.stringify({ disabled: ["demo", "other"] }) + "\n");
+
+      const response = await requestDelete(appFor(f, realCommand()), "demo", "demo");
+      expect(response.status).toBe(200);
+      expect(await readDisabled(f)).toEqual(["other"]);
+    } finally {
+      await f.cleanup();
+    }
+  });
+
+  test("returns 400 when confirmation_name does not match", async () => {
+    const f = await fixture();
+    try {
+      await mkdir(join(f.workspaceRoot, "demo"), { recursive: true });
+
+      const response = await requestDelete(appFor(f, realCommand()), "demo", "wrong-name");
+      expect(response.status).toBe(400);
+      const body = await response.json() as Record<string, unknown>;
+      expect(String(body.error)).toContain("confirmation");
+    } finally {
+      await f.cleanup();
+    }
+  });
+
+  test("returns 400 when confirmation_name is missing", async () => {
+    const f = await fixture();
+    try {
+      await mkdir(join(f.workspaceRoot, "demo"), { recursive: true });
+
+      const response = await appFor(f, realCommand()).request(
+        `http://localhost/api/projects/demo/delete`,
+        { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" },
+      );
+      expect(response.status).toBe(400);
+    } finally {
+      await f.cleanup();
+    }
+  });
+
+  test("returns 404 when project directory does not exist", async () => {
+    const f = await fixture();
+    try {
+      const response = await requestDelete(appFor(f, realCommand()), "ghost", "ghost");
+      expect(response.status).toBe(404);
+    } finally {
+      await f.cleanup();
+    }
+  });
+
+  test("returns 400 for invalid project names", async () => {
+    const f = await fixture();
+    try {
+      const response = await requestDelete(appFor(f, realCommand()), "../etc/passwd", "../etc/passwd");
+      expect(response.status).toBe(400);
+    } finally {
+      await f.cleanup();
+    }
+  });
+
+  test("preserves other projects when deleting one", async () => {
+    const f = await fixture();
+    try {
+      await mkdir(join(f.workspaceRoot, "demo"), { recursive: true });
+      await mkdir(join(f.workspaceRoot, "other"), { recursive: true });
+      const demoPath = `${f.workspaceRoot}/demo`;
+      const otherPath = `${f.workspaceRoot}/other`;
+      await writeFile(f.settingsPath, JSON.stringify({
+        projects: [
+          { id: projectId(demoPath), path: demoPath, addedAt: 1, lastOpenedAt: 1 },
+          { id: projectId(otherPath), path: otherPath, addedAt: 2, lastOpenedAt: 2 },
+        ],
+      }) + "\n");
+
+      const response = await requestDelete(appFor(f, realCommand()), "demo", "demo");
+      expect(response.status).toBe(200);
+
+      const settings = await readSettings(f);
+      expect(settings.projects).toHaveLength(1);
+      expect(settings.projects?.[0]?.path).toBe(otherPath);
+
+      const lsResult = await shellCommand(`test -d ${JSON.stringify(f.workspaceRoot + "/other")} && echo exists || echo gone`);
+      expect(lsResult.stdout.trim()).toBe("exists");
     } finally {
       await f.cleanup();
     }

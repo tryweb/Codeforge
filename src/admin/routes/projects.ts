@@ -6,6 +6,7 @@ import {
   checkFeature,
   collectProjectOverviews,
   createProject,
+  deleteProject,
   disableProject,
   enableProject,
   enableProjectFeature,
@@ -171,6 +172,27 @@ export function createProjectRoutes(options: ProjectRoutesOptions = {}) {
     if (!isValidProjectName(name)) return c.json({ error: "Invalid project name" }, 400);
 
     const result = await enableProject(name, { command, settingsPath, disabledPath, workspaceRoot });
+    if (!result.ok) {
+      return c.json({ error: result.error, ...(result.partial ? { partial: true } : {}) }, result.status ?? 500);
+    }
+    return c.json({ ok: true });
+  });
+
+  projects.post("/api/projects/:name/delete", async (c) => {
+    const name = c.req.param("name");
+    if (!isValidProjectName(name)) return c.json({ error: "Invalid project name" }, 400);
+
+    const body = await c.req.json().catch(() => null);
+    const confirmationName = typeof body?.confirmation_name === "string" ? body.confirmation_name : "";
+    if (!confirmationName) return c.json({ error: "confirmation_name is required" }, 400);
+
+    const result = await deleteProject(name, confirmationName, {
+      command,
+      settingsPath,
+      disabledPath,
+      workspaceRoot,
+      onSyncDone: () => toolStatus.invalidate(),
+    });
     if (!result.ok) {
       return c.json({ error: result.error, ...(result.partial ? { partial: true } : {}) }, result.status ?? 500);
     }
