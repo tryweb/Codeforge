@@ -6,7 +6,7 @@
   --text: #f4f4f5; --text-muted: #a1a1aa; --accent: #10b981;
   --accent-hover: #34d399; --danger: #ef4444; --success: #10b981;
   --warning: #f59e0b;   --radius: 8px; --sidebar: 240px;
-  --font-sans: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-sans: "Inter", "Noto Sans CJK SC", "PingFang SC", "Hiragino Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-mono: "JetBrains Mono", "Fira Code", monospace;
   --text-xs: .75rem;
   --text-sm: .875rem;
@@ -458,3 +458,45 @@ pre { background: rgba(0,0,0,0.3); padding: 16px; border-radius: var(--radius); 
     scroll-behavior: auto !important;
   }
 }
+
+/* Provider key registry rows — responsive wrap; each row fits 320px */
+.key-row {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin-bottom: 8px; padding: 8px; border: 1px solid var(--border);
+  border-radius: var(--radius); background: var(--surface);
+}
+.key-row__select { margin: 0; min-width: 16px; min-height: 16px; }
+.key-row__value {
+  flex: 1 1 140px; min-width: 120px; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; overflow-wrap: anywhere;
+}
+.key-row__note {
+  flex: 1 1 160px; min-width: 120px;
+  padding: 8px 12px; border: 1px solid var(--border);
+  border-radius: var(--radius); background: var(--surface);
+}
+.key-row__actions { display: flex; gap: 8px; flex-wrap: wrap; margin-left: auto; }
+.key-row__actions .btn-outline { min-height: 44px; }
+
+.key-add-row {
+  display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+}
+.key-add-row .key-add-input,
+.key-add-row .key-add-note-input {
+  flex: 1 1 180px; min-width: 140px;
+}
+.key-add-row .btn-outline { min-height: 44px; }
+
+/* ChatGPT Pro/Plus OAuth panel */
+.oauth-panel {
+  border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 12px; margin-bottom: 12px; background: var(--surface);
+}
+.oauth-panel[data-connected="true"] { border-color: var(--success); }
+.oauth-flow { margin-top: 8px; }
+.oauth-code-display { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.oauth-code {
+  font-family: var(--font-mono); font-size: 1.5rem; font-weight: 700;
+  letter-spacing: 0.15em; color: var(--text);
+}
+.oauth-flow .btn, .oauth-flow .btn-outline { min-height: 44px; }
