@@ -1,15 +1,59 @@
-import { html } from "hono/html";
 import type { FC } from "hono/jsx";
 import { Layout } from "./layout";
 
 const ProjectsContent: FC<{ projects: string[] }> = ({ projects }) => (
   <div>
-    <div class="flex items-center justify-between mb-4">
+    <div class="flex items-center justify-between mb-4 project-toolbar">
       <h2>OpenCode Projects</h2>
       <div class="flex gap-2">
         <button onclick="syncProjects()" class="btn-outline">↻ Sync</button>
         <button id="btn-tool-refresh" onclick="refreshToolStatus()" class="btn-outline">⟳ Re-scan</button>
         <button onclick="showCreateForm()" class="btn-outline">+ New Project</button>
+      </div>
+    </div>
+
+    <div id="project-summary" class="site-summary" aria-live="polite">
+      <span class="site-summary__item">Total <span id="sum-total" class="site-summary__value">—</span></span>
+      <span class="site-summary__item">Active <span id="sum-active" class="site-summary__value">—</span></span>
+      <span class="site-summary__item">Disabled <span id="sum-disabled" class="site-summary__value">—</span></span>
+    </div>
+
+    <div class="filter-bar">
+      <input type="search" id="filter-search" class="filter-search" placeholder="Search projects…" aria-label="Search projects" oninput="applyFilters()" />
+      <select id="filter-status" aria-label="Filter by status" onchange="applyFilters()">
+        <option value="all">All statuses</option>
+        <option value="active">Active only</option>
+        <option value="disabled">Disabled only</option>
+      </select>
+      <select id="filter-cap" aria-label="Filter by capability" onchange="applyFilters()">
+        <option value="all">Any capability</option>
+        <option value="knowledge">Has Knowledge</option>
+        <option value="maintenance">Has Maintenance</option>
+        <option value="openspec">Has OpenSpec</option>
+      </select>
+      <select id="filter-remote" aria-label="Filter by git remote" onchange="applyFilters()">
+        <option value="all">Any remote</option>
+        <option value="with">With remote</option>
+        <option value="none">No remote</option>
+      </select>
+      <select id="filter-codegraph" aria-label="Filter by codegraph status" onchange="applyFilters()">
+        <option value="all">Any codegraph</option>
+        <option value="indexed">Indexed</option>
+        <option value="missing">Not indexed</option>
+        <option value="unknown">Unknown</option>
+      </select>
+      <button id="btn-clear-filters" class="btn-outline btn-clear" onclick="clearFilters()" hidden>Clear filters</button>
+    </div>
+
+    <div class="card project-card">
+      <div id="project-list" class="project-list">
+        {projects.map(name => (
+          <div class="project-row" data-project={name}>
+            <span class="text-muted">Loading…</span>
+          </div>
+        ))}
+        {projects.length === 0 && <div id="project-empty" class="project-empty text-muted">No projects yet</div>}
+        <div id="filter-empty" class="project-empty text-muted" hidden>No projects match the current filters.</div>
       </div>
     </div>
     <div id="sync-modal" class="modal-overlay" style="display:none;">
@@ -22,21 +66,6 @@ const ProjectsContent: FC<{ projects: string[] }> = ({ projects }) => (
           <button id="btn-sync-fix" onclick="applySync()">Fix All</button>
         </div>
       </div>
-    </div>
-    <div class="card">
-      <table id="projects-table">
-        <tr><th>Name</th><th class="text-center">Knowledge</th><th class="text-center">Maintenance</th><th class="text-center">OpenSpec</th><th class="text-center">CodeGraph</th></tr>
-        {projects.map(name => (
-          <tr data-project={name}>
-            <td><code>{name}</code></td>
-            <td class="feat-cell text-center" data-feat="knowledge"><span class="text-muted">...</span></td>
-            <td class="feat-cell text-center" data-feat="maintenance"><span class="text-muted">...</span></td>
-            <td class="feat-cell text-center" data-feat="openspec"><span class="text-muted">...</span></td>
-            <td class="tool-cell text-center" data-tool="codegraph"><span class="text-muted">...</span></td>
-          </tr>
-        ))}
-        {projects.length === 0 && <tr><td colspan="5" class="text-muted">No projects yet</td></tr>}
-      </table>
     </div>
     <div id="create-modal" class="modal-overlay" style="display:none;">
       <div class="modal">
@@ -59,6 +88,23 @@ const ProjectsContent: FC<{ projects: string[] }> = ({ projects }) => (
         </div>
       </div>
     </div>
+
+    <div id="remote-modal" class="modal-overlay" style="display:none;">
+      <div class="modal">
+        <h3>Git Remote</h3>
+        <p class="text-sm text-muted" style="margin-bottom:12px;">Set the origin URL for <code id="remote-project-name"></code>. Leave the field empty to remove the remote.</p>
+        <div class="form-group">
+          <label for="remote-url">Git Remote URL</label>
+          <input type="text" id="remote-url" placeholder="https://github.com/your-org/project.git" />
+        </div>
+        <div id="remote-error" class="text-sm text-danger" style="display:none;margin-bottom:8px;" />
+        <div class="flex gap-2" style="justify-content:flex-end;">
+          <button class="btn-outline" onclick="closeRemote()">Cancel</button>
+          <button onclick="saveRemote()">Save Remote</button>
+        </div>
+      </div>
+    </div>
+
     <div id="delete-modal" class="modal-overlay" style="display:none;">
       <div class="modal">
         <h3 style="color:var(--color-danger,#dc3545);">Delete Project</h3>
@@ -79,303 +125,25 @@ const ProjectsContent: FC<{ projects: string[] }> = ({ projects }) => (
         </div>
       </div>
     </div>
-    <script>{html`
-      function formatWhen(value) {
-        const t = new Date(value);
-        if (isNaN(t.getTime())) return value;
-        const diff = Date.now() - t.getTime();
-        if (diff < 0) return "now";
-        const mins = Math.floor(diff / 60000);
-        if (mins < 1) return "just now";
-        if (mins < 60) return mins + "m ago";
-        const hours = Math.floor(mins / 60);
-        if (hours < 24) return hours + "h ago";
-        const days = Math.floor(hours / 24);
-        if (days < 30) return days + "d ago";
-        return t.toISOString().slice(0, 10);
-      }
 
-      function escapeHtml(s) {
-        return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
-      }
+    <div id="drawer-overlay" class="drawer-overlay" style="display:none;" onclick="closeDrawer()"></div>
+    <aside id="project-drawer" class="drawer" style="display:none;" role="dialog" aria-modal="true" aria-label="Project details">
+      <div class="drawer__header">
+        <div style="min-width:0;">
+          <h3 id="drawer-name"></h3>
+          <span id="drawer-status" class="status-pill"></span>
+        </div>
+        <button id="drawer-close" class="btn-outline drawer__close" onclick="closeDrawer()" aria-label="Close project details">✕</button>
+      </div>
+      <div class="drawer__body">
+        <div id="drawer-remote" class="drawer__section"></div>
+        <div id="drawer-caps" class="drawer__section"></div>
+        <div id="drawer-codegraph" class="drawer__section"></div>
+        <div id="drawer-actions" class="drawer__actions"></div>
+      </div>
+    </aside>
 
-      function featureStatsTip(f, stats) {
-        const NL = String.fromCharCode(10);
-        if (f === "knowledge") {
-          const parts = [stats.files + (stats.files === 1 ? " knowledge entry" : " knowledge entries")];
-          parts.push(stats.patterns + " patterns · " + stats.architecture + " architecture · " + stats.tooling + " tooling · " + stats.troubleshooting + " troubleshooting");
-          if (stats.lastModified) parts.push("Last updated " + formatWhen(stats.lastModified));
-          return parts.join(NL);
-        }
-        if (f === "maintenance") {
-          const parts = [stats.reports + (stats.reports === 1 ? " maintenance report" : " maintenance reports")];
-          parts.push("Covers " + stats.months + (stats.months === 1 ? " month" : " months"));
-          if (stats.lastReportDate) parts.push("Last report " + formatWhen(stats.lastReportDate));
-          return parts.join(NL);
-        }
-        return [stats.active + " active · " + stats.archived + " archived", stats.specs + " specs"].join(NL);
-      }
-
-      async function loadFeatures() {
-        const rows = document.querySelectorAll("#projects-table tr[data-project]");
-        const res = await fetch("/api/projects/overview").then(r => r.json()).catch(() => null);
-        if (!res) {
-          rows.forEach(row => row.querySelectorAll(".feat-cell").forEach(cell => cell.innerHTML = '<span class="text-muted">err</span>'));
-          return;
-        }
-        rows.forEach(row => {
-          const name = row.getAttribute("data-project");
-          const data = res[name];
-          if (!data) return;
-
-          row.querySelectorAll(".feat-cell").forEach(cell => {
-            const f = cell.getAttribute("data-feat");
-            const enabled = data.features && data.features[f];
-            if (enabled) {
-              const stats = data.stats && data.stats[f];
-              const title = stats ? featureStatsTip(f, stats) : "";
-              cell.innerHTML = '<span class="badge badge-success" style="font-size:0.85rem;"' + (title ? ' title="' + escapeHtml(title) + '"' : "") + '>&#10003;</span>';
-            } else {
-              cell.innerHTML = '<button class="btn-outline" style="padding:2px 8px;font-size:0.75rem;" onclick="event.stopPropagation();enableFeature(this)">Enable</button>';
-            }
-          });
-
-          row.querySelectorAll(".tool-cell").forEach(cell => {
-            const status = data.codegraph;
-            if (!status) {
-              cell.innerHTML = '<span class="text-muted">unknown</span>';
-            } else if (status.initialized) {
-              const parts = [];
-              if (typeof status.fileCount === "number") parts.push(status.fileCount.toLocaleString() + " files");
-              if (typeof status.nodeCount === "number") parts.push(status.nodeCount.toLocaleString() + " nodes");
-              if (typeof status.edgeCount === "number") parts.push(status.edgeCount.toLocaleString() + " edges");
-              if (status.index && status.index.reindexRecommended) parts.push("reindex recommended");
-              if (status.index && typeof status.index.state === "string") parts.push("state: " + status.index.state);
-              if (typeof status.lastIndexed === "string") parts.push("Last indexed " + formatWhen(status.lastIndexed));
-              cell.innerHTML = '<span class="badge badge-success" style="font-size:0.85rem;" title="' + parts.map(escapeHtml).join("&#10;") + '">&#10003;</span>';
-            } else {
-              cell.innerHTML = '<span class="badge" style="font-size:0.75rem;color:var(--text-muted);">not indexed</span>';
-            }
-          });
-
-          const nameCell = row.querySelector("td:first-child");
-          const existing = nameCell.querySelector(".git-remote-info");
-          if (existing) existing.remove();
-          const info = document.createElement("span");
-          info.className = "git-remote-info";
-          info.style.cssText = "display:block;font-size:0.75rem;margin-top:2px;";
-          if (data.remote) {
-            const short = data.remote.length > 50 ? data.remote.substring(0, 47) + "..." : data.remote;
-            info.innerHTML = '<span class="text-muted" style="cursor:pointer;" onclick="setGitRemote(this)" title="' + data.remote.replace(/"/g, '&quot;') + '">&#128279; ' + short + '</span>';
-          } else {
-            info.innerHTML = '<span class="text-muted" style="cursor:pointer;" onclick="setGitRemote(this)">[set remote]</span>';
-          }
-          nameCell.appendChild(info);
-          const disabled = !!data.disabled;
-          const existingState = nameCell.querySelector(".state-wrap");
-          if (existingState) existingState.remove();
-          const stateWrap = document.createElement("span");
-          stateWrap.className = "state-wrap";
-          stateWrap.style.cssText = "display:flex;align-items:center;gap:6px;margin-top:2px;";
-          if (disabled) {
-            const badge = document.createElement("span");
-            badge.className = "badge badge-warning";
-            badge.style.fontSize = "0.75rem";
-            badge.textContent = "Disabled";
-            stateWrap.appendChild(badge);
-          }
-          const toggle = document.createElement("button");
-          toggle.className = "btn-outline";
-          toggle.style.cssText = "padding:2px 8px;font-size:0.75rem;";
-          toggle.textContent = disabled ? "Enable" : "Disable";
-          toggle.title = "Show or hide this project in OpenChamber. Project files are never deleted.";
-          toggle.onclick = () => toggleProjectState(name, disabled);
-          stateWrap.appendChild(toggle);
-          const del = document.createElement("button");
-          del.className = "btn-outline";
-          del.style.cssText = "padding:2px 8px;font-size:0.75rem;color:var(--color-danger,#dc3545);border-color:var(--color-danger,#dc3545);";
-          del.textContent = "Delete";
-          del.title = "Permanently delete this project and all its data. This cannot be undone.";
-          del.onclick = () => showDeleteForm(name);
-          stateWrap.appendChild(del);
-          nameCell.appendChild(stateWrap);
-        });
-      }
-
-      let refreshBusy = false;
-      async function refreshToolStatus() {
-        if (refreshBusy) return;
-        refreshBusy = true;
-        const btn = document.getElementById("btn-tool-refresh");
-        if (btn) { btn.disabled = true; btn.textContent = "Scanning..."; }
-        try {
-          await fetch("/api/projects/tool-status/refresh", { method: "POST" });
-          await loadFeatures();
-        } catch (e) {
-          if (btn) { btn.textContent = "Error"; }
-        } finally {
-          if (btn) { btn.disabled = false; btn.textContent = "⟳ Re-scan"; }
-          refreshBusy = false;
-        }
-      }
-
-      async function setGitRemote(el) {
-        const row = el.closest("tr[data-project]");
-        const name = row.getAttribute("data-project");
-        const current = el.title || "";
-        const url = prompt("Git remote URL" + (current ? " (leave empty to remove):" : ":"), current || "");
-        if (url === null) return;
-        const res = await fetch("/api/projects/" + encodeURIComponent(name) + "/git-remote", {
-          method: "PUT", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ remote: url }),
-        });
-        if (res.ok) { location.reload(); }
-        else {
-          let msg = "Failed to set remote";
-          try { const d = await res.json(); msg = d.error || msg; } catch (e) { msg = res.status + " " + res.statusText; }
-          alert(msg);
-        }
-      }
-
-      async function toggleProjectState(name, currentlyDisabled) {
-        const action = currentlyDisabled ? "enable" : "disable";
-        const res = await fetch("/api/projects/" + encodeURIComponent(name) + "/" + action, { method: "POST" });
-        if (res.ok) { location.reload(); return; }
-        let msg = "Failed to " + action;
-        try { const d = await res.json(); msg = d.error || msg; } catch (e) { msg = res.status + " " + res.statusText; }
-        alert(msg);
-      }
-
-      async function enableFeature(btn) {
-        const row = btn.closest("tr[data-project]");
-        const name = row.getAttribute("data-project");
-        const feat = btn.closest(".feat-cell").getAttribute("data-feat");
-        btn.disabled = true;
-        btn.textContent = "Enabling...";
-        try {
-          const res = await fetch("/api/projects/" + encodeURIComponent(name) + "/features/" + feat, { method: "POST" });
-          if (res.ok) {
-            btn.outerHTML = '<span class="badge badge-success" style="font-size:0.85rem;">&#10003;</span>';
-          } else {
-            const d = await res.json();
-            btn.textContent = "Error";
-            setTimeout(() => { btn.disabled = false; btn.textContent = "Enable"; }, 3000);
-          }
-        } catch (e) {
-          btn.textContent = "Error";
-          setTimeout(() => { btn.disabled = false; btn.textContent = "Enable"; }, 3000);
-        }
-      }
-
-      function toggleGitRemote() {
-        const show = document.getElementById("init-git").checked;
-        document.getElementById("git-remote-group").style.display = show ? "block" : "none";
-      }
-      function showCreateForm() { document.getElementById("create-modal").style.display = "flex"; }
-      function closeCreate() { document.getElementById("create-modal").style.display = "none"; }
-      async function createProject() {
-        const name = document.getElementById("project-name").value.trim();
-        if (!name) return;
-        const gitInit = document.getElementById("init-git").checked;
-        const gitRemote = document.getElementById("git-remote").value.trim();
-        const res = await fetch("/api/projects", {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name, git_init: gitInit, git_remote: gitRemote || undefined }),
-        });
-        if (res.ok) { location.reload(); }
-        else { const d = await res.json(); document.getElementById("create-error").style.display = "block";
-          document.getElementById("create-error").textContent = d.error || "Failed to create"; }
-      }
-
-      let syncData = null;
-      async function syncProjects() {
-        document.getElementById("sync-modal").style.display = "flex";
-        document.getElementById("sync-status").textContent = "Checking...";
-        document.getElementById("sync-results").style.display = "none";
-        document.getElementById("sync-actions").style.display = "none";
-        const res = await fetch("/api/projects/sync").then(r => r.json());
-        syncData = res;
-        const results = document.getElementById("sync-results");
-        results.style.display = "block";
-        let html = "";
-        if (res.missingInOC && res.missingInOC.length > 0) {
-          html += "<p><strong>Missing in OpenChamber</strong> (will be added):</p><ul>";
-          res.missingInOC.forEach(n => { html += "<li><code>" + n + "</code></li>"; });
-          html += "</ul>";
-        }
-        if (res.staleInOC && res.staleInOC.length > 0) {
-          html += "<p><strong>Stale in OpenChamber</strong> (will be removed):</p><ul>";
-          res.staleInOC.forEach(n => { html += "<li><code>" + n + "</code></li>"; });
-          html += "</ul>";
-        }
-        if (!html) {
-          document.getElementById("sync-status").textContent = "All projects are in sync.";
-          document.getElementById("sync-actions").style.display = "flex";
-          document.getElementById("btn-sync-fix").style.display = "none";
-          return;
-        }
-        results.innerHTML = html;
-        document.getElementById("sync-status").textContent = res.missingInOC.length + " missing, " + res.staleInOC.length + " stale.";
-        document.getElementById("sync-actions").style.display = "flex";
-      }
-      async function applySync() {
-        const btn = document.getElementById("btn-sync-fix");
-        btn.disabled = true;
-        btn.textContent = "Syncing...";
-        const res = await fetch("/api/projects/sync", {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ add: syncData.missingInOC, remove: syncData.staleInOC }),
-        }).then(r => r.json());
-        if (res.ok) { location.reload(); }
-        else { alert("Sync failed"); btn.disabled = false; btn.textContent = "Fix All"; }
-      }
-      function closeSync() { document.getElementById("sync-modal").style.display = "none"; }
-
-      let deleteTargetName = null;
-      function showDeleteForm(name) {
-        deleteTargetName = name;
-        document.getElementById("delete-confirm-name").value = "";
-        document.getElementById("delete-confirm-name").placeholder = name;
-        document.getElementById("delete-error").style.display = "none";
-        document.getElementById("btn-delete-confirm").disabled = true;
-        document.getElementById("delete-modal").style.display = "flex";
-        document.getElementById("delete-confirm-name").focus();
-      }
-      function closeDelete() {
-        document.getElementById("delete-modal").style.display = "none";
-        deleteTargetName = null;
-      }
-      function validateDeleteConfirm() {
-        const input = document.getElementById("delete-confirm-name").value;
-        document.getElementById("btn-delete-confirm").disabled = input !== deleteTargetName;
-      }
-      async function confirmDelete() {
-        const btn = document.getElementById("btn-delete-confirm");
-        btn.disabled = true;
-        btn.textContent = "Deleting...";
-        const errEl = document.getElementById("delete-error");
-        errEl.style.display = "none";
-        try {
-          const res = await fetch("/api/projects/" + encodeURIComponent(deleteTargetName) + "/delete", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ confirmation_name: deleteTargetName }),
-          });
-          if (res.ok) { location.reload(); return; }
-          const d = await res.json().catch(() => null);
-          errEl.textContent = d?.error || "Failed to delete project";
-          errEl.style.display = "block";
-          btn.disabled = false;
-          btn.textContent = "Delete Project";
-        } catch (e) {
-          errEl.textContent = "Network error";
-          errEl.style.display = "block";
-          btn.disabled = false;
-          btn.textContent = "Delete Project";
-        }
-      }
-      loadFeatures();
-    `}</script>
+    <script src="/static/projects-page.js"></script>
   </div>
 );
 
