@@ -1,6 +1,16 @@
 ## [Unreleased]
 
 
+## [1.14.12] - 2026-08-17
+
+### Added
+- Redesign projects page with filter bar, badges, and detail drawer
+- Add project list CSS for redesigned projects page
+
+### Fixed
+- Raise API rate limit to 500/min and update projects page test for static JS
+- Fix leanCTX active projects 24h count showing always zero
+
 ## [1.14.11] - 2026-08-17
 
 ### Added
