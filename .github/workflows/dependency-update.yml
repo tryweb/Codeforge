@@ -1066,6 +1066,17 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Inject version into image
+        if: steps.decision.outputs.action == 'auto-release'
+        run: |
+          VERSION="${{ steps.version.outputs.next-version }}"
+          printf '%s' "${VERSION}" > /tmp/ai-engkit-version
+          docker create --name tmp ai-engkit:updated
+          docker cp /tmp/ai-engkit-version tmp:/opt/ai-engkit/VERSION
+          docker commit tmp ai-engkit:updated > /dev/null
+          docker rm -f tmp > /dev/null
+          echo "::notice::Injected version: ${VERSION}"
+
       - name: Build and push image to GHCR
         if: steps.decision.outputs.action == 'auto-release'
         uses: docker/build-push-action@v7
