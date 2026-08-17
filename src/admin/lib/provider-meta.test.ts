@@ -66,4 +66,27 @@ describe("collectProvidersMeta", () => {
       expect(JSON.stringify(meta)).not.toContain(rawKey);
     });
   });
+
+  test("surfaces openai as a key-managed virtual card with OAuth metadata", async () => {
+    const seed = JSON.stringify({
+      providers: {
+        openai: {
+          keys: [{ id: "k1", value: "sk-openai-1", createdAt: "2026-01-01T00:00:00.000Z" }],
+          activeKeyId: "k1",
+        },
+      },
+    });
+    await withRegistry(seed, async () => {
+      const meta = await collectProvidersMeta();
+      const openai = meta.providers.find((p) => p.name === "openai");
+      expect(openai).toBeDefined();
+      expect(openai?.label).toBe("OpenAI API");
+      expect(openai?.virtual).toBe(true);
+      expect(openai?.keyManagement).toBe(true);
+      expect(openai?.oauthManaged).toBe(true);
+      expect(typeof openai?.oauthConnected).toBe("boolean");
+      expect(openai?.registry.keyCount).toBe(1);
+      expect(openai?.registry.activeKeyId).toBe("k1");
+    });
+  });
 });

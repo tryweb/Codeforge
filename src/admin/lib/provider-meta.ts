@@ -5,6 +5,7 @@ import {
   KEY_MANAGED_PROVIDERS,
   isKeyProviderSupported,
   readProviderAuthKey,
+  readProviderOAuthPresence,
 } from "./opencode-auth";
 
 export interface ProviderMeta {
@@ -15,6 +16,8 @@ export interface ProviderMeta {
   hasApiKey: boolean;
   keyManagement: boolean;
   authStoreKeyPresent: boolean;
+  oauthManaged: boolean;
+  oauthConnected: boolean;
   virtual: boolean;
   registry: {
     keyCount: number;
@@ -25,7 +28,11 @@ export interface ProviderMeta {
 
 const KEY_MANAGED_LABELS: Record<string, string> = {
   "opencode-go": "Opencode Go",
+  openai: "OpenAI API",
 };
+
+/** Providers that also offer the ChatGPT Pro/Plus headless OAuth connection. */
+export const OAUTH_MANAGED_PROVIDERS = ["openai"] as const;
 
 export async function collectProvidersMeta(): Promise<{
   invalid: boolean;
@@ -39,11 +46,19 @@ export async function collectProvidersMeta(): Promise<{
     return { invalid: true, error: parsed.error, providers: [] };
   }
 
-  const keyManagedNames = Object.keys(keys.providers).filter(isKeyProviderSupported);
+  const keyManagedNames = Array.from(
+    new Set([
+      ...KEY_MANAGED_PROVIDERS,
+      ...Object.keys(keys.providers),
+      ...Object.keys(parsed.providers),
+    ]),
+  ).filter(isKeyProviderSupported);
   const authStoreKeys = new Map<string, string | null>();
+  const authStoreOAuth = new Map<string, boolean>();
   await Promise.all(
     keyManagedNames.map(async (name) => {
       authStoreKeys.set(name, await readProviderAuthKey(name));
+      authStoreOAuth.set(name, await readProviderOAuthPresence(name));
     }),
   );
 
@@ -71,6 +86,8 @@ export async function collectProvidersMeta(): Promise<{
       hasApiKey: getProviderApiKey(entry) !== null,
       keyManagement: isKeyProviderSupported(name),
       authStoreKeyPresent: isKeyProviderSupported(name) ? !!authStoreKeys.get(name) : false,
+      oauthManaged: (OAUTH_MANAGED_PROVIDERS as readonly string[]).includes(name),
+      oauthConnected: isKeyProviderSupported(name) ? !!authStoreOAuth.get(name) : false,
       virtual: false,
       registry,
     };
@@ -101,6 +118,8 @@ export async function collectProvidersMeta(): Promise<{
       hasApiKey: false,
       keyManagement: true,
       authStoreKeyPresent: !!authStoreKeys.get(name),
+      oauthManaged: (OAUTH_MANAGED_PROVIDERS as readonly string[]).includes(name),
+      oauthConnected: !!authStoreOAuth.get(name),
       virtual: true,
       registry,
     });
