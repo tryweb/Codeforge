@@ -199,6 +199,38 @@ export function createProjectRoutes(options: ProjectRoutesOptions = {}) {
     return c.json({ ok: true });
   });
 
+  projects.post("/api/projects/:name/codegraph/reindex", async (c) => {
+    const name = c.req.param("name");
+    if (!name || name.includes("..")) return c.json({ error: "Invalid project name" }, 400);
+
+    const exists = await command(`test -d ${projectDir(name)} && echo yes`, 5_000);
+    if (exists.stdout.trim() !== "yes") return c.json({ error: "Project not found" }, 404);
+
+    const statusCheck = await command(`codegraph status --json ${projectDir(name)} 2>/dev/null || echo '{"initialized":false}'`, 10_000);
+    let isInitialized = false;
+    try {
+      const status = JSON.parse(statusCheck.stdout.trim() || '{"initialized":false}');
+      isInitialized = status.initialized === true;
+    } catch {
+      isInitialized = false;
+    }
+
+    const cmd = isInitialized
+      ? `codegraph index ${projectDir(name)} 2>&1`
+      : `codegraph init ${projectDir(name)} 2>&1`;
+    
+    const result = await command(cmd, 300_000);
+    
+    toolStatus.invalidate(name);
+    
+    if (result.exitCode !== 0 && result.exitCode !== -1) {
+      const detail = result.stderr.trim() || result.stdout.trim() || `exit code ${result.exitCode}`;
+      return c.json({ ok: false, error: `Reindex failed: ${detail}` }, 500);
+    }
+    
+    return c.json({ ok: true, output: result.stdout.trim() });
+  });
+
   projects.get("/projects", async (c) => {
     const list = await listProjects(command, workspaceRoot);
     return c.html(ProjectsPage(list));

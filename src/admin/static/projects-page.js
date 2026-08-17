@@ -388,6 +388,14 @@ function renderDrawer() {
   else cgStats.textContent = codegraphTooltip(data) || "Indexed";
   cgBody.appendChild(cgStats);
   cgRow.appendChild(cgBody);
+  
+  const reindexBtn = document.createElement("button");
+  reindexBtn.className = "btn-outline drawer-cap__enable";
+  reindexBtn.textContent = "Reindex";
+  reindexBtn.title = "Rebuild CodeGraph index from scratch";
+  reindexBtn.addEventListener("click", () => reindexCodegraph(name, reindexBtn));
+  cgRow.appendChild(reindexBtn);
+  
   cgSec.appendChild(cgRow);
 
   const act = document.getElementById("drawer-actions");
@@ -498,6 +506,27 @@ async function enableFeatureFromDrawer(name, feat, btn) {
     alert("Network error enabling " + feat);
     btn.disabled = false;
     btn.textContent = "Enable";
+  }
+}
+
+async function reindexCodegraph(name, btn) {
+  btn.disabled = true;
+  btn.textContent = "Reindexing…";
+  try {
+    const res = await fetch("/api/projects/" + encodeURIComponent(name) + "/codegraph/reindex", { method: "POST" });
+    if (res.ok) {
+      await loadFeatures();
+      if (drawerName === name) renderDrawer();
+    } else {
+      const d = await res.json().catch(() => null);
+      alert((d && d.error) || "Failed to reindex CodeGraph");
+      btn.disabled = false;
+      btn.textContent = "Reindex";
+    }
+  } catch (e) {
+    alert("Network error reindexing CodeGraph");
+    btn.disabled = false;
+    btn.textContent = "Reindex";
   }
 }
 
