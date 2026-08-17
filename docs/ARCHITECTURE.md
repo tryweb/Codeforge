@@ -7,6 +7,7 @@ This document explains the AI-EngKit system architecture, the relationships betw
 - [System Overview](#system-overview)
 - [Service Architecture](#service-architecture)
 - [ai-admin Dashboard](#ai-admin-dashboard)
+- [Admin Agent (center connection)](#admin-agent-center-connection)
 - [Container Architecture](#container-architecture)
 - [Data Flow](#data-flow)
 - [Network Architecture](#network-architecture)
@@ -20,17 +21,22 @@ AI-EngKit is a Docker-based AI development environment that combines the OpenCod
 
 ```mermaid
 graph TB
-    subgraph "User Side"
+    subgraph "Host"
         BROWSER["🌐 Browser<br/>OpenChamber Web UI"]
-        TERMINAL["💻 Terminal<br/>OpenCode CLI"]
+        ADMIN_BROWSER["🌐 Browser<br/>Admin Dashboard :8080"]
+        DOCKER_EXEC["💻 docker exec<br/>OpenCode CLI (in-container only)"]
     end
 
     subgraph "Docker Environment"
         subgraph "ai-dev Container"
             OC["OpenCode<br/>AI Assistant (Backend)"]
             CH["OpenChamber<br/>Web Server (Frontend)"]
-            API["API :4095"]
+            API["API :4095 (internal)"]
             TOOLS["Developer Tools<br/>git, python, tmux..."]
+        end
+
+        subgraph "ai-admin Container"
+            ADMIN["Admin Dashboard<br/>:8080"]
         end
     end
 
@@ -38,19 +44,21 @@ graph TB
         HOST_DOCKER["Docker Socket"]
     end
 
-    BROWSER -->|"HTTP/WS :3000"| CH
+    BROWSER -->|"HTTP/WS :3000 → :8000"| CH
     CH -->|"WebSocket :4095"| API
-    TERMINAL -->|"CLI"| OC
-    OC -->|"API :4095"| API
-
+    ADMIN_BROWSER -->|"HTTP :8080"| ADMIN
+    ADMIN -->|"docker exec"| OC
+    DOCKER_EXEC -->|"exec into ai-dev"| OC
     OC -.->|"via named volumes"| GIT_VOLS["git-config<br/>ssh-keys volumes"]
     OC -.->|"read/write"| HOST_DOCKER
 
     style BROWSER fill:#e1f5fe
-    style TERMINAL fill:#e8f5e9
+    style ADMIN_BROWSER fill:#e1f5fe
+    style DOCKER_EXEC fill:#e8f5e9
     style OC fill:#fff3e0
     style CH fill:#f3e5f5
     style API fill:#e3f2fd
+    style ADMIN fill:#e8f5e9
     style GIT_VOLS fill:#e8f5e9
 ```
 
@@ -189,6 +197,126 @@ flowchart LR
 | `ADMIN_PORT` | `8080` | Host port for the admin dashboard |
 | `ADMIN_DEV_PORT` | `8081` | Dev mode port (with `--watch`) |
 | `ADMIN_PASSWORD` | *(required)* | Admin login password (prompted by `install.sh`) |
+| `CENTER_URL` | *(empty — disabled)* | WebSocket URL of the AI-EngKit-Manager center |
+| `CENTER_TOKEN` | *(empty)* | Registration token for center authentication |
+| `AGENT_ID` | *(auto-generated)* | Agent identifier sent during handshake |
+| `CENTER_TLS_CA` | *(empty)* | Path to CA PEM for mTLS to center |
+| `CENTER_TLS_CERT` | *(empty)* | Path to client cert PEM for mTLS |
+| `CENTER_TLS_KEY` | *(empty)* | Path to client key PEM for mTLS |
+
+---
+
+## Admin Agent (center connection)
+
+### Overview
+
+The Admin Agent is an **outbound WebSocket client** built into `ai-admin` that allows a remote AI-EngKit-Manager (center) to manage one or more AI-EngKit instances. It is **disabled by default** — activated only when `CENTER_URL` is set.
+
+```mermaid
+graph LR
+    subgraph "Center (Manager)"
+        MANAGER["AI-EngKit-Manager<br/>Command Sender + UI"]
+    end
+
+    subgraph "ai-admin"
+        AGENT["Admin Agent<br/>WebSocket Client"]
+        DISPATCHER["Command Dispatcher"]
+    end
+
+    subgraph "ai-dev"
+        AIDEV["OpenCode + OpenChamber"]
+    end
+
+    MANAGER -->|"WebSocket (outbound)"| AGENT
+    AGENT -->|"dispatch"| DISPATCHER
+    DISPATCHER -->|"execInAiDev"| AIDEV
+    AGENT -->|"heartbeat + events"| MANAGER
+
+    style MANAGER fill:#e3f2fd
+    style AGENT fill:#e8f5e9
+    style AIDEV fill:#fff3e0
+```
+
+### Connection model
+
+| Aspect | Detail |
+|--------|--------|
+| Direction | **Outbound** from ai-admin to center (no inbound port opened) |
+| Transport | WebSocket (`ws://` or `wss://`) |
+| Activation | `CENTER_URL` env var; empty/absent → agent disabled |
+| Authentication | Registration token via `?token=` query param or `CENTER_TOKEN` env var |
+| TLS | Optional mTLS via `CENTER_TLS_CA`, `CENTER_TLS_CERT`, `CENTER_TLS_KEY` env vars, or `ca` query param (base64url-encoded PEM) |
+| Reconnection | Exponential backoff with jitter; resets on successful handshake |
+| Heartbeat | Periodic status reports (container health, versions, upgrade state, auth status) |
+
+### Command protocol
+
+The center sends **commands**; the agent dispatches them to shared libraries already used by the local admin UI. Each command returns an **ack** (immediate acceptance) and optionally a **result** (final outcome).
+
+#### Commands (center → agent)
+
+| Command | Description |
+|---------|-------------|
+| `upgrade` | Trigger the 6-step upgrade pipeline |
+| `reconfigure` | Restart ai-dev with updated config |
+| `restart` | Restart ai-dev container |
+| `providers.key.add` | Add an API key for a provider |
+| `providers.key.set-active` | Switch the active provider key |
+| `providers.key.delete` | Remove a provider key |
+| `providers.key.update-note` | Update key note/label |
+| `secrets.set` | Update passwords (reports activation status) |
+| `ssh.key.add` | Generate or import an SSH key |
+| `ssh.key.delete` | Remove an SSH key |
+| `git.config.set` | Update global git config |
+| `gh.auth.start` | Start GitHub device-code auth flow |
+| `gh.auth.logout` | Disconnect GitHub auth |
+| `glab.instance.add` | Add a GitLab instance |
+| `glab.instance.remove` | Remove a GitLab instance |
+| `projects.create` | Create or clone a project |
+| `projects.set-remote` | Set project git remote |
+| `projects.enable` / `disable` | Enable/disable a project |
+| `projects.enable-feature` | Enable a project feature |
+| `projects.sync` | Sync project list (add/remove) |
+| `agent-models.set` | Switch the active agent model |
+
+#### Queries (center → agent, read-only)
+
+| Query | Returns |
+|-------|---------|
+| `status` | Aggregated health, auth, versions, upgrade state |
+| `env.get` | Masked environment variables |
+| `projects.list` | Project list with lean-ctx status |
+| `providers.list` | Provider definitions and key metadata |
+| `git.config.get` | Masked global git config |
+| `glab.instances` | GitLab instances (hostname, username, auth status) |
+| `ssh.key.list` | SSH key names, types, fingerprints |
+| `agent-models.list` | Available agent models |
+
+#### Events (agent → center, fire-and-forget)
+
+| Event | Payload |
+|-------|---------|
+| `upgrade` | Real-time upgrade pipeline progress (step, status, message) |
+
+### Security model
+
+- All command logic is **shared** with the local admin routes — identical behavior whether triggered locally or remotely.
+- Secret material (PATs, passwords, device codes) is **never echoed** outside the command payload; the only outbound occurrence is `gh.auth.start` ack `data` carrying the device code.
+- `git.config.get` drops `credential.*` and `url.*` entries; remaining values matching `KEY_MATERIAL_PATTERN` are masked.
+- `glab.instances` omits tokens by construction; `ssh.key.list` returns only name/type/fingerprint.
+- The agent connection is **outbound only** — no additional ports are opened on the host.
+
+### Key files
+
+| File | Purpose |
+|------|---------|
+| `src/admin/agent/client.ts` | WebSocket lifecycle, reconnection, heartbeat |
+| `src/admin/agent/protocol.ts` | Envelope format, command/query name whitelist, message builders |
+| `src/admin/agent/commands.ts` | Command dispatcher, handler registration |
+| `src/admin/agent/heartbeat.ts` | Status report builder, heartbeat interval |
+| `src/admin/agent/auth.ts` | Registration token resolution |
+| `src/admin/agent/tls.ts` | TLS/mTLS configuration |
+| `src/admin/agent/backoff.ts` | Exponential backoff with jitter |
 
 ---
 
@@ -280,22 +408,30 @@ sequenceDiagram
 graph TB
     subgraph "Host Network"
         HOST_PORT_8000[":8000 OpenChamber UI"]
+        HOST_PORT_8080[":8080 Admin Dashboard"]
     end
 
     subgraph "Docker Bridge Network"
         subgraph "ai-dev"
             CONTAINER_3000["3000 OpenChamber<br/>Web Server"]
-            CONTAINER_4095["4095 OpenCode<br/>API Server"]
+            CONTAINER_4095["4095 OpenCode<br/>API Server (internal)"]
+        end
+
+        subgraph "ai-admin"
+            CONTAINER_8080["8080 Admin<br/>Dashboard"]
         end
     end
 
     HOST_PORT_8000 -->|"mapped to"| CONTAINER_3000
+    HOST_PORT_8080 -->|"mapped to"| CONTAINER_8080
 
     CONTAINER_3000 -->|"WebSocket/SSE"| CONTAINER_4095
 
     style HOST_PORT_8000 fill:#f3e5f5
+    style HOST_PORT_8080 fill:#e8f5e9
     style CONTAINER_3000 fill:#f3e5f5
     style CONTAINER_4095 fill:#e3f2fd
+    style CONTAINER_8080 fill:#e8f5e9
 ```
 
 ### Environment Variables
