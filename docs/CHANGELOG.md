@@ -1,6 +1,23 @@
 ## [Unreleased]
 
 
+## [1.14.13] - 2026-08-17
+
+### Added
+- Redesign Providers view
+- Guard provider API-key routes
+- Add ChatGPT OAuth routes
+- Expose OpenAI provider metadata
+- Extend OpenCode auth store
+- Add OpenAI device-code OAuth
+- Add CodeGraph reindex button to projects drawer
+
+### Documentation
+- Document Providers responsive contract
+
+### Changed
+- Add responsive Providers assets
+
 ## [1.14.12] - 2026-08-17
 
 ### Added
@@ -1423,7 +1440,7 @@
 
 ## Format
 
-[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.14.11...HEAD
+[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.14.13...HEAD
 [0.3.0]: https://github.com/tryweb/ai-engkit/releases/tag/v0.3.0
 [0.3.3]: https://github.com/tryweb/ai-engkit/compare/v0.3.0...v0.3.3
 [0.5.0]: https://github.com/tryweb/ai-engkit/compare/v0.3.3...v0.5.0
@@ -1563,3 +1580,5 @@
 [1.14.9]: https://github.com/tryweb/ai-engkit/compare/v1.14.8...v1.14.9
 [1.14.10]: https://github.com/tryweb/ai-engkit/compare/v1.14.9...v1.14.10
 [1.14.11]: https://github.com/tryweb/ai-engkit/compare/v1.14.10...v1.14.11
+[1.14.12]: https://github.com/tryweb/ai-engkit/compare/v1.14.11...v1.14.12
+[1.14.13]: https://github.com/tryweb/ai-engkit/compare/v1.14.12...v1.14.13
