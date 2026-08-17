@@ -12,10 +12,10 @@ It is for people who want a ready-to-run AI coding workspace without assembling 
 
 ## Why AI-EngKit?
 
-- **One workspace, two interfaces** — use OpenCode from the terminal or OpenChamber from a browser.
+- **Browser-based AI workspace** — OpenChamber provides a full-featured web UI; the OpenCode CLI runs inside the container for advanced users who `docker exec` in.
 - **Pre-wired engineering tools** — CodeGraph, lean-ctx, Playwright, GitHub/GitLab CLI, Docker, and everyday build utilities are included.
 - **Persistent by default** — configuration, sessions, caches, credentials, workspace files, and knowledge data live in separate Docker volumes.
-- **Operationally manageable** — the Admin Dashboard handles environment settings, authentication, project initialization, version inspection, and upgrades.
+- **Operationally manageable** — the Admin Dashboard handles environment settings, authentication, project initialization, version inspection, and upgrades; optional center-agent connection enables remote management of multiple instances.
 - **Extensible without rebuilding** — add apt, Homebrew, or bun packages through environment variables at startup.
 
 ## Requirements and security boundary
@@ -49,7 +49,7 @@ The installer-generated `.env` is the source of truth for your ports and credent
 
 ### Core workspace
 
-- OpenCode terminal agent and OpenChamber browser UI
+- OpenCode AI agent (backend) with OpenChamber web UI (frontend); the CLI is available inside the container via `docker exec`
 - CodeGraph, lean-ctx, and Playwright MCP integrations
 - OpenSpec, Superpowers, baked skills, and OpenCode plugin support
 - `git`, `gh`, `glab`, Docker Compose, Buildx, Homebrew, bun, Python, ripgrep, jq, tmux, SSH, rsync, and common build tools
@@ -111,6 +111,8 @@ Copy `.env.example` to `.env` when configuring a checkout manually. The installe
 | `APT_PACKAGES` | unset | Extra apt packages installed at startup |
 | `BREW_PACKAGES` | unset | Extra Homebrew packages installed at startup |
 | `BUN_PACKAGES` | unset | Extra global bun packages installed at startup |
+| `CENTER_URL` | unset | WebSocket URL for center-agent remote management |
+| `CENTER_TOKEN` | unset | Registration token for center authentication |
 
 ### Workspace and persistent data
 
