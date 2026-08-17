@@ -171,4 +171,36 @@ describe("provider API-key note endpoints", () => {
       await f.cleanup();
     }
   });
+
+  test("POST first key returns 409 when the auth store holds an OAuth connection", async () => {
+    const f = await fixture(JSON.stringify({ providers: {} }));
+    const previousPath = Bun.env.PROVIDER_KEYS_PATH;
+    const previousExecutablePath = Bun.env.PATH;
+    const previousAuth = Bun.env.FAKE_AUTH_JSON;
+    Bun.env.PROVIDER_KEYS_PATH = f.registryPath;
+    Bun.env.PATH = `${f.binPath}:${previousExecutablePath ?? ""}`;
+    Bun.env.FAKE_AUTH_JSON = JSON.stringify({
+      openai: { type: "oauth", access: "at", refresh: "rt", expires: 1 },
+    });
+    try {
+      const response = await providers.request("http://localhost/api/providers/openai/keys", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ value: "sk-new", note: "primary" }),
+      });
+
+      expect(response.status).toBe(409);
+      const body = await response.json();
+      expect(body.error).toContain("Disconnect ChatGPT Pro/Plus");
+      expect(await readRegistry(f.registryPath)).toEqual({ providers: {} });
+    } finally {
+      if (previousPath === undefined) delete Bun.env.PROVIDER_KEYS_PATH;
+      else Bun.env.PROVIDER_KEYS_PATH = previousPath;
+      if (previousExecutablePath === undefined) delete Bun.env.PATH;
+      else Bun.env.PATH = previousExecutablePath;
+      if (previousAuth === undefined) delete Bun.env.FAKE_AUTH_JSON;
+      else Bun.env.FAKE_AUTH_JSON = previousAuth;
+      await f.cleanup();
+    }
+  });
 });

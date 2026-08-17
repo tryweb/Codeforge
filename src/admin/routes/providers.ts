@@ -21,14 +21,17 @@ import {
   isKeyProviderSupported,
   readProviderAuthKey,
   readProviderAuthSnapshot,
+  readProviderOAuthPresence,
   applyActiveKey,
   removeAuthKey,
   clearProviderCache,
 } from "../lib/opencode-auth";
 import { restartAiDev } from "../lib/restart-ai-dev";
 import { ProvidersPage } from "../views/providers";
+import providersOAuth from "./providers-oauth";
 
 const providers = new Hono();
+providers.route("/api/providers/openai/oauth", providersOAuth);
 
 async function restoreProviderAuth(name: string, previousAuthKey: string | null): Promise<string[]> {
   const failures: string[] = [];
@@ -130,6 +133,14 @@ providers.post("/api/providers/:name/keys", async (c) => {
     let existingAuthKey: string | null;
     try {
       existingAuthKey = await readProviderAuthSnapshot(name);
+      if (!existingAuthKey && (await readProviderOAuthPresence(name))) {
+        return c.json(
+          {
+            error: `auth store already holds a ChatGPT OAuth connection for ${name}. Disconnect ChatGPT Pro/Plus before managing API keys.`,
+          },
+          409,
+        );
+      }
     } catch {
       return c.json({ error: "Could not read the current auth-store key" }, 500);
     }
