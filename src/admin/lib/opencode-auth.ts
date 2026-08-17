@@ -6,6 +6,7 @@
  * Container restart is handled by the caller (restartAiDev).
  */
 import { execInAiDev, type ExecResult } from "./docker";
+import type { OAuthAuthEntry } from "./openai-oauth";
 
 // $HOME expands inside the container shell; a bare "~" would not survive
 // parameter expansion and double quotes (POSIX tilde rules).
@@ -17,7 +18,7 @@ const CACHE_FILES = [
 ];
 
 /** Providers whose credentials are managed via the opencode auth store. */
-export const KEY_MANAGED_PROVIDERS = ["opencode-go"] as const;
+export const KEY_MANAGED_PROVIDERS = ["opencode-go", "openai"] as const;
 
 export interface AuthSnapshotDeps {
   readonly execInAiDev: (command: string, timeoutMs: number) => Promise<ExecResult>;
@@ -102,6 +103,84 @@ export async function clearProviderCache(): Promise<void> {
   const result = await execInAiDev(`rm -f ${CACHE_FILES.join(" ")}`, 10_000);
   if (result.exitCode !== 0) {
     throw new Error(result.stderr || "Failed to clear provider cache");
+  }
+}
+
+/** Read the current raw JSON of a provider's auth-store entry (or null when absent). */
+export async function readAuthEntryRaw(
+  provider: string,
+  deps: AuthSnapshotDeps = REAL_AUTH_DEPS,
+): Promise<string | null> {
+  const store = await loadAuthStore(deps);
+  const entry = store[provider];
+  return entry === undefined ? null : JSON.stringify(entry);
+}
+
+/** Detect an OAuth connection independently of API-key presence. */
+export async function readProviderOAuthPresence(
+  provider: string,
+  deps: AuthSnapshotDeps = REAL_AUTH_DEPS,
+): Promise<boolean> {
+  let store: Record<string, unknown> | null;
+  try {
+    store = await loadAuthStore(deps);
+  } catch (error: unknown) {
+    if (error instanceof AuthStoreReadError) return false;
+    throw error;
+  }
+  const entry = store[provider] as { type?: unknown } | undefined;
+  return entry?.type === "oauth";
+}
+
+/** Run a jq rewrite of the auth store (atomic tmp+mv, 0600 perms). */
+async function writeAuthStoreJson(deps: AuthSnapshotDeps, jqArgs: string): Promise<void> {
+  const script = [
+    `AUTH="${AUTH_JSON_PATH}"`,
+    `mkdir -p "$(dirname "$AUTH")"`,
+    `test -f "$AUTH" || echo '{}' > "$AUTH"`,
+    `jq ${jqArgs} "$AUTH" > "$AUTH.tmp" && mv "$AUTH.tmp" "$AUTH"`,
+    `chmod 600 "$AUTH"`,
+  ].join(" && ");
+  const result = await deps.execInAiDev(script, 15_000);
+  if (result.exitCode !== 0) {
+    throw new Error(result.stderr || "Failed to write opencode auth store");
+  }
+}
+
+function encodeJson(value: unknown): string {
+  return Buffer.from(JSON.stringify(value)).toString("base64");
+}
+
+/**
+ * Write an OAuth entry into the auth store (OpenCode-compatible shape:
+ * { type: "oauth", access, refresh, expires, accountId? }).
+ */
+export async function applyOAuthEntry(
+  provider: string,
+  entry: OAuthAuthEntry,
+  deps: AuthSnapshotDeps = REAL_AUTH_DEPS,
+): Promise<void> {
+  const encoded = encodeJson(entry);
+  await writeAuthStoreJson(
+    deps,
+    `--argjson e "$(printf '%s' '${encoded}' | base64 -d)" '.["${provider}"] = $e'`,
+  );
+}
+
+/** Restore a previously snapshotted entry (raw JSON) or delete it when null. */
+export async function restoreAuthEntry(
+  provider: string,
+  raw: string | null,
+  deps: AuthSnapshotDeps = REAL_AUTH_DEPS,
+): Promise<void> {
+  if (raw === null) {
+    await writeAuthStoreJson(deps, `'del(.["${provider}"])'`);
+  } else {
+    const encoded = encodeJson(JSON.parse(raw));
+    await writeAuthStoreJson(
+      deps,
+      `--argjson e "$(printf '%s' '${encoded}' | base64 -d)" '.["${provider}"] = $e'`,
+    );
   }
 }
 
