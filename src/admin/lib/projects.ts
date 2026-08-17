@@ -4,6 +4,7 @@ import {
   mergeDisabledProject,
   mergeOpenChamberProject,
   projectId,
+  readDisabledProjects,
   type SettingsCommand,
 } from "./openchamber-projects";
 import { checkFeature, collectProjectOverviews, listProjects, type ProjectCommand } from "./projects-overview";
@@ -225,6 +226,62 @@ export async function disableProject(name: string, options: ProjectLibOptions = 
     await mergeDisabledProject(command, disabledPath, name, "enable");
     return { ok: false, error: `Could not unregister project from OpenChamber: ${removed.error}`, partial: true };
   }
+  return { ok: true };
+}
+
+/**
+ * Permanently delete a project: unregister from OpenChamber, remove disabled
+ * state, delete the per-project OpenChamber state file, and rm -rf the
+ * workspace directory. This action is irreversible.
+ *
+ * Ordering: unregister BEFORE rm so a failed delete leaves the project
+ * discoverable (re-registered on next sync) rather than becoming a ghost.
+ */
+export async function deleteProject(
+  name: string,
+  confirmationName: string,
+  options: ProjectLibOptions = {},
+): Promise<ProjectActionResult> {
+  if (confirmationName !== name) {
+    return { ok: false, error: "Project name confirmation does not match", status: 400 };
+  }
+
+  const { command, settingsPath, disabledPath, workspaceRoot, onSyncDone } = resolveOptions(options);
+
+  const exists = await command(`test -d ${projectDir(workspaceRoot, name)} && echo yes`, 5_000);
+  if (exists.stdout.trim() !== "yes") return { ok: false, error: "Project not found", status: 404 };
+
+  const fullPath = `${workspaceRoot}/${name}`;
+
+  // 1. Unregister from OpenChamber settings.json
+  const removed = await mergeOpenChamberProject(command, settingsPath, {
+    kind: "remove",
+    id: projectId(fullPath),
+    path: fullPath,
+  });
+  if (!removed.ok) {
+    return { ok: false, error: `Could not unregister project from OpenChamber: ${removed.error}` };
+  }
+
+  // 2. Remove from disabled-projects.json (ignore failure — project may not be disabled)
+  const disabled = await readDisabledProjects(command, disabledPath);
+  if (disabled.includes(name)) {
+    await mergeDisabledProject(command, disabledPath, name, "enable");
+  }
+
+  // 3. Delete per-project OpenChamber state file (best-effort)
+  const stateFile = `${workspaceRoot}/${name}`;
+  const ocId = projectId(fullPath);
+  const ocDir = `${workspaceRoot}/../.config/openchamber/projects`;
+  await command(`rm -f "${ocDir}/${ocId}.json" 2>/dev/null || true`, 5_000);
+
+  // 4. Remove the workspace directory
+  const rmResult = await command(`rm -rf ${projectDir(workspaceRoot, name)}`, 30_000);
+  if (rmResult.exitCode !== 0 && rmResult.exitCode !== -1) {
+    return { ok: false, error: `Project unregistered, but directory removal failed: ${rmResult.stderr || "unknown error"}`, partial: true };
+  }
+
+  onSyncDone();
   return { ok: true };
 }
 
