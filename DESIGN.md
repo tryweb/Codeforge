@@ -63,6 +63,22 @@ GitLab auth, git user, admin version mismatch, update availability.
 - `.progress-bar` / `.fill` — upgrade progress.
 - `.log-viewer` / `.log-entry` — upgrade event log.
 
+### Provider key registry row — `.key-row` + `__select` / `__value` / `__note` / `__actions`
+Registry key entry on the Providers page. Flex-wrap row that fits 320px
+without horizontal overflow: radio select, masked value (ellipsis-truncated),
+note input, and a right-aligned action cluster (Save / Show / Delete). Key
+inputs truncate at `--text-mono`; buttons keep ≥44px min-height on mobile.
+
+### Key add row — `.key-add-row`
+Wrap row of "New API key" / "Note" inputs plus Add / Import actions; inputs
+flex-grow on wide screens, stack at 320px.
+
+### ChatGPT OAuth panel — `.oauth-panel` (+ `.oauth-flow`, `.oauth-code-display`, `.oauth-code`)
+OpenAI Pro/Plus connection surface. Success-tinted border when
+`data-connected="true"`. The flow block shows the device code in large mono
+(`--font-mono`, letter-spaced), the verification link, live poll status, and
+Cancel / Finish actions; its buttons are ≥44px.
+
 ## 4. Dashboard page structure
 
 Order is fixed: heading → site summary band → overview metric row →
@@ -90,7 +106,7 @@ stable.
 | ≥1025px | 3-column `.metric-row`; sidebar visible |
 | 769–1024px | `.metric-row` 2 columns, third card spans full width |
 | ≤768px (and `.mobile` class) | `.metric-row` 1 column; sidebar → topbar drawer; `.grid-2`/`.grid-3` stack; 44px touch targets; cards scroll horizontally |
-| 320px floor | `.site-summary` wraps; metric values fit at `--text-3xl` |
+| 320px floor | `.site-summary` wraps; metric values fit at `--text-3xl`; `.key-row` and `.key-add-row` wrap so registry keys fit without horizontal overflow |
 
 ## 6. Accessibility constraints
 
@@ -113,7 +129,10 @@ stable.
   trigger.
 - Per-view inline `<script>` blocks (no client framework); the dashboard
   upgrade/restart script stays in `dashboard.tsx` (SIZE_OK — splitting it into
-  `app.js` is out of scope).
+  `app.js` is out of scope). The Providers page exceeds 250 pure LOC when the
+  script is inlined, so its client logic lives in `/static/providers-page.js`
+  (boot data injected via `window.providersBoot`); projects.tsx follows the
+  same pattern with `/static/projects-page.js`.
 - Metric values formatted with `toLocaleString()` server-side (server locale).
 - Overview row and detail cards intentionally repeat headline numbers
   (summary/detail pattern).
