@@ -16,6 +16,8 @@ interface ProviderMetaView {
   hasApiKey: boolean;
   keyManagement: boolean;
   authStoreKeyPresent: boolean;
+  oauthManaged: boolean;
+  oauthConnected: boolean;
   virtual: boolean;
   registry: {
     keyCount: number;
@@ -30,6 +32,8 @@ interface ProvidersMeta {
   providers: ProviderMetaView[];
 }
 
+const OPENAI_VERIFY_URL = "https://auth.openai.com/codex/device";
+
 export function ProvidersPage({
   meta,
   entries,
@@ -37,209 +41,12 @@ export function ProvidersPage({
   meta: ProvidersMeta;
   entries: Record<string, unknown>;
 }) {
-  const reveal = html`
-    <script>
-      var providersEntries = ${raw(JSON.stringify(entries))};
-      var providersMeta = ${raw(JSON.stringify(meta.providers).replace(/</g, '\\u003c'))};
-      var editName = null;
-      var editState = null;
-      var editApiKey = null;
-      var editRawValid = true;
-
-      function providerCard(name) {
-        return document.querySelector('.provider-card[data-provider="' + name + '"]');
-      }
-      function providerMeta(name) {
-        return providersMeta.find(function (p) { return p.name === name; });
-      }
-
-      function restartAiDev() {
-        if (!confirm('Restart ai-dev container? OpenCode sessions may briefly disconnect.')) return;
-        fetch('/api/env/restart', { method: 'POST' })
-          .then(function (r) { return r.json(); })
-          .then(function (j) {
-            if (j.ok) return location.reload();
-            alert('Restart failed: ' + (j.error || 'unknown error'));
-          });
-      }
-
-      function openProviderEdit(name) {
-        editName = name;
-        editApiKey = null;
-        editRawValid = true;
-        var e = JSON.parse(JSON.stringify(providersEntries[name] || {}));
-        editState = e;
-        document.getElementById('edit-name').value = name;
-        document.getElementById('edit-label').value = e.name || '';
-        document.getElementById('edit-npm').value = e.npm || '';
-        document.getElementById('edit-baseurl').value = (e.options && e.options.baseURL) || '';
-        document.getElementById('edit-apikey').value = '';
-        document.getElementById('edit-raw').value = JSON.stringify(e, null, 2);
-        document.getElementById('edit-status').textContent = '';
-        document.getElementById('edit-modal').style.display = 'flex';
-      }
-
-      function patchField(field, value) {
-        if (!editState) return;
-        if (field === 'label') editState.name = value;
-        else if (field === 'npm') editState.npm = value;
-        else if (field === 'baseURL') { editState.options = editState.options || {}; editState.options.baseURL = value; }
-        else if (field === 'apiKey') { editApiKey = value; return; }
-        document.getElementById('edit-raw').value = JSON.stringify(editState, null, 2);
-      }
-
-      function onRawInput(text) {
-        if (!editState) return;
-        var s = document.getElementById('edit-status');
-        try {
-          editState = JSON.parse(text);
-          editRawValid = true;
-          s.textContent = '';
-        } catch (err) {
-          editRawValid = false;
-          s.textContent = 'Raw JSON is invalid: ' + err.message;
-        }
-      }
-
-      function saveProvider() {
-        if (!editName) return;
-        if (!editRawValid) return;
-        if (editApiKey) {
-          editState.options = editState.options || {};
-          editState.options.apiKey = editApiKey;
-        }
-        fetch('/api/providers/' + editName, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ provider: editState }),
-        })
-          .then(function (r) { return r.json(); })
-          .then(function (j) {
-            if (j.ok) return location.reload();
-            alert('Save failed: ' + (j.error || 'unknown error'));
-          });
-      }
-
-      function closeProviderEdit() {
-        editName = null;
-        document.getElementById('edit-modal').style.display = 'none';
-      }
-
-      function deleteProvider(name) {
-        if (!confirm('Delete provider "' + name + '" from OPENCODE_PROVIDER?')) return;
-        fetch('/api/providers/' + name, { method: 'DELETE' })
-          .then(function (r) { return r.json(); })
-          .then(function (j) {
-            if (j.ok) return location.reload();
-            alert('Delete failed: ' + (j.error || 'unknown error'));
-          });
-      }
-
-      function addKey(name) {
-        var input = providerCard(name).querySelector('.key-add-input');
-        var noteInput = providerCard(name).querySelector('.key-add-note-input');
-        var value = input.value;
-        if (!value) { input.focus(); return; }
-        var note = noteInput.value.trim();
-        var pm = providerMeta(name);
-        var first = pm && pm.registry.keyCount === 0;
-        if (first && !confirm('This is the first key for ' + name + ' — it will be applied to the auth store and ai-dev will restart. Continue?')) return;
-        fetch('/api/providers/' + name + '/keys', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ value: value, note: note }),
-        })
-          .then(function (r) { return r.json(); })
-          .then(function (j) {
-            if (j.ok) return location.reload();
-            alert('Add key failed: ' + (j.error || 'unknown error'));
-          });
-      }
-
-      function saveKeyNote(name, keyId, input, button) {
-        button.disabled = true;
-        fetch('/api/providers/' + name + '/keys/' + keyId, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ note: input.value }),
-        })
-          .then(function (r) { return r.json(); })
-          .then(function (j) {
-            if (!j.ok) { alert('Save note failed: ' + (j.error || 'unknown error')); return; }
-            button.textContent = 'Saved';
-            setTimeout(function () { button.textContent = 'Save'; }, 1200);
-          })
-          .catch(function (err) {
-            alert('Save note failed: ' + (err && err.message ? err.message : 'network error'));
-          })
-          .finally(function () { button.disabled = false; });
-      }
-
-      function deleteKey(name, keyId) {
-        if (!confirm('Delete this API key?')) return;
-        fetch('/api/providers/' + name + '/keys/' + keyId, { method: 'DELETE' })
-          .then(function (r) { return r.json(); })
-          .then(function (j) {
-            if (j.ok) return location.reload();
-            alert('Delete key failed: ' + (j.error || 'unknown error'));
-          });
-      }
-
-      function selectActiveKey(name, keyId) {
-        if (!confirm('Switching the active key writes it to the auth store and restarts ai-dev (brief downtime). Continue?')) return;
-        var status = providerCard(name).querySelector('.key-activation-status');
-        status.textContent = 'Applying selected key...';
-        fetch('/api/providers/' + name + '/keys/' + keyId + '/active', { method: 'PUT' })
-          .then(function (r) { return r.json(); })
-          .then(function (j) {
-            if (j.ok) return location.reload();
-            status.textContent = 'Selection not applied';
-            alert('Activate key failed: ' + (j.error || 'unknown error'));
-          })
-          .catch(function (err) {
-            status.textContent = 'Selection not applied';
-            alert('Activate key failed: ' + (err && err.message ? err.message : 'network error'));
-          });
-      }
-
-      function toggleKeyValue(name, keyId, btn) {
-        var row = btn.closest('.secret-value-row');
-        var mv = row.querySelector('.masked-value');
-        var revealed = mv.querySelector('.revealed');
-        if (mv.classList.contains('show')) {
-          mv.classList.remove('show');
-          btn.textContent = 'Show';
-          return;
-        }
-        fetch('/api/providers/' + name + '/keys/' + keyId + '/value')
-          .then(function (r) { return r.json(); })
-          .then(function (j) {
-            if (!j.ok) { alert('Failed to reveal key: ' + (j.error || 'unknown error')); return; }
-            revealed.textContent = j.key;
-            mv.classList.add('show');
-            btn.textContent = 'Hide';
-          });
-      }
-
-      function importKey(name) {
-        fetch('/api/providers/' + name + '/keys/import-candidate')
-          .then(function (r) { return r.json(); })
-          .then(function (j) {
-            if (!j.candidate) { alert('No key to import: ' + ((j.error) || 'auth store has no key for ' + name)); return; }
-            if (!confirm('Import key ' + j.masked + ' as the first key for ' + name + '? Restart ai-dev afterward to apply it.')) return;
-            return fetch('/api/providers/' + name + '/keys/import', { method: 'POST' })
-              .then(function (r) { return r.json(); })
-              .then(function (j2) {
-                if (j2.ok) return location.reload();
-                alert('Import failed: ' + (j2.error || 'unknown error'));
-              });
-          })
-          .catch(function (err) {
-            alert('Import failed: ' + (err && err.message ? err.message : 'network error'));
-          });
-      }
-    </script>
-  `;
+  const boot = html`<script>
+    window.providersBoot = {
+      entries: ${raw(JSON.stringify(entries))},
+      meta: ${raw(JSON.stringify(meta.providers).replace(/</g, "\\u003c"))}
+    };
+  </script>`;
 
   return (
     <Layout title="Providers">
@@ -249,8 +56,8 @@ export function ProvidersPage({
       </div>
       <p class="text-sm text-muted" style="margin-bottom: 16px;">
         Providers are defined in <code>OPENCODE_PROVIDER</code> and injected into <code>opencode.json</code> on startup.
-        Key-managed providers (Opencode Go) keep their API keys in the provider-keys registry instead; the registry-selected key is
-        written to the opencode auth store and applied on restart.
+        Key-managed providers (Opencode Go, OpenAI API) keep their API keys in the provider-keys registry instead;
+        the registry-selected key is written to the opencode auth store and applied on restart.
       </p>
       {meta.invalid && (
         <div class="card danger-card" style="margin-bottom: 16px;">
@@ -266,7 +73,7 @@ export function ProvidersPage({
       {meta.providers.map((p) => (
         <div class="card secret-card provider-card" data-provider={p.name} style="margin-bottom: 16px;">
           <div class="flex" style="justify-content: space-between; align-items: center; margin-bottom: 12px;">
-            <div style="display: flex; align-items: center; gap: 8px;">
+            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
               <h3 style="margin: 0;">{p.label}</h3>
               {p.virtual && <span class="badge badge-warning">auth-managed</span>}
               {p.npm && <span class="text-muted" style="font-size: 13px;">{p.npm}</span>}
@@ -286,13 +93,13 @@ export function ProvidersPage({
           )}
           {p.keyManagement && (
             <div style="margin-bottom: 12px;">
-              <div class="flex" style="justify-content: space-between; align-items: center; margin-bottom: 8px;">
+              <div class="flex" style="justify-content: space-between; align-items: center; margin-bottom: 8px; gap: 8px; flex-wrap: wrap;">
                 <div>
-                  <b style="font-size: 14px;">API Keys in registry ({p.registry.keyCount})</b>
+                  <b style="font-size: 14px;">{p.label} keys in registry ({p.registry.keyCount})</b>
                   <span class="key-activation-status text-muted" style="font-size: 13px; margin-left: 8px;"></span>
                 </div>
                 <span class="badge badge-warning">
-                  {p.authStoreKeyPresent ? "auth store: key present" : "auth store: no key"}
+                  {p.authStoreKeyPresent ? "auth store: API key present" : "auth store: no API key"}
                 </span>
               </div>
               {p.registry.keys.length === 0 && (
@@ -301,36 +108,37 @@ export function ProvidersPage({
                 </div>
               )}
               {p.registry.keys.map((k) => (
-                <div class="secret-value-row" data-key-id={k.id} style="margin-bottom: 8px;">
+                <div class="key-row" data-key-id={k.id}>
                   <input
                     type="radio"
+                    class="key-row__select"
                     name={`active-${p.name}`}
                     checked={k.active}
                     onclick={`selectActiveKey('${p.name}', '${k.id}')`}
-                    style="margin-right: 8px;"
+                    aria-label={`Select ${k.masked} as the active key`}
                   />
-                  <span class="masked-value">
+                  <span class="masked-value key-row__value" title={k.masked}>
                     <span class="masked">{k.masked}</span>
                     <span class="revealed"></span>
                   </span>
                   {k.active && <span class="badge badge-warning">Selected in registry</span>}
                   <input
                     type="text"
-                    class="key-note-input"
+                    class="key-note-input key-row__note"
                     value={k.note}
                     placeholder="Note"
                     aria-label={`Note for ${k.masked}`}
                   />
-                  <button class="btn-outline" onclick={`saveKeyNote('${p.name}', '${k.id}', this.previousElementSibling, this)`}>
-                    Save
-                  </button>
-                  <button class="btn-outline" onclick={`toggleKeyValue('${p.name}', '${k.id}', this)`} style="margin-left: auto;">
-                    Show
-                  </button>
-                  <button class="btn-outline" onclick={`deleteKey('${p.name}', '${k.id}')`}>Delete</button>
+                  <span class="key-row__actions">
+                    <button class="btn-outline" onclick={`saveKeyNote('${p.name}', '${k.id}', this)`}>
+                      Save
+                    </button>
+                    <button class="btn-outline" onclick={`toggleKeyValue('${p.name}', '${k.id}', this)`}>Show</button>
+                    <button class="btn-outline" onclick={`deleteKey('${p.name}', '${k.id}')`}>Delete</button>
+                  </span>
                 </div>
               ))}
-              <div class="flex" style="gap: 8px; align-items: center;">
+              <div class="key-add-row">
                 <input type="password" class="key-add-input" placeholder="New API key" autocomplete="new-password" />
                 <input type="text" class="key-add-note-input" placeholder="Note (optional)" />
                 <button class="btn-outline" onclick={`addKey('${p.name}')`}>Add key</button>
@@ -340,15 +148,45 @@ export function ProvidersPage({
               </div>
             </div>
           )}
-          <div class="flex" style="justify-content: space-between; align-items: center; gap: 8px;">
+          {p.oauthManaged && (
+            <div class="oauth-panel" data-provider={p.name} data-connected={p.oauthConnected ? "true" : "false"}>
+              <div class="flex" style="justify-content: space-between; align-items: center; margin-bottom: 8px; gap: 8px; flex-wrap: wrap;">
+                <div>
+                  <b style="font-size: 14px;">ChatGPT Pro/Plus</b>
+                  {p.oauthConnected && <span class="badge badge-success" style="margin-left: 8px;">OAuth connected</span>}
+                </div>
+                {p.oauthConnected ? (
+                  <button class="btn-danger" onclick={`disconnectOAuth('${p.name}')`}>Disconnect ChatGPT</button>
+                ) : (
+                  <button class="btn" onclick={`startOAuth('${p.name}')`}>Connect ChatGPT Pro/Plus</button>
+                )}
+              </div>
+              <p class="text-sm text-muted">
+                {p.oauthConnected
+                  ? "OpenAI models run through your ChatGPT Pro/Plus subscription — no API key needed."
+                  : `Prerequisites: an active ChatGPT Pro or Plus subscription. You will be shown a code and asked to enter it at ${OPENAI_VERIFY_URL}. Connecting replaces any stored OpenAI API key credential.`}
+              </p>
+              <div id="oauth-flow" class="oauth-flow" hidden>
+                <div class="oauth-code-display">
+                  <span class="text-muted text-sm">Code</span>
+                  <div class="oauth-code" id="oauth-user-code"></div>
+                </div>
+                <p class="text-sm" style="margin: 8px 0;">
+                  Open <a id="oauth-verify-link" href={OPENAI_VERIFY_URL} target="_blank" rel="noopener noreferrer">auth.openai.com/codex/device</a> and enter the code above.
+                </p>
+                <div id="oauth-poll-status" class="text-sm text-muted" style="margin-bottom: 8px;"></div>
+                <div class="flex" style="gap: 8px;">
+                  <button class="btn-outline" onclick="cancelOAuth()">Cancel</button>
+                  <button id="oauth-apply" class="btn" onclick="applyOAuth()" hidden>Finish connecting</button>
+                </div>
+              </div>
+            </div>
+          )}
+          <div class="flex" style="justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
             <span class="badge badge-warning">Restart required to apply</span>
             <div class="flex" style="gap: 8px;">
-              {!p.virtual && (
-                <button class="btn-outline" onclick={`openProviderEdit('${p.name}')`}>Edit</button>
-              )}
-              {!p.virtual && (
-                <button class="btn-outline" onclick={`deleteProvider('${p.name}')`}>Delete</button>
-              )}
+              {!p.virtual && <button class="btn-outline" onclick={`openProviderEdit('${p.name}')`}>Edit</button>}
+              {!p.virtual && <button class="btn-outline" onclick={`deleteProvider('${p.name}')`}>Delete</button>}
             </div>
           </div>
         </div>
@@ -396,7 +234,8 @@ export function ProvidersPage({
           </div>
         </div>
       </div>
-      {reveal}
+      {boot}
+      <script src="/static/providers-page.js"></script>
     </Layout>
   );
 }
