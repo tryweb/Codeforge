@@ -40,7 +40,7 @@ app.use("/static/*", serveStatic({ root: "/opt/admin" }));
 
 // Rate limiting store
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
-const RATE_LIMIT = 120;
+const RATE_LIMIT = 500;
 const RATE_WINDOW = 60_000;
 
 async function rateLimit(c: any, next: any) {

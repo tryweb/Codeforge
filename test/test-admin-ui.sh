@@ -504,7 +504,7 @@ fi
 PROJECTS_HTML=$(curl -s -b "$COOKIE_JAR" "$BASE/projects" 2>/dev/null || echo "")
 assert_contains "Projects page renders CodeGraph column" "CodeGraph" "$PROJECTS_HTML"
 assert_not_contains "Projects page has no leanCTX column" "leanCTX" "$PROJECTS_HTML"
-assert_contains "Projects page has codegraph tool cells" 'data-tool="codegraph"' "$PROJECTS_HTML"
+assert_contains "Projects page loads projects-page.js" 'projects-page.js' "$PROJECTS_HTML"
 assert_contains "Projects page has re-scan button" "btn-tool-refresh" "$PROJECTS_HTML"
 
 REFRESH_CODE=$(curl -s -o /dev/null -w "%{http_code}" -b "$COOKIE_JAR" \
