@@ -165,7 +165,7 @@ done
 active=0
 reg="$base/agents/registry.json"
 if [ -f "$reg" ]; then
-  active=$(jq -r '[.[] | select(.last_active != null) | (.last_active | fromdateiso8601? // empty) | select(. >= (now - 86400))] | length' "$reg" 2>/dev/null || printf '0')
+  active=$(jq -r '[.agents[] | select(.last_active != null) | (.last_active | sub("\\\\.[0-9]+Z$"; "Z") | fromdateiso8601) | select(. >= (now - 86400))] | length' "$reg" 2>/dev/null || printf '0')
 fi
 health=0
 for g in "$base"/graphs/*/health.json; do
