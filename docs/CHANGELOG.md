@@ -1,5 +1,16 @@
 ## [Unreleased]
 
+
+## [1.14.11] - 2026-08-17
+
+### Added
+- Add delete button and confirmation modal to projects UI
+- Add DELETE /api/projects/:name/delete route with confirmation
+- Add deleteProject() function for permanent project removal
+
+### Fixed
+- Inject version into dependency-update auto-release image
+
 ## [1.14.10] - 2026-08-16
 
 ### Changed
@@ -1398,13 +1409,11 @@
 
 ### Changed
 - Improve the `README.md` document structure.
-
-
 ---
 
 ## Format
 
-[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.14.10...HEAD
+[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.14.11...HEAD
 [0.3.0]: https://github.com/tryweb/ai-engkit/releases/tag/v0.3.0
 [0.3.3]: https://github.com/tryweb/ai-engkit/compare/v0.3.0...v0.3.3
 [0.5.0]: https://github.com/tryweb/ai-engkit/compare/v0.3.3...v0.5.0
@@ -1543,3 +1552,4 @@
 [1.14.8]: https://github.com/tryweb/ai-engkit/compare/v1.14.7...v1.14.8
 [1.14.9]: https://github.com/tryweb/ai-engkit/compare/v1.14.8...v1.14.9
 [1.14.10]: https://github.com/tryweb/ai-engkit/compare/v1.14.9...v1.14.10
+[1.14.11]: https://github.com/tryweb/ai-engkit/compare/v1.14.10...v1.14.11
