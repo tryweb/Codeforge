@@ -37,6 +37,9 @@ const STATUS: StatusResponse = {
   project_count: 2,
   leanctx: null,
   gain: null,
+  valueReport: null,
+  proveReport: null,
+  savingsReport: null,
   admin_version: "1.2.3",
   admin_version_mismatch: false,
 };

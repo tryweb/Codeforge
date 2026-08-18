@@ -1,7 +1,7 @@
 import type { FC } from "hono/jsx";
 import { html } from "hono/html";
 import { Layout } from "./layout";
-import type { GainStats, LeanCtxSiteStats } from "../lib/project-tool-status";
+import type { GainStats, LeanCtxSiteStats, ProveReportStats, SavingsReportStats, ValueReportStats } from "../lib/project-tool-status";
 
 interface UpdateCheckResult {
   current: string;
@@ -29,6 +29,9 @@ interface DashboardData {
   project_count: number;
   leanctx: LeanCtxSiteStats | null;
   gain: GainStats | null;
+  valueReport: ValueReportStats | null;
+  proveReport: ProveReportStats | null;
+  savingsReport: SavingsReportStats | null;
   update_check: UpdateCheckResult;
   upgrade_state: string;
   upgrade_events: UpgradeEvent[];
@@ -74,7 +77,7 @@ const MetricCard: FC<{
 const DashboardContent: FC<{ data: DashboardData }> = ({ data }) => {
   const isRunning = data.container_status === "running";
   const isUpgrading = data.upgrade_state === "running";
-  const { gain, leanctx } = data;
+  const { gain, leanctx, valueReport, proveReport, savingsReport } = data;
   const uptime = data.uptime_seconds != null ? `${Math.floor(data.uptime_seconds / 60)}m` : null;
   return (
     <div>
@@ -138,6 +141,7 @@ const DashboardContent: FC<{ data: DashboardData }> = ({ data }) => {
           sub={leanctx ? "active in last 24h" : "unavailable"}
           foot={gain ? (gain.ledgerVerified ? `✓ ledger intact · ${gain.ledgerEvents.toLocaleString()} events` : "⚠ ledger unverified") : undefined}
         />
+
       </section>
 
       <div class="grid-2">
@@ -226,6 +230,64 @@ const DashboardContent: FC<{ data: DashboardData }> = ({ data }) => {
           </div>
         ) : (
           <p class="text-sm text-muted">Token savings unavailable</p>
+        )}
+      </div>
+      <div class="card">
+        <h3>Decision Loop <span class="text-sm text-muted">· value report</span></h3>
+        {valueReport ? (
+          valueReport.tasks.length > 0 ? (
+            <div class="flex items-center gap-2" style="flex-wrap:wrap;">
+              <span class="badge badge-success" style="font-size:0.8rem;">{valueReport.totalTasks} tasks assessed</span>
+              <span class="badge" style="font-size:0.8rem;">{(valueReport.acceptedRate <= 1 ? valueReport.acceptedRate * 100 : valueReport.acceptedRate).toFixed(0)}% acceptance</span>
+              <span class="badge" style="font-size:0.8rem;">CPAO {valueReport.cpaoMicros}μs</span>
+              <span class="badge" style="font-size:0.8rem;">ETPAO {valueReport.etpaoTokens.toLocaleString()} tokens</span>
+              <span class="badge" style="font-size:0.8rem;">${valueReport.savingsUsd.toFixed(2)} saved</span>
+            </div>
+          ) : (
+            <p class="text-sm text-muted">No assessments recorded yet</p>
+          )
+        ) : (
+          <p class="text-sm text-muted">Decision Loop data unavailable</p>
+        )}
+      </div>
+      <div class="card">
+        <h3>Evidence Chain <span class="text-sm text-muted">· prove report</span></h3>
+        {proveReport ? (
+          proveReport.tasks.length > 0 ? (
+            <div class="flex items-center gap-2" style="flex-wrap:wrap;">
+              <span class="badge badge-success" style="font-size:0.8rem;">{proveReport.totalTasks} tasks proven</span>
+              <span class="badge" style="font-size:0.8rem;">{(proveReport.acceptedRate <= 1 ? proveReport.acceptedRate * 100 : proveReport.acceptedRate).toFixed(0)}% accepted</span>
+              <span class={`badge ${proveReport.evidenceChainComplete ? "badge-success" : "badge-warning"}`} style="font-size:0.8rem;">
+                {proveReport.evidenceChainComplete ? "✓ chain complete" : "⚠ chain incomplete"}
+              </span>
+              <span class="badge" style="font-size:0.8rem;">ledger {proveReport.ledger.itemCount} items</span>
+            </div>
+          ) : (
+            <p class="text-sm text-muted">No evidence data</p>
+          )
+        ) : (
+          <p class="text-sm text-muted">Evidence Chain data unavailable</p>
+        )}
+      </div>
+      <div class="card">
+        <h3>Savings by Tool <span class="text-sm text-muted">· savings report</span></h3>
+        {savingsReport ? (
+          savingsReport.topSources.length > 0 ? (
+            <table>
+              <tr><th>Tool</th><th>Tokens saved</th><th>Share</th></tr>
+              {savingsReport.topSources.map(([name, tokens]) => (
+                <tr>
+                  <td>{name}</td>
+                  <td>{tokens.toLocaleString()}</td>
+                  <td>{savingsReport.tokensSaved > 0 ? `${((tokens / savingsReport.tokensSaved) * 100).toFixed(1)}%` : "—"}</td>
+                </tr>
+              ))}
+            </table>
+          ) : (
+            <p class="text-sm text-muted">No data</p>
+          )
+        ) : (
+          <p class="text-sm text-muted">Savings by Tool data unavailable</p>
         )}
       </div>
       <div class="card">

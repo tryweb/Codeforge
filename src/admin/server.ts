@@ -154,7 +154,10 @@ app.get("/", async (c) => {
   const gitUser = gitResult.stdout.trim();
   const projectCount = parseInt(projectsResult.stdout.trim() || "0", 10);
   const toolStatus = createToolStatusProbe({ command: execInAiDev, workspaceRoot: "/home/devuser/workspace" });
-  const [leanctx, gain] = await Promise.all([toolStatus.probeSite(), toolStatus.probeGain()]);
+  const [leanctx, gain, valueReport, proveReport, savingsReport] = await Promise.all([
+    toolStatus.probeSite(), toolStatus.probeGain(),
+    toolStatus.probeValueReport(), toolStatus.probeProveReport(), toolStatus.probeSavingsReport(),
+  ]);
 
   let aiEngkitVer = await getVer("cat /opt/ai-engkit/VERSION") || "dev";
   let adminVer = "dev";
@@ -199,6 +202,9 @@ app.get("/", async (c) => {
       project_count: projectCount,
       leanctx,
       gain,
+      valueReport,
+      proveReport,
+      savingsReport,
       update_check: updateCheck,
       upgrade_state: upgradeStatus.state,
       upgrade_events: upgradeStatus.events,

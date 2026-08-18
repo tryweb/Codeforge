@@ -1,5 +1,10 @@
 ## [Unreleased]
 
+### Added
+- Bump lean-ctx from 3.9.18 to 3.9.19.
+
+### Changed
+- Upgrade lean-ctx from 3.9.18 to 3.9.19.
 
 ## [1.14.14] - 2026-08-18
 

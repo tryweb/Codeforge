@@ -4,7 +4,7 @@
 
 ai-engkit 在容器映像建置時安裝 lean-ctx(`Dockerfile` L134)並在 entrypoint 註冊 MCP 伺服器(`entrypoint.d/02-init-config.sh` L152-154)。`docker-compose.yml` 透過 `lean-ctx-data`、`lean-ctx-state` 兩個 named volume 持久化資料,並依 XDG Base Directory 規範分目錄。
 
-> **Current state (lean-ctx 3.9.18):** 下列 Solution A、B、C 已套用到 repo。映像會產生 `config.toml`,entrypoint 會安裝 shell hook 與 OpenCode integration,測試則驗證 MCP 連線及 non-interactive shell 環境。原 Problem 內容保留為設計沿革。
+> **Current state (lean-ctx 3.9.19):** 下列 Solution A、B、C 已套用到 repo。映像會產生 `config.toml`,entrypoint 會安裝 shell hook 與 OpenCode integration,測試則驗證 MCP 連線及 non-interactive shell 環境。原 Problem 內容保留為設計沿革。
 
 實際部署後,`lean-ctx doctor` 27/32 通過 — 整體骨架完整(XDG layout pin、build-time 安裝、MCP 設定、legacy 遷移邏輯都到位),但仍有 4 個明顯的優化缺口,以及一個會誤導排查方向的 false-positive。
 

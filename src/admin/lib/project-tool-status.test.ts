@@ -9,6 +9,9 @@ interface FakeHandlers {
   site?: (source: string) => CmdResult;
   gain?: (source: string) => CmdResult;
   verify?: (source: string) => CmdResult;
+  valueReport?: (source: string) => CmdResult;
+  proveReport?: (source: string) => CmdResult;
+  savingsReport?: (source: string) => CmdResult;
 }
 
 /**
@@ -29,6 +32,15 @@ function fakeCommand(handlers: FakeHandlers = {}): ProjectCommand {
     }
     if (source.includes("knowledge/*/knowledge.json")) {
       return handlers.site ? handlers.site(source) : { exitCode: 0, stdout: "", stderr: "" };
+    }
+    if (source.includes("value-report --live")) {
+      return handlers.valueReport ? handlers.valueReport(source) : { exitCode: 127, stdout: "", stderr: "" };
+    }
+    if (source.includes("prove --format json")) {
+      return handlers.proveReport ? handlers.proveReport(source) : { exitCode: 127, stdout: "", stderr: "" };
+    }
+    if (source.includes("savings --format json")) {
+      return handlers.savingsReport ? handlers.savingsReport(source) : { exitCode: 127, stdout: "", stderr: "" };
     }
     return { exitCode: 0, stdout: "", stderr: "" };
   };
@@ -366,5 +378,503 @@ describe("cache and invalidation", () => {
     );
     expect(maxCodegraphInFlight).toBeLessThanOrEqual(4);
     expect(maxCodegraphInFlight).toBeGreaterThan(1);
+  });
+});
+
+describe("leanCTX value-report probe", () => {
+  const valueReportJson = JSON.stringify({
+    total_tasks: 12,
+    accepted_rate: 0.75,
+    cpao_micros: 1500,
+    etpao_tokens: 8000,
+    total_cost_micros: 250000,
+    savings_usd: 12.5,
+    tasks: [
+      {
+        task_id: "t1",
+        model: "gpt-4o",
+        total_tokens: 5000,
+        cost_micros: 1000,
+        outcome_accepted: true,
+        cpao_micros: 200,
+        evidence: ["e1", "e2"],
+        timestamp: "2026-08-19T10:00:00Z",
+      },
+    ],
+  });
+
+  test("parses value-report stats from valid JSON", async () => {
+    const command = fakeCommand({
+      valueReport: () => ({ exitCode: 0, stdout: valueReportJson, stderr: "" }),
+    });
+    const provider = createToolStatusProbe({ command, workspaceRoot: "/workspace", ttlMs: 60_000 });
+
+    expect(await provider.probeValueReport()).toEqual({
+      totalTasks: 12,
+      acceptedRate: 0.75,
+      cpaoMicros: 1500,
+      etpaoTokens: 8000,
+      totalCostMicros: 250000,
+      savingsUsd: 12.5,
+      tasks: [
+        {
+          taskId: "t1",
+          model: "gpt-4o",
+          totalTokens: 5000,
+          costMicros: 1000,
+          outcomeAccepted: true,
+          cpaoMicros: 200,
+          evidence: ["e1", "e2"],
+          timestamp: "2026-08-19T10:00:00Z",
+        },
+      ],
+    });
+  });
+
+  test("applies defaults for missing fields and filters non-string evidence", async () => {
+    const command = fakeCommand({
+      valueReport: () => ({
+        exitCode: 0,
+        stdout: JSON.stringify({
+          tasks: [
+            { task_id: "t1", cpao_micros: null, evidence: ["ok", 42, null] },
+            "not-an-object",
+          ],
+        }),
+        stderr: "",
+      }),
+    });
+    const provider = createToolStatusProbe({ command, workspaceRoot: "/workspace", ttlMs: 60_000 });
+
+    expect(await provider.probeValueReport()).toEqual({
+      totalTasks: 0,
+      acceptedRate: 0,
+      cpaoMicros: 0,
+      etpaoTokens: 0,
+      totalCostMicros: 0,
+      savingsUsd: 0,
+      tasks: [
+        {
+          taskId: "t1",
+          model: "",
+          totalTokens: 0,
+          costMicros: 0,
+          outcomeAccepted: false,
+          cpaoMicros: null,
+          evidence: ["ok"],
+          timestamp: "",
+        },
+        {
+          taskId: "",
+          model: "",
+          totalTokens: 0,
+          costMicros: 0,
+          outcomeAccepted: false,
+          cpaoMicros: null,
+          evidence: [],
+          timestamp: "",
+        },
+      ],
+    });
+  });
+
+  test("parses an empty tasks array with zeroed aggregates", async () => {
+    const command = fakeCommand({
+      valueReport: () => ({
+        exitCode: 0,
+        stdout: JSON.stringify({ total_tasks: 0, accepted_rate: 0, tasks: [] }),
+        stderr: "",
+      }),
+    });
+    const provider = createToolStatusProbe({ command, workspaceRoot: "/workspace", ttlMs: 60_000 });
+
+    expect(await provider.probeValueReport()).toEqual({
+      totalTasks: 0,
+      acceptedRate: 0,
+      cpaoMicros: 0,
+      etpaoTokens: 0,
+      totalCostMicros: 0,
+      savingsUsd: 0,
+      tasks: [],
+    });
+  });
+
+  test("returns null on non-JSON output", async () => {
+    const command = fakeCommand({
+      valueReport: () => ({ exitCode: 0, stdout: "not json", stderr: "" }),
+    });
+    const provider = createToolStatusProbe({ command, workspaceRoot: "/workspace", ttlMs: 60_000 });
+
+    expect(await provider.probeValueReport()).toBeNull();
+  });
+
+  test("returns null on empty stdout", async () => {
+    const command = fakeCommand({
+      valueReport: () => ({ exitCode: 0, stdout: "", stderr: "" }),
+    });
+    const provider = createToolStatusProbe({ command, workspaceRoot: "/workspace", ttlMs: 60_000 });
+
+    expect(await provider.probeValueReport()).toBeNull();
+  });
+
+  test("returns null when the command throws (timeout)", async () => {
+    const command = fakeCommand({
+      valueReport: () => { throw new Error("timed out"); },
+    });
+    const provider = createToolStatusProbe({ command, workspaceRoot: "/workspace", ttlMs: 60_000 });
+
+    expect(await provider.probeValueReport()).toBeNull();
+  });
+
+  test("returns null when the command is missing", async () => {
+    const provider = createToolStatusProbe({ command: fakeCommand(), workspaceRoot: "/workspace", ttlMs: 60_000 });
+
+    expect(await provider.probeValueReport()).toBeNull();
+  });
+
+  test("caches the value-report probe and re-probes after invalidate", async () => {
+    let calls = 0;
+    const command = fakeCommand({
+      valueReport: () => {
+        calls += 1;
+        return { exitCode: 0, stdout: valueReportJson, stderr: "" };
+      },
+    });
+    const provider = createToolStatusProbe({ command, workspaceRoot: "/workspace", ttlMs: 60_000 });
+
+    const first = await provider.probeValueReport();
+    const second = await provider.probeValueReport();
+    expect(calls).toBe(1);
+    expect(second).toBe(first);
+
+    provider.invalidate();
+    await provider.probeValueReport();
+    expect(calls).toBe(2);
+  });
+});
+
+describe("leanCTX prove-report probe", () => {
+  const proveReportJson = JSON.stringify({
+    accepted_rate: 0.8,
+    aggregate_cpao_micros: 3200,
+    evidence_chain_complete: true,
+    evidence_ledger: {
+      created_at: "2026-08-19T09:00:00Z",
+      updated_at: "2026-08-19T10:00:00Z",
+      schema_version: 2,
+      items: 5,
+    },
+    tasks: [
+      {
+        task_id: "p1",
+        query: "how does X work",
+        profile_intent: "understand",
+        profile_complexity: "medium",
+        envelope_created: true,
+        references_found: ["r1", "r2"],
+        bundle_candidates: 3,
+        receipt_sources: ["s1"],
+        cost_micros: 900,
+        outcome_accepted: true,
+        cpao_micros: 300,
+        evidence_stages: ["stage1", "stage2"],
+      },
+    ],
+  });
+
+  test("parses prove-report stats from valid JSON", async () => {
+    const command = fakeCommand({
+      proveReport: () => ({ exitCode: 0, stdout: proveReportJson, stderr: "" }),
+    });
+    const provider = createToolStatusProbe({ command, workspaceRoot: "/workspace", ttlMs: 60_000 });
+
+    expect(await provider.probeProveReport()).toEqual({
+      acceptedRate: 0.8,
+      aggregateCpaoMicros: 3200,
+      evidenceChainComplete: true,
+      ledger: {
+        createdAt: "2026-08-19T09:00:00Z",
+        updatedAt: "2026-08-19T10:00:00Z",
+        schemaVersion: 2,
+        itemCount: 5,
+      },
+      totalTasks: 1,
+      tasks: [
+        {
+          taskId: "p1",
+          query: "how does X work",
+          profileIntent: "understand",
+          profileComplexity: "medium",
+          envelopeCreated: true,
+          referencesFound: ["r1", "r2"],
+          bundleCandidates: 3,
+          receiptSources: ["s1"],
+          costMicros: 900,
+          outcomeAccepted: true,
+          cpaoMicros: 300,
+          evidenceStages: ["stage1", "stage2"],
+        },
+      ],
+    });
+  });
+
+  test("applies defaults for missing fields and filters non-string arrays", async () => {
+    const command = fakeCommand({
+      proveReport: () => ({
+        exitCode: 0,
+        stdout: JSON.stringify({
+          tasks: [{ task_id: "p1", references_found: ["r1", 42], receipt_sources: "not-an-array" }],
+        }),
+        stderr: "",
+      }),
+    });
+    const provider = createToolStatusProbe({ command, workspaceRoot: "/workspace", ttlMs: 60_000 });
+
+    expect(await provider.probeProveReport()).toEqual({
+      acceptedRate: 0,
+      aggregateCpaoMicros: 0,
+      evidenceChainComplete: false,
+      ledger: { createdAt: "", updatedAt: "", schemaVersion: 0, itemCount: 0 },
+      totalTasks: 1,
+      tasks: [
+        {
+          taskId: "p1",
+          query: "",
+          profileIntent: "",
+          profileComplexity: "",
+          envelopeCreated: false,
+          referencesFound: ["r1"],
+          bundleCandidates: 0,
+          receiptSources: [],
+          costMicros: 0,
+          outcomeAccepted: false,
+          cpaoMicros: 0,
+          evidenceStages: [],
+        },
+      ],
+    });
+  });
+
+  test("parses an empty tasks array with a zeroed ledger", async () => {
+    const command = fakeCommand({
+      proveReport: () => ({
+        exitCode: 0,
+        stdout: JSON.stringify({ accepted_rate: 0, evidence_chain_complete: false, tasks: [] }),
+        stderr: "",
+      }),
+    });
+    const provider = createToolStatusProbe({ command, workspaceRoot: "/workspace", ttlMs: 60_000 });
+
+    expect(await provider.probeProveReport()).toEqual({
+      acceptedRate: 0,
+      aggregateCpaoMicros: 0,
+      evidenceChainComplete: false,
+      ledger: { createdAt: "", updatedAt: "", schemaVersion: 0, itemCount: 0 },
+      totalTasks: 0,
+      tasks: [],
+    });
+  });
+
+  test("returns null on non-JSON output", async () => {
+    const command = fakeCommand({
+      proveReport: () => ({ exitCode: 0, stdout: "not json", stderr: "" }),
+    });
+    const provider = createToolStatusProbe({ command, workspaceRoot: "/workspace", ttlMs: 60_000 });
+
+    expect(await provider.probeProveReport()).toBeNull();
+  });
+
+  test("returns null on empty stdout", async () => {
+    const command = fakeCommand({
+      proveReport: () => ({ exitCode: 0, stdout: "", stderr: "" }),
+    });
+    const provider = createToolStatusProbe({ command, workspaceRoot: "/workspace", ttlMs: 60_000 });
+
+    expect(await provider.probeProveReport()).toBeNull();
+  });
+
+  test("returns null when the command throws (timeout)", async () => {
+    const command = fakeCommand({
+      proveReport: () => { throw new Error("timed out"); },
+    });
+    const provider = createToolStatusProbe({ command, workspaceRoot: "/workspace", ttlMs: 60_000 });
+
+    expect(await provider.probeProveReport()).toBeNull();
+  });
+
+  test("returns null when the command is missing", async () => {
+    const provider = createToolStatusProbe({ command: fakeCommand(), workspaceRoot: "/workspace", ttlMs: 60_000 });
+
+    expect(await provider.probeProveReport()).toBeNull();
+  });
+
+  test("caches the prove-report probe and re-probes after invalidate", async () => {
+    let calls = 0;
+    const command = fakeCommand({
+      proveReport: () => {
+        calls += 1;
+        return { exitCode: 0, stdout: proveReportJson, stderr: "" };
+      },
+    });
+    const provider = createToolStatusProbe({ command, workspaceRoot: "/workspace", ttlMs: 60_000 });
+
+    const first = await provider.probeProveReport();
+    const second = await provider.probeProveReport();
+    expect(calls).toBe(1);
+    expect(second).toBe(first);
+
+    provider.invalidate();
+    await provider.probeProveReport();
+    expect(calls).toBe(2);
+  });
+});
+
+describe("leanCTX savings-report probe", () => {
+  const savingsReportJson = JSON.stringify({
+    period: "2026-08",
+    total_tasks: 100,
+    accepted_tasks: 80,
+    tokens_processed: 1000000,
+    tokens_saved: 400000,
+    compression_percent: 40,
+    estimated_cost_usd: 50,
+    actual_cost_usd: 30,
+    total_savings_usd: 20,
+    savings_percent: 40,
+    cpao_usd: 0.25,
+    etpao: 4000,
+    top_sources: [["claude", 120], ["codex", 80]],
+  });
+
+  test("parses savings-report stats from valid JSON", async () => {
+    const command = fakeCommand({
+      savingsReport: () => ({ exitCode: 0, stdout: savingsReportJson, stderr: "" }),
+    });
+    const provider = createToolStatusProbe({ command, workspaceRoot: "/workspace", ttlMs: 60_000 });
+
+    expect(await provider.probeSavingsReport()).toEqual({
+      period: "2026-08",
+      totalTasks: 100,
+      acceptedTasks: 80,
+      tokensProcessed: 1000000,
+      tokensSaved: 400000,
+      compressionPercent: 40,
+      estimatedCostUsd: 50,
+      actualCostUsd: 30,
+      totalSavingsUsd: 20,
+      savingsPercent: 40,
+      cpaoUsd: 0.25,
+      etpao: 4000,
+      topSources: [["claude", 120], ["codex", 80]],
+    });
+  });
+
+  test("applies defaults for missing fields and drops malformed top_sources entries", async () => {
+    const command = fakeCommand({
+      savingsReport: () => ({
+        exitCode: 0,
+        stdout: JSON.stringify({
+          top_sources: [["claude", 120], ["only-name"], [123, 5], ["bad-count", "nope"], "not-an-array"],
+        }),
+        stderr: "",
+      }),
+    });
+    const provider = createToolStatusProbe({ command, workspaceRoot: "/workspace", ttlMs: 60_000 });
+
+    expect(await provider.probeSavingsReport()).toEqual({
+      period: "",
+      totalTasks: 0,
+      acceptedTasks: 0,
+      tokensProcessed: 0,
+      tokensSaved: 0,
+      compressionPercent: 0,
+      estimatedCostUsd: 0,
+      actualCostUsd: 0,
+      totalSavingsUsd: 0,
+      savingsPercent: 0,
+      cpaoUsd: 0,
+      etpao: 0,
+      topSources: [["claude", 120]],
+    });
+  });
+
+  test("parses an empty top_sources array", async () => {
+    const command = fakeCommand({
+      savingsReport: () => ({
+        exitCode: 0,
+        stdout: JSON.stringify({ period: "2026-08", total_tasks: 0, top_sources: [] }),
+        stderr: "",
+      }),
+    });
+    const provider = createToolStatusProbe({ command, workspaceRoot: "/workspace", ttlMs: 60_000 });
+
+    expect(await provider.probeSavingsReport()).toEqual({
+      period: "2026-08",
+      totalTasks: 0,
+      acceptedTasks: 0,
+      tokensProcessed: 0,
+      tokensSaved: 0,
+      compressionPercent: 0,
+      estimatedCostUsd: 0,
+      actualCostUsd: 0,
+      totalSavingsUsd: 0,
+      savingsPercent: 0,
+      cpaoUsd: 0,
+      etpao: 0,
+      topSources: [],
+    });
+  });
+
+  test("returns null on non-JSON output", async () => {
+    const command = fakeCommand({
+      savingsReport: () => ({ exitCode: 0, stdout: "not json", stderr: "" }),
+    });
+    const provider = createToolStatusProbe({ command, workspaceRoot: "/workspace", ttlMs: 60_000 });
+
+    expect(await provider.probeSavingsReport()).toBeNull();
+  });
+
+  test("returns null on empty stdout", async () => {
+    const command = fakeCommand({
+      savingsReport: () => ({ exitCode: 0, stdout: "", stderr: "" }),
+    });
+    const provider = createToolStatusProbe({ command, workspaceRoot: "/workspace", ttlMs: 60_000 });
+
+    expect(await provider.probeSavingsReport()).toBeNull();
+  });
+
+  test("returns null when the command throws (timeout)", async () => {
+    const command = fakeCommand({
+      savingsReport: () => { throw new Error("timed out"); },
+    });
+    const provider = createToolStatusProbe({ command, workspaceRoot: "/workspace", ttlMs: 60_000 });
+
+    expect(await provider.probeSavingsReport()).toBeNull();
+  });
+
+  test("returns null when the command is missing", async () => {
+    const provider = createToolStatusProbe({ command: fakeCommand(), workspaceRoot: "/workspace", ttlMs: 60_000 });
+
+    expect(await provider.probeSavingsReport()).toBeNull();
+  });
+
+  test("caches the savings-report probe and re-probes after invalidate", async () => {
+    let calls = 0;
+    const command = fakeCommand({
+      savingsReport: () => {
+        calls += 1;
+        return { exitCode: 0, stdout: savingsReportJson, stderr: "" };
+      },
+    });
+    const provider = createToolStatusProbe({ command, workspaceRoot: "/workspace", ttlMs: 60_000 });
+
+    const first = await provider.probeSavingsReport();
+    const second = await provider.probeSavingsReport();
+    expect(calls).toBe(1);
+    expect(second).toBe(first);
+
+    provider.invalidate();
+    await provider.probeSavingsReport();
+    expect(calls).toBe(2);
   });
 });

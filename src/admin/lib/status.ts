@@ -7,7 +7,7 @@ import {
   type ExecResult,
 } from "./docker";
 import { readFileSync } from "node:fs";
-import type { GainStats, LeanCtxSiteStats } from "./project-tool-status";
+import type { GainStats, LeanCtxSiteStats, ProveReportStats, SavingsReportStats, ValueReportStats } from "./project-tool-status";
 
 export type AuthStatus = "authenticated" | "not authenticated";
 
@@ -38,6 +38,12 @@ export interface StatusResponse {
   leanctx: LeanCtxSiteStats | null;
   /** LeanCTX token-savings telemetry; null when no probe is wired or the probe fails. */
   gain: GainStats | null;
+  /** LeanCTX value-gate telemetry; null when no probe is wired or the probe fails. */
+  valueReport: ValueReportStats | null;
+  /** LeanCTX Decision Loop evidence-chain telemetry; null when no probe is wired or the probe fails. */
+  proveReport: ProveReportStats | null;
+  /** LeanCTX period-scoped savings with tool breakdown; null when no probe is wired or the probe fails. */
+  savingsReport: SavingsReportStats | null;
   admin_version: string;
   admin_version_mismatch: boolean;
 }
@@ -50,6 +56,9 @@ export interface StatusDeps {
   execInAiDev: (command: string, timeoutMs: number) => Promise<ExecResult>;
   probeLeanCtxSite?: () => Promise<LeanCtxSiteStats | null>;
   probeGain?: () => Promise<GainStats | null>;
+  probeValueReport?: () => Promise<ValueReportStats | null>;
+  probeProveReport?: () => Promise<ProveReportStats | null>;
+  probeSavingsReport?: () => Promise<SavingsReportStats | null>;
 }
 
 const DEFAULT_DEPS: StatusDeps = {
@@ -108,7 +117,7 @@ async function getSelfUptime(deps: StatusDeps): Promise<number | null> {
 
 export async function collectStatus(overrides: Partial<StatusDeps> = {}): Promise<StatusResponse> {
   const deps: StatusDeps = { ...DEFAULT_DEPS, ...overrides };
-  const [containerRunning, uptime, ghResult, glabResult, gitResult, projectsResult, leanctx, gain, adminVersion, adminDigest, aiDevDigest, aiDevVersion, selfUptime] =
+  const [containerRunning, uptime, ghResult, glabResult, gitResult, projectsResult, leanctx, gain, valueReport, proveReport, savingsReport, adminVersion, adminDigest, aiDevDigest, aiDevVersion, selfUptime] =
     await Promise.all([
       deps.isAiDevRunning(),
       deps.getAiDevUptime(),
@@ -118,6 +127,9 @@ export async function collectStatus(overrides: Partial<StatusDeps> = {}): Promis
       deps.execInAiDev("ls ~/workspace/ 2>/dev/null | wc -l || echo '0'", 10_000),
       deps.probeLeanCtxSite ? deps.probeLeanCtxSite() : Promise.resolve(null),
       deps.probeGain ? deps.probeGain() : Promise.resolve(null),
+      deps.probeValueReport ? deps.probeValueReport() : Promise.resolve(null),
+      deps.probeProveReport ? deps.probeProveReport() : Promise.resolve(null),
+      deps.probeSavingsReport ? deps.probeSavingsReport() : Promise.resolve(null),
       getAdminVersion(),
       getAdminImageDigest(deps),
       getAiDevImageDigest(deps),
@@ -159,6 +171,9 @@ export async function collectStatus(overrides: Partial<StatusDeps> = {}): Promis
     project_count: projectCount,
     leanctx,
     gain,
+    valueReport,
+    proveReport,
+    savingsReport,
     admin_version: adminVersion,
     admin_version_mismatch: adminVersionMismatch,
   };

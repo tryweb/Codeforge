@@ -23,6 +23,9 @@ describe("heartbeat status report", () => {
       project_count: 4,
       leanctx: null,
       gain: null,
+      valueReport: null,
+      proveReport: null,
+      savingsReport: null,
       admin_version: "1.2.3",
       admin_version_mismatch: true,
     };

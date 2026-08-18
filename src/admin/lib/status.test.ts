@@ -53,8 +53,11 @@ describe("collectStatus", () => {
       "glab_auth",
       "leanctx",
       "project_count",
+      "proveReport",
       "restart_count",
+      "savingsReport",
       "uptime_seconds",
+      "valueReport",
     ]);
     expect(status).toMatchObject({
       container_status: "running",
