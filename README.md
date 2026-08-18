@@ -119,9 +119,11 @@ Copy `.env.example` to `.env` when configuring a checkout manually. The installe
 By default, the workspace uses the named `workspace` volume. To edit files directly with a host IDE:
 
 ```bash
-echo "WORKSPACE_PATH=./workspace" >> .env
+echo "WORKSPACE_PATH=/home/user/projects" >> .env
 docker compose up -d --force-recreate
 ```
+
+> **Docker-out-of-Docker (DooD) note:** Use an absolute host path, not `./workspace`. Relative paths resolve from the admin container's Compose directory (`/opt/ai-engkit`), which can mount the wrong host directory during upgrades.
 
 Important persistent volumes include:
 
