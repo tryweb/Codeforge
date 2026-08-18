@@ -6,7 +6,7 @@ ARG DOCKER_VERSION=29.7.2
 ARG COMPOSE_VERSION=5.5.0
 ARG BUILDX_VERSION=0.36.1
 ARG OPENCODE_VERSION=1.18.18
-ARG OPENCHAMBER_VERSION=1.18.4
+ARG OPENCHAMBER_VERSION=1.19.0
 ARG GLAB_VERSION=1.113.0
 ARG PLAYWRIGHT_VERSION=1.62.1
 ARG PLAYWRIGHT_MCP_VERSION=0.0.79
@@ -158,6 +158,7 @@ EOF
 # lean-ctx 3.8.5+ XDG shell env — 讓 ctx_shell / bash -c 自動載入 lean-ctx 環境
 ENV BASH_ENV="/home/${USERNAME}/.config/lean-ctx/env.sh"
 ENV CLAUDE_ENV_FILE="/home/${USERNAME}/.config/lean-ctx/env.sh"
+ENV LEANCTX_VERSION=${LEANCTX_VERSION}
 
 # ── Global npm 套件（opencode / openchamber / openspec）
 # 清除 bun 緩存，確保插件正確安裝（避免版本跳轉時的緩存損壞問題）
