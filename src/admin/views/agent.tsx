@@ -13,7 +13,7 @@ interface AgentSettingsProps {
 }
 
 const AGENT_FIELDS: Array<{ key: string; secret: boolean; placeholder: string; help: string }> = [
-  { key: "CENTER_URL", secret: false, placeholder: "wss://center.example.com/ws?token=...&ca=...", help: "Center registration URL. Token and CA certificate are read from it automatically. Leave empty to disable agent mode." },
+  { key: "CENTER_URL", secret: false, placeholder: "wss://center.example.com/ws?token=...&ca=...", help: "Center registration URL. Token and CA certificate are read from it automatically. Leave empty to disable the center connection." },
   { key: "CENTER_TOKEN", secret: true, placeholder: "", help: "Pre-shared token fallback when the URL carries no token." },
   { key: "AGENT_ID", secret: false, placeholder: "(container hostname)", help: "Agent identifier reported in the hello handshake." },
   { key: "CENTER_CA_CERT", secret: false, placeholder: "/opt/ai-engkit/center-ca.pem", help: "CA certificate path. When a registration URL includes CA data, it is extracted and stored here automatically." },
@@ -27,7 +27,7 @@ function formatAgentError(state: AgentSettingsState["state"], error: string | nu
 const AgentSettingsContent: FC<AgentSettingsProps> = ({ status, env }) => (
   <div>
     <div class="flex items-center justify-between mb-4">
-      <h2>Agent Connection</h2>
+      <h2>Center Connection</h2>
       <span id="save-status" class="text-sm text-muted" style="align-self:center;"></span>
     </div>
 
@@ -39,10 +39,10 @@ const AgentSettingsContent: FC<AgentSettingsProps> = ({ status, env }) => (
         <button class="btn-outline" style="padding:4px 10px;font-size:0.75rem;margin-left:auto;" onclick="refreshStatus()">↻ Refresh</button>
       </div>
       <p class="text-sm text-muted" style="margin-top:12px;">
-        The agent connects outbound to the Center Server over WebSocket and answers remote commands (upgrade,
+        This node connects outbound to the Center Server over WebSocket and answers remote commands (upgrade,
         reconfigure, restart) plus queries (status, env.get, projects.list, providers.list). Use the registration
         URL provided by your Center — it carries the token and CA certificate, so no certificate files are needed.
-        Settings below apply immediately — the agent reconnects with the new configuration.
+        Settings below apply immediately — the connection is re-established with the new configuration.
       </p>
     </div>
 
@@ -125,7 +125,7 @@ const AgentSettingsContent: FC<AgentSettingsProps> = ({ status, env }) => (
           });
           const data = await res.json();
           if (res.ok) {
-            status.textContent = "Saved — agent " + data.agent_status.state + " ✔";
+            status.textContent = "Saved — center connection " + data.agent_status.state + " ✔";
             setConfig(data.agent_config);
             setBadge(data.agent_status.state);
             setError(data.agent_status.state, data.agent_status.last_error);
@@ -144,7 +144,7 @@ const AgentSettingsContent: FC<AgentSettingsProps> = ({ status, env }) => (
 
 export function AgentSettingsPage(props: AgentSettingsProps) {
   return (
-    <Layout title="Agent" currentPath="/agent">
+    <Layout title="Center Connection" currentPath="/agent">
       <AgentSettingsContent {...props} />
     </Layout>
   );

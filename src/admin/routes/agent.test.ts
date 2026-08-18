@@ -145,7 +145,7 @@ describe("createAgentSettingsRoutes", () => {
     const res = await app.request("http://localhost/agent");
     expect(res.status).toBe(200);
     const html = await res.text();
-    expect(html).toContain("Agent Connection");
+    expect(html).toContain("Center Connection");
     expect(html).toContain("wss://c.example.com/ws");
     expect(html).toContain("my-agent");
     expect(html).toContain("CENTER_TOKEN");

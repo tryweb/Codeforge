@@ -15,7 +15,7 @@ const NAV_ITEMS = [
   { href: "/ssh-keys", label: "SSH Keys", icon: "🔑" },
   { href: "/separator3", label: "", icon: "" },
   { href: "/versions", label: "Versions", icon: "↻" },
-  { href: "/agent", label: "Agent", icon: "⇄" },
+  { href: "/agent", label: "Center Connection", icon: "⇄" },
   { href: "/agent-models", label: "Agent Models", icon: "◈" },
   { href: "/secrets", label: "Secrets", icon: "🔐" },
   { href: "/providers", label: "Providers", icon: "🔌" },
