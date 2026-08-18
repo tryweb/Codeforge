@@ -52,7 +52,10 @@ export function ProvidersPage({
     <Layout title="Providers">
       <div class="flex items-center justify-between mb-4">
         <h2>Providers</h2>
-        <button class="btn-outline" onclick="restartAiDev()">Restart ai-dev</button>
+        <div class="flex" style="gap: 8px;">
+          <button class="btn" onclick="openAddProvider()">Add Provider</button>
+          <button class="btn-outline" onclick="restartAiDev()">Restart ai-dev</button>
+        </div>
       </div>
       <p class="text-sm text-muted" style="margin-bottom: 16px;">
         Providers are defined in <code>OPENCODE_PROVIDER</code> and injected into <code>opencode.json</code> on startup.
@@ -67,7 +70,8 @@ export function ProvidersPage({
       )}
       {meta.providers.length === 0 && !meta.invalid && (
         <div class="card" style="margin-bottom: 16px;">
-          No providers configured yet.
+          <p style="margin-bottom: 12px;">No providers configured yet.</p>
+          <button class="btn" onclick="openAddProvider()">Add Provider</button>
         </div>
       )}
       {meta.providers.map((p) => (
@@ -204,18 +208,21 @@ export function ProvidersPage({
             <input type="text" id="edit-label" oninput="patchField('label', this.value)" />
           </div>
           <div class="form-group">
-            <label>npm package</label>
-            <input type="text" id="edit-npm" oninput="patchField('npm', this.value)" />
+            <label>npm package <span class="text-danger">*</span></label>
+            <input type="text" id="edit-npm" oninput="patchField('npm', this.value)" placeholder="@ai-sdk/openai-compatible" />
+            <div id="edit-npm-error" class="text-danger" style="font-size: 12px; margin-top: 4px; display: none;"></div>
           </div>
           <div class="form-group">
             <label>Base URL</label>
             <input type="text" id="edit-baseurl" oninput="patchField('baseURL', this.value)" placeholder="https://…" />
+            <div id="edit-baseurl-error" class="text-danger" style="font-size: 12px; margin-top: 4px; display: none;"></div>
           </div>
           <div class="form-group">
             <label>
               API key <span class="text-muted" style="font-size: 12px;">(leave empty to keep existing)</span>
             </label>
             <input type="password" id="edit-apikey" oninput="patchField('apiKey', this.value)" autocomplete="new-password" />
+            <div id="edit-apikey-error" class="text-danger" style="font-size: 12px; margin-top: 4px; display: none;"></div>
           </div>
           <div class="form-group">
             <label>Raw JSON (authoritative)</label>
@@ -231,6 +238,51 @@ export function ProvidersPage({
           <div class="flex" style="justify-content: flex-end; gap: 8px;">
             <button class="btn-outline" onclick="closeProviderEdit()">Cancel</button>
             <button onclick="saveProvider()">Save</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="add-modal" class="modal-overlay" style="display: none;">
+        <div class="modal" style="max-width: 560px;">
+          <h3 style="margin-top: 0;">Add Provider</h3>
+          <div class="form-group">
+            <label>Provider name (key) <span class="text-danger">*</span></label>
+            <input type="text" id="add-name" oninput="validateAddField('name', this.value)" placeholder="my-provider" />
+            <div id="add-name-error" class="text-danger" style="font-size: 12px; margin-top: 4px; display: none;"></div>
+          </div>
+          <div class="form-group">
+            <label>Display name</label>
+            <input type="text" id="add-label" oninput="validateAddField('label', this.value)" placeholder="My Provider" />
+          </div>
+          <div class="form-group">
+            <label>npm package <span class="text-danger">*</span></label>
+            <input type="text" id="add-npm" oninput="validateAddField('npm', this.value)" placeholder="@ai-sdk/openai-compatible" />
+            <div id="add-npm-error" class="text-danger" style="font-size: 12px; margin-top: 4px; display: none;"></div>
+          </div>
+          <div class="form-group">
+            <label>Base URL <span class="text-danger">*</span></label>
+            <input type="text" id="add-baseurl" oninput="validateAddField('baseURL', this.value)" placeholder="https://api.example.com/v1" />
+            <div id="add-baseurl-error" class="text-danger" style="font-size: 12px; margin-top: 4px; display: none;"></div>
+          </div>
+          <div class="form-group">
+            <label>API key</label>
+            <input type="password" id="add-apikey" oninput="validateAddField('apiKey', this.value)" autocomplete="new-password" />
+            <div id="add-apikey-error" class="text-danger" style="font-size: 12px; margin-top: 4px; display: none;"></div>
+          </div>
+          <div class="form-group">
+            <label>Raw JSON (authoritative)</label>
+            <textarea
+              id="add-raw"
+              rows={8}
+              spellcheck={false}
+              oninput="onAddRawInput(this.value)"
+              style="width: 100%; font-family: var(--font-mono); font-size: 13px;"
+            />
+          </div>
+          <div id="add-status" class="text-muted" style="font-size: 13px; margin-bottom: 8px;"></div>
+          <div class="flex" style="justify-content: flex-end; gap: 8px;">
+            <button class="btn-outline" onclick="closeAddProvider()">Cancel</button>
+            <button onclick="saveNewProvider()">Add Provider</button>
           </div>
         </div>
       </div>

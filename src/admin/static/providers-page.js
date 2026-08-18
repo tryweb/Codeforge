@@ -7,6 +7,11 @@ var editState = null;
 var editApiKey = null;
 var editRawValid = true;
 
+var addState = null;
+var addKey = null;
+var addApiKey = null;
+var addRawValid = true;
+
 var oauthProvider = null;
 var oauthFlowId = null;
 var oauthPollTimer = null;
@@ -17,6 +22,64 @@ function providerCard(name) {
 }
 function providerMeta(name) {
   return providersMeta.find(function (p) { return p.name === name; });
+}
+
+function validateUrl(value) {
+  if (!value) return true;
+  try {
+    var url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch (e) {
+    return false;
+  }
+}
+
+function validateProviderName(value) {
+  if (!value || !value.trim()) return { valid: false, error: 'Provider name is required' };
+  var name = value.trim();
+  if (!/^[a-z0-9]([a-z0-9\-]*[a-z0-9])?$/.test(name)) {
+    return { valid: false, error: 'Name must be lowercase alphanumeric with hyphens (e.g., "my-provider")' };
+  }
+  if (providersEntries[name]) {
+    return { valid: false, error: 'A provider with this name already exists' };
+  }
+  return { valid: true, error: null };
+}
+
+function validateNpm(value) {
+  if (!value || !value.trim()) return { valid: false, error: 'npm package is required for the provider to work' };
+  var pkg = value.trim();
+  if (!/^(?:(?:@[a-z0-9\-~][a-z0-9\-._~]*\/)?[a-z0-9\-~][a-z0-9\-._~]*)(?:\/[a-z0-9\-~][a-z0-9\-._~]*)?$/.test(pkg)) {
+    return { valid: false, error: 'Invalid npm package name format' };
+  }
+  return { valid: true, error: null };
+}
+
+function validateBaseURL(value) {
+  if (!value) return { valid: true, error: null };
+  if (!validateUrl(value)) {
+    return { valid: false, error: 'Invalid URL format (must start with http:// or https://)' };
+  }
+  return { valid: true, error: null };
+}
+
+function showFieldError(prefix, field, error) {
+  var el = document.getElementById(prefix + '-' + field + '-error');
+  if (el) {
+    if (error) {
+      el.textContent = error;
+      el.style.display = 'block';
+    } else {
+      el.textContent = '';
+      el.style.display = 'none';
+    }
+  }
+}
+
+function clearAllErrors(prefix) {
+  ['name', 'npm', 'baseurl', 'apikey'].forEach(function (f) {
+    showFieldError(prefix, f, null);
+  });
 }
 
 function restartAiDev() {
@@ -48,9 +111,21 @@ function openProviderEdit(name) {
 function patchField(field, value) {
   if (!editState) return;
   if (field === 'label') editState.name = value;
-  else if (field === 'npm') editState.npm = value;
-  else if (field === 'baseURL') { editState.options = editState.options || {}; editState.options.baseURL = value; }
-  else if (field === 'apiKey') { editApiKey = value; return; }
+  else if (field === 'npm') {
+    editState.npm = value;
+    var result = validateNpm(value);
+    showFieldError('edit', 'npm', result.valid ? null : result.error);
+  }
+  else if (field === 'baseURL') {
+    editState.options = editState.options || {};
+    editState.options.baseURL = value;
+    var result = validateBaseURL(value);
+    showFieldError('edit', 'baseurl', result.valid ? null : result.error);
+  }
+  else if (field === 'apiKey') {
+    editApiKey = value;
+    return;
+  }
   document.getElementById('edit-raw').value = JSON.stringify(editState, null, 2);
 }
 
@@ -70,6 +145,24 @@ function onRawInput(text) {
 function saveProvider() {
   if (!editName) return;
   if (!editRawValid) return;
+
+  clearAllErrors('edit');
+  var hasError = false;
+
+  var npmResult = validateNpm(editState.npm);
+  if (!npmResult.valid) {
+    showFieldError('edit', 'npm', npmResult.error);
+    hasError = true;
+  }
+
+  var baseURLResult = validateBaseURL(editState.options && editState.options.baseURL);
+  if (!baseURLResult.valid) {
+    showFieldError('edit', 'baseurl', baseURLResult.error);
+    hasError = true;
+  }
+
+  if (hasError) return;
+
   if (editApiKey) {
     editState.options = editState.options || {};
     editState.options.apiKey = editApiKey;
@@ -89,6 +182,110 @@ function saveProvider() {
 function closeProviderEdit() {
   editName = null;
   document.getElementById('edit-modal').style.display = 'none';
+}
+
+function openAddProvider() {
+  addState = { name: '', npm: '', options: {} };
+  addKey = null;
+  addApiKey = null;
+  addRawValid = true;
+  document.getElementById('add-name').value = '';
+  document.getElementById('add-label').value = '';
+  document.getElementById('add-npm').value = '';
+  document.getElementById('add-baseurl').value = '';
+  document.getElementById('add-apikey').value = '';
+  document.getElementById('add-raw').value = JSON.stringify(addState, null, 2);
+  document.getElementById('add-status').textContent = '';
+  clearAllErrors('add');
+  document.getElementById('add-modal').style.display = 'flex';
+}
+
+function validateAddField(field, value) {
+  if (!addState) return;
+  if (field === 'name') {
+    addKey = value;
+    var result = validateProviderName(value);
+    showFieldError('add', 'name', result.valid ? null : result.error);
+  } else if (field === 'label') {
+    addState.name = value;
+  } else if (field === 'npm') {
+    addState.npm = value;
+    var result = validateNpm(value);
+    showFieldError('add', 'npm', result.valid ? null : result.error);
+  } else if (field === 'baseURL') {
+    addState.options = addState.options || {};
+    addState.options.baseURL = value;
+    var result = validateBaseURL(value);
+    showFieldError('add', 'baseurl', result.valid ? null : result.error);
+  } else if (field === 'apiKey') {
+    addApiKey = value;
+    return;
+  }
+  document.getElementById('add-raw').value = JSON.stringify(addState, null, 2);
+}
+
+function onAddRawInput(text) {
+  if (!addState) return;
+  var s = document.getElementById('add-status');
+  try {
+    addState = JSON.parse(text);
+    addRawValid = true;
+    s.textContent = '';
+  } catch (err) {
+    addRawValid = false;
+    s.textContent = 'Raw JSON is invalid: ' + err.message;
+  }
+}
+
+function saveNewProvider() {
+  if (!addRawValid) return;
+  if (!addState) return;
+
+  clearAllErrors('add');
+  var hasError = false;
+
+  var nameResult = validateProviderName(addKey);
+  if (!nameResult.valid) {
+    showFieldError('add', 'name', nameResult.error);
+    hasError = true;
+  }
+
+  var npmResult = validateNpm(addState.npm);
+  if (!npmResult.valid) {
+    showFieldError('add', 'npm', npmResult.error);
+    hasError = true;
+  }
+
+  var baseURLResult = validateBaseURL(addState.options && addState.options.baseURL);
+  if (!baseURLResult.valid) {
+    showFieldError('add', 'baseurl', baseURLResult.error);
+    hasError = true;
+  }
+
+  if (hasError) return;
+
+  var providerName = addKey.trim();
+  var payload = JSON.parse(JSON.stringify(addState));
+  if (addApiKey) {
+    payload.options = payload.options || {};
+    payload.options.apiKey = addApiKey;
+  }
+
+  fetch('/api/providers/' + providerName, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ provider: payload }),
+  })
+    .then(function (r) { return r.json(); })
+    .then(function (j) {
+      if (j.ok) return location.reload();
+      alert('Add provider failed: ' + (j.error || 'unknown error'));
+    });
+}
+
+function closeAddProvider() {
+  addState = null;
+  document.getElementById('add-modal').style.display = 'none';
 }
 
 function deleteProvider(name) {
