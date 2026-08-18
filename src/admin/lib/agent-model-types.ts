@@ -49,5 +49,5 @@ export interface AgentModelsDeps {
 
 export const OMO_CONFIG = "~/.omo/omo.jsonc";
 export const MANAGED_OPENCODE_DIR = "~/.config/openchamber/managed-opencode";
-export const CONFIGURABLE_NATIVE_AGENTS = ["general"] as const;
+export const CONFIGURABLE_NATIVE_AGENTS = ["general", "plan"] as const;
 export const VARIANTS = ["low", "medium", "high", "xhigh", "max"] as const;
