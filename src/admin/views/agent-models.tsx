@@ -22,6 +22,12 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
         <span id="restart-status" class="text-sm text-muted" style="align-self:center;"></span>
       </div>
 
+      <p class="text-sm text-muted" style="margin-top:12px;">
+        Per-subagent model overrides for the AI agents invoked by your primary agent (e.g. general).
+        The primary agent's own model and internal mechanism agents (compaction, summary, title,
+        build) are not configurable here.
+      </p>
+
       {!state.hasPassword && (
         <div class="card" style="border-color:var(--danger);margin-bottom:16px;">
           <strong>Prerequisite missing:</strong> <code>OPENCODE_SERVER_PASSWORD</code> is not set in{" "}
@@ -33,7 +39,7 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
       <div class="card">
         <table id="agent-models-table">
           <tr>
-            <th>Agent</th>
+            <th>Subagent</th>
             <th>Configured model</th>
             <th>Resolved model</th>
             <th>Source</th>
