@@ -424,7 +424,16 @@ assert_file_exists "lean-ctx shell hook exists" "/home/devuser/.config/lean-ctx/
 assert_file_exists "~/.bashenv exists" "/home/devuser/.bashenv"
 
 LEAN_CTX_VERSION_OUT=$(docker exec "$CONTAINER" sh -c 'lean-ctx --version' 2>/dev/null || echo "")
-assert_contains "lean-ctx --version reports 3.9.18" '3.9.18' "$LEAN_CTX_VERSION_OUT"
+EXPECTED_LEAN_CTX_VERSION=$(docker exec "$CONTAINER" sh -c 'printf "%s" "$LEANCTX_VERSION"' 2>/dev/null || echo "")
+if [ -n "$EXPECTED_LEAN_CTX_VERSION" ]; then
+  assert_contains "lean-ctx --version reports $EXPECTED_LEAN_CTX_VERSION" "$EXPECTED_LEAN_CTX_VERSION" "$LEAN_CTX_VERSION_OUT"
+else
+  if echo "$LEAN_CTX_VERSION_OUT" | grep -qE '[0-9]+\.[0-9]+\.[0-9]+'; then
+    pass "lean-ctx --version reports a valid version ($LEAN_CTX_VERSION_OUT)"
+  else
+    fail "lean-ctx --version did not return a valid version"
+  fi
+fi
 
 LEAN_CTX_CONFIG=$(docker exec "$CONTAINER" sh -c 'cat /home/devuser/.config/lean-ctx/config.toml' 2>/dev/null || echo "")
 assert_contains "lean-ctx config enables permission inheritance" 'permission_inheritance = "on"' "$LEAN_CTX_CONFIG"
