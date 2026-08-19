@@ -1,4 +1,4 @@
-# OMO v5.x Upgrade Impact (assessed at 5.0.0-beta.9)
+# OMO v5.x Upgrade Impact (assessed at 5.0.0-beta.11)
 
 ## Context
 
@@ -8,7 +8,7 @@ ai-engkit consumes oh-my-openagent (OMO) exclusively as an **OpenCode npm plugin
 - Config: `.opencode/omo.jsonc.default` (11 agents) baked to `/etc/opencode/omo.jsonc.default`, merged into `~/.omo/omo.jsonc` at startup by `entrypoint.d/02-init-config.sh`.
 - Version pipeline: `.opencode/scripts/check-versions.sh` + `.github/workflows/dependency-update.yml` compare against the npm `latest` dist-tag and sync the `$schema` tag in `omo.jsonc.default` (also in `check-updates` SKILL).
 
-OMO v5.0.0 (beta line `5.0.0-beta.1` → `5.0.0-beta.9`, published 2026-08-09–17) is a major rewrite: native CLI `omo-agent-toolkit`, Senpi edition (`omo-ai`, `omo` command), unified config `~/.omo/agent` (previously `~/.omo/omo.jsonc`), one-way legacy-config migration, `omo` bin removed, `shared/<name>` skill names → bare names, reasoning/model config standardization.
+OMO v5.0.0 (beta line `5.0.0-beta.1` → `5.0.0-beta.11`, published 2026-08-09–19) is a major rewrite: native CLI `omo-agent-toolkit`, Senpi edition (`omo-ai`, `omo` command), unified config `~/.omo/agent` (previously `~/.omo/omo.jsonc`), one-way legacy-config migration, `omo` bin removed, `shared/<name>` skill names → bare names, reasoning/model config standardization.
 
 ## Problem
 
@@ -16,7 +16,7 @@ Does upgrading to omo v5 break AI-EngKit's plugin-based consumption? Which movin
 
 ## Solution
 
-Verified upgrade facts (2026-08-17, npm + v5.0.0-beta.9 source):
+Verified upgrade facts (2026-08-19, npm + v5.0.0-beta.11 source):
 
 ### Structural Safety (no changes needed)
 
@@ -52,6 +52,29 @@ Verified upgrade facts (2026-08-17, npm + v5.0.0-beta.9 source):
 18. **Explicit beta publishes**: `/publish` accepts exact semver, no accidental stable bumps.
 19. **Memory reflection fixes**: entries render as senpi notices, stale failure streaks stop alerting.
 20. **Codex spawn fix**: callee boundary anchored, on-complete hooks inject correct shell platform.
+
+### Beta.10 Reliability Hardening (no new breaking changes)
+
+21. **Installer timeouts**: ast-grep provisioning has bounded timeout (30s), child processes no longer hang indefinitely.
+22. **Release gate reuse**: publish workflow reuses exact-SHA CI instead of rerunning full matrix.
+23. **Credential isolation**: release PAT only in push/PR step, EXIT trap restores token-free URL.
+24. **CI fast path**: generated release merges and web/docs-only changes skip full matrix.
+25. **Windows validation**: Bun 1.3.14 pinned, PowerShell replaces Git Bash for root tests.
+
+### Beta.11 Memory System Upgrade (no new breaking changes)
+
+26. **Memory pressure awareness**: agent knows when memory is getting full, dream runs launch automatically.
+27. **Memory token budgets**: enforced per-file estimates, dream tier rebalancing driven by evidence.
+28. **Memory-file access ledger**: records which files get read, drives tier adjustments.
+29. **Memory children spawn fix**: CLI entry forwarded to reflection/fork/people-ask (was broken on npm installs).
+30. **Reflection provider fallback**: retries through provider outages instead of dying on 500.
+31. **mass-ulw dag boundary**: planning discipline, spawn policy, reload guard during DAG runs.
+32. **Team widget fix**: completed resident members no longer vanish.
+33. **Category chain availability**: fallback chain advances when model unavailable.
+34. **permission.task on main agents**: now respected on OpenCode side (positive impact for AI-EngKit).
+35. **Senpi 2026.8.18-3**: paste images in TUI, Cursor context windows fixed, goals resume, retries use full budget, compaction stops eating typing, headless OAuth, Linux glibc binary priority.
+36. **Windows memory-file path normalization**: ledger keys normalized, dream tier counts work.
+37. **LSP out-of-CWD fix**: read-only LSP tools resolve paths outside working directory (positive impact for AI-EngKit).
 
 ## Why It Works
 
@@ -96,11 +119,15 @@ Post-upgrade:
 
 - npm registry 2026-08-10: dist-tags `latest=4.19.4`, `beta=5.0.0-beta.3`.
 - npm registry 2026-08-17: dist-tags `latest=4.19.4`, `beta=5.0.0-beta.9`.
-- package.json v4.19.4 vs v5.0.0-beta.9: identical `name`/`main`/`exports`; bins v4 `{lazycodex, lazycodex-ai, oh-my-openagent, oh-my-opencode, omo}` → v5 drops `omo`, adds `omo-agent-toolkit`.
-- `assets/omo.schema.json` v4.19.4 (857 825 B) vs v5.0.0-beta.9 (1 003 623 B): per-agent keys identical, `additionalProperties: false`; both have top-level `agents, models, profiles, codegraph, memory`.
+- npm registry 2026-08-19: dist-tags `latest=4.19.4`, `beta=5.0.0-beta.11`.
+- package.json v4.19.4 vs v5.0.0-beta.11: identical `name`/`main`/`exports`; bins v4 `{lazycodex, lazycodex-ai, oh-my-openagent, oh-my-opencode, omo}` → v5 drops `omo`, adds `omo-agent-toolkit`.
+- `assets/omo.schema.json` v4.19.4 (857 825 B) vs v5.0.0-beta.11 (1 003 623 B): per-agent keys identical, `additionalProperties: false`; both have top-level `agents, models, profiles, codegraph, memory`.
 - beta.3→beta.8: major feature release (parallel orchestration, Grok 4.6, memory fixes, config path change).
 - beta.8→beta.9: stability-only (Senpi engine 2026.8.17, publish flow fixes, memory reflection fixes).
-- `packages/omo-opencode/src/index.ts` + `create-plugin-module.ts` (beta.9): no memory imports; memory `memory.enabled` consumed only in `packages/omo-senpi/src/components/memory/wiring.ts`.
+- beta.9→beta.10: reliability hardening (installer timeout, CI gate reuse, credential isolation).
+- beta.10→beta.11: memory system upgrade (pressure awareness, token budgets, access ledger, Senpi 2026.8.18-3).
+- `packages/omo-opencode/src/index.ts` + `create-plugin-module.ts` (beta.11): no memory imports; memory `memory.enabled` consumed only in `packages/omo-senpi/src/components/memory/wiring.ts`.
+- beta.11 adds `permission.task` respect on OpenCode side (item 34) and LSP out-of-CWD fix (item 37) — both positive for AI-EngKit.
 
 ## Related Files
 
