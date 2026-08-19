@@ -170,3 +170,32 @@ describe("providers-page validation", () => {
     });
   });
 });
+
+describe("addKey registry function (regression: add-modal variable clobbered the function)", () => {
+  function loadKeyFunctions() {
+    const windowStub = { providersBoot: { entries: {}, meta: [] } };
+    const documentStub = {
+      querySelector: () => null,
+      getElementById: () => ({ textContent: "", style: { display: "" }, value: "" }),
+    };
+    const factory = new Function(
+      "window",
+      "document",
+      `${code}\n;return { addKey, addName };`,
+    );
+    return factory(windowStub, documentStub) as {
+      addKey: (name: string) => void;
+      addName: string | null;
+    };
+  }
+
+  it("exposes addKey as a callable function (was null before the fix)", () => {
+    const { addKey } = loadKeyFunctions();
+    expect(typeof addKey).toBe("function");
+  });
+
+  it("stores the add-provider name in the separate addName variable", () => {
+    const { addName } = loadKeyFunctions();
+    expect(addName).toBeNull();
+  });
+});

@@ -8,7 +8,7 @@ var editApiKey = null;
 var editRawValid = true;
 
 var addState = null;
-var addKey = null;
+var addName = null;
 var addApiKey = null;
 var addRawValid = true;
 
@@ -186,7 +186,7 @@ function closeProviderEdit() {
 
 function openAddProvider() {
   addState = { name: '', npm: '', options: {} };
-  addKey = null;
+  addName = null;
   addApiKey = null;
   addRawValid = true;
   document.getElementById('add-name').value = '';
@@ -203,7 +203,7 @@ function openAddProvider() {
 function validateAddField(field, value) {
   if (!addState) return;
   if (field === 'name') {
-    addKey = value;
+    addName = value;
     var result = validateProviderName(value);
     showFieldError('add', 'name', result.valid ? null : result.error);
   } else if (field === 'label') {
@@ -244,7 +244,7 @@ function saveNewProvider() {
   clearAllErrors('add');
   var hasError = false;
 
-  var nameResult = validateProviderName(addKey);
+  var nameResult = validateProviderName(addName);
   if (!nameResult.valid) {
     showFieldError('add', 'name', nameResult.error);
     hasError = true;
@@ -264,7 +264,7 @@ function saveNewProvider() {
 
   if (hasError) return;
 
-  var providerName = addKey.trim();
+  var providerName = addName.trim();
   var payload = JSON.parse(JSON.stringify(addState));
   if (addApiKey) {
     payload.options = payload.options || {};
