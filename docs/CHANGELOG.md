@@ -1,6 +1,16 @@
 ## [Unreleased]
 
 
+## [1.15.1] - 2026-08-19
+
+### Fixed
+
+- Rename add-modal addKey var to addName so it stops clobbering the registry addKey function
+
+### Documentation
+
+- Update OMO v5 upgrade impact assessment to beta.11
+
 ## [1.15.0] - 2026-08-19
 
 ### Added
@@ -1450,7 +1460,7 @@
 
 ## Format
 
-[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.15.0...HEAD
+[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.15.1...HEAD
 [0.3.0]: https://github.com/tryweb/ai-engkit/releases/tag/v0.3.0
 [0.3.3]: https://github.com/tryweb/ai-engkit/compare/v0.3.0...v0.3.3
 [0.5.0]: https://github.com/tryweb/ai-engkit/compare/v0.3.3...v0.5.0
@@ -1594,3 +1604,4 @@
 [1.14.13]: https://github.com/tryweb/ai-engkit/compare/v1.14.12...v1.14.13
 [1.14.14]: https://github.com/tryweb/ai-engkit/compare/v1.14.13...v1.14.14
 [1.15.0]: https://github.com/tryweb/ai-engkit/compare/v1.14.14...v1.15.0
+[1.15.1]: https://github.com/tryweb/ai-engkit/compare/v1.15.0...v1.15.1
