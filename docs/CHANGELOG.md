@@ -1,5 +1,8 @@
 ## [Unreleased]
 
+
+## [1.15.0] - 2026-08-19
+
 ### Added
 - Bump lean-ctx from 3.9.18 to 3.9.19.
 
@@ -1447,7 +1450,7 @@
 
 ## Format
 
-[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.14.14...HEAD
+[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.15.0...HEAD
 [0.3.0]: https://github.com/tryweb/ai-engkit/releases/tag/v0.3.0
 [0.3.3]: https://github.com/tryweb/ai-engkit/compare/v0.3.0...v0.3.3
 [0.5.0]: https://github.com/tryweb/ai-engkit/compare/v0.3.3...v0.5.0
@@ -1590,3 +1593,4 @@
 [1.14.12]: https://github.com/tryweb/ai-engkit/compare/v1.14.11...v1.14.12
 [1.14.13]: https://github.com/tryweb/ai-engkit/compare/v1.14.12...v1.14.13
 [1.14.14]: https://github.com/tryweb/ai-engkit/compare/v1.14.13...v1.14.14
+[1.15.0]: https://github.com/tryweb/ai-engkit/compare/v1.14.14...v1.15.0
