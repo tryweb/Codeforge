@@ -27,14 +27,17 @@
 | 5666 | CVE-2026-58043 | node (bundled) | 24.16.0 | `@colbymchenry/codegraph-linux-x64` 1.5.0 | high | 2026-08-05 | 同上 |
 | 5692 | CVE-2026-58039 | node (bundled) | 24.16.0 | `@colbymchenry/codegraph-linux-x64` 1.5.0 | low | 2026-08-05 | 同上 |
 | 5693 | CVE-2026-56847 | node (bundled) | 24.16.0 | `@colbymchenry/codegraph-linux-x64` 1.5.0 | low | 2026-08-05 | 同上 |
-| 5126 | CVE-2026-55999 | xserver-common | apt | ubuntu:24.04 | high | 2026-08-05 | 永久接受——headless container 無 X server 執行 |
-| 5127 | CVE-2026-55999 | xvfb | apt | ubuntu:24.04 | high | 2026-08-05 | 永久接受——同上 |
-| 5128 | CVE-2026-56000 | xserver-common | apt | ubuntu:24.04 | critical | 2026-08-05 | 永久接受——同上 |
-| 5129 | CVE-2026-56000 | xvfb | apt | ubuntu:24.04 | critical | 2026-08-05 | 永久接受——同上 |
 
 ## Resolved
 
-（無）
+| Alert | CVE | 套件 | 版本 | 來源 | 嚴重度 | Dismiss 日期 | Resolved 日期 | 解除條件 |
+|---|---|---|---|---|---|---|---|---|
+| 5126 | CVE-2026-55999 | xserver-common | apt | ubuntu:24.04 | high | 2026-08-05 | 2026-08-20 | 永久接受——headless container 無 X server 執行 |
+| 5127 | CVE-2026-55999 | xvfb | apt | ubuntu:24.04 | high | 2026-08-05 | 2026-08-20 | 永久接受——同上 |
+| 5128 | CVE-2026-56000 | xserver-common | apt | ubuntu:24.04 | critical | 2026-08-05 | 2026-08-20 | 永久接受——同上 |
+| 5129 | CVE-2026-56000 | xvfb | apt | ubuntu:24.04 | critical | 2026-08-05 | 2026-08-20 | 永久接受——同上 |
+
+> **Resolved 註記**：以上條目為設計上永久接受——headless container 無 X server 執行，已於 2026-08-20 收斂移入 Resolved 區段。
 
 ---
 
