@@ -145,6 +145,7 @@ lookup() {
         GLAB_VERSION)           get_gitlab_latest "gitlab-org/cli" ;;
         LEANCTX_VERSION)        get_github_latest "yvgude/lean-ctx" ;;
         OH_MY_OPENAGENT_VERSION) get_npm_latest "oh-my-openagent" ;;
+        OPENSPEC_VERSION)        get_npm_latest "@fission-ai/openspec" ;;
         *)                      echo "unknown" ;;
     esac
 }
@@ -164,6 +165,7 @@ source_label() {
         GLAB_VERSION)           echo "gitlab:gitlab-org/cli" ;;
         LEANCTX_VERSION)        echo "github:yvgude/lean-ctx" ;;
         OH_MY_OPENAGENT_VERSION) echo "npm:oh-my-openagent" ;;
+        OPENSPEC_VERSION)        echo "npm:@fission-ai/openspec" ;;
         *)                      echo "?" ;;
     esac
 }
@@ -173,7 +175,7 @@ source_label() {
 collect_rows() {
     while IFS=$'\t' read -r name pinned; do
         case "$name" in
-            DOCKER_VERSION|COMPOSE_VERSION|BUILDX_VERSION|GH_VERSION|MARKSMAN_VERSION|OPENCODE_VERSION|OPENCHAMBER_VERSION|BUN_VERSION|PLAYWRIGHT_VERSION|PLAYWRIGHT_MCP_VERSION|GLAB_VERSION|LEANCTX_VERSION|OH_MY_OPENAGENT_VERSION) ;;
+            DOCKER_VERSION|COMPOSE_VERSION|BUILDX_VERSION|GH_VERSION|MARKSMAN_VERSION|OPENCODE_VERSION|OPENCHAMBER_VERSION|BUN_VERSION|PLAYWRIGHT_VERSION|PLAYWRIGHT_MCP_VERSION|GLAB_VERSION|LEANCTX_VERSION|OH_MY_OPENAGENT_VERSION|OPENSPEC_VERSION) ;;
             *) continue ;;
         esac
         [[ -z "${pinned:-}" ]] && continue
@@ -263,11 +265,10 @@ read_snapshot() {
 check_latest_packages() {
     local snapshot prev status
     snapshot=$(read_snapshot)
-    for entry in CODEGRAPH_VERSION OPENSPEC_VERSION; do
+    for entry in CODEGRAPH_VERSION; do
         local pkg source_label
         case "$entry" in
             CODEGRAPH_VERSION)       pkg="@colbymchenry/codegraph"; source_label="npm" ;;
-            OPENSPEC_VERSION)        pkg="@fission-ai/openspec"; source_label="npm" ;;
         esac
         local current
         current=$(get_npm_latest "$pkg")
@@ -403,7 +404,6 @@ def npm_latest(pkg):
         return "unknown"
 latest = {
     "CODEGRAPH_VERSION": npm_latest("@colbymchenry/codegraph"),
-    "OPENSPEC_VERSION": npm_latest("@fission-ai/openspec"),
 }
 snapshot = {
     "timestamp": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),

@@ -15,6 +15,7 @@ ARG GH_VERSION=2.97.0
 ARG MARKSMAN_VERSION=2026-02-08
 ARG LEANCTX_VERSION=3.9.19
 ARG OH_MY_OPENAGENT_VERSION=4.19.4
+ARG OPENSPEC_VERSION=1.10.0
 ARG AI_ENGKIT_VERSION=dev
 ARG USERNAME=devuser
 ARG USER_UID=1000
@@ -149,7 +150,7 @@ cognitive_mode = "full"
 shell_allowlist_extra = [
   "gh", "glab",
   "docker", "docker-compose", "docker compose",
-  "pw-mcp", "bun", "marksman", "codegraph",
+  "pw-mcp", "bun", "marksman", "codegraph", "openspec",
 ]
 graph_index_max_files = 5000
 savings_footer = "auto"
@@ -165,7 +166,7 @@ ENV LEANCTX_VERSION=${LEANCTX_VERSION}
 RUN rm -rf ~/.bun/install/cache && \
     bun install -g opencode-ai@${OPENCODE_VERSION} && \
     bun install -g @openchamber/web@${OPENCHAMBER_VERSION} --trust && \
-    bun install -g @fission-ai/openspec --trust && \
+    bun install -g @fission-ai/openspec@${OPENSPEC_VERSION} --trust && \
     bun install -g @code-yeongyu/comment-checker --trust && \
     # Remove cross-platform opencode binaries shipped as optional dependencies.
     # The container runs linux/amd64 with glibc; baseline/musl stubs are never used.
