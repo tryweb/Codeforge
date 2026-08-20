@@ -145,7 +145,7 @@ RUN mkdir -p /home/${USERNAME}/.config/lean-ctx && \
     cat > /home/${USERNAME}/.config/lean-ctx/config.toml <<'EOF'
 # lean-ctx ai-engkit tuning — overrides conservative defaults
 permission_inheritance = "on"
-compression_level = "standard"
+compression_level = "lite"
 cognitive_mode = "full"
 shell_allowlist_extra = [
   "gh", "glab",
