@@ -6,7 +6,6 @@ import { describe, expect, mock, test } from "bun:test";
 // factories do not re-enter the interception loop.
 
 const realDocker = await import("../lib/docker");
-const realNodeFs = await import("node:fs");
 
 const dockerCalls: Array<{ cmd: string; timeout: number }> = [];
 const runCommandCalls: Array<{ args: string[]; timeout: number }> = [];
@@ -31,12 +30,6 @@ mock.module("../lib/docker", () => ({
 
 // Force the compose branch even in dev environments where
 // /opt/ai-engkit/compose.yml does not exist.
-mock.module("node:fs", () => ({
-  ...realNodeFs,
-  existsSync: (path: Parameters<typeof realNodeFs.existsSync>[0]) =>
-    path.toString() === "/opt/ai-engkit/compose.yml" || realNodeFs.existsSync(path),
-}));
-
 const PULL_CMD = "pull ghcr.io/tryweb/ai-engkit:latest 2>&1";
 const AI_DEV_COMPOSE_CMD =
   "compose -p test-proj --env-file /opt/ai-engkit/.env -f /opt/ai-engkit/compose.yml up -d --force-recreate ai-dev 2>&1";
@@ -58,7 +51,8 @@ describe("real restartContainer", () => {
     dockerCalls.length = 0;
     runCommandCalls.length = 0;
     const { createRealCommandDeps } = await import("./commands");
-    const result = await createRealCommandDeps().restartContainer("ai-admin");
+    const deps = createRealCommandDeps(() => true);
+    const result = await deps.restartContainer("ai-admin");
 
     expect(result.success).toBe(true);
     expect(dockerCalls.map((c) => c.cmd)).toEqual([PULL_CMD]);
@@ -73,7 +67,8 @@ describe("real restartContainer", () => {
     runCommandCalls.length = 0;
     bindSources = {};
     const { createRealCommandDeps } = await import("./commands");
-    const result = await createRealCommandDeps().restartContainer("ai-admin");
+    const deps = createRealCommandDeps(() => true);
+    const result = await deps.restartContainer("ai-admin");
 
     expect(result.success).toBe(false);
     expect(dockerCalls.map((c) => c.cmd)).toEqual([PULL_CMD]);
@@ -88,7 +83,8 @@ describe("real restartContainer", () => {
     dockerCalls.length = 0;
     runCommandCalls.length = 0;
     const { createRealCommandDeps } = await import("./commands");
-    const result = await createRealCommandDeps().restartContainer("ai-dev");
+    const deps = createRealCommandDeps(() => true);
+    const result = await deps.restartContainer("ai-dev");
 
     expect(result.success).toBe(true);
     expect(dockerCalls.map((c) => c.cmd)).toEqual([AI_DEV_COMPOSE_CMD]);
@@ -99,7 +95,8 @@ describe("real restartContainer", () => {
     dockerCalls.length = 0;
     runCommandCalls.length = 0;
     const { createRealCommandDeps } = await import("./commands");
-    const result = await createRealCommandDeps().restartContainer("bogus");
+    const deps = createRealCommandDeps(() => true);
+    const result = await deps.restartContainer("bogus");
 
     expect(result.success).toBe(false);
     expect(dockerCalls).toHaveLength(0);

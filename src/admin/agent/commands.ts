@@ -1677,7 +1677,9 @@ export function createCommandDispatcher(sender: CommandSender, deps: CommandDeps
 }
 
 /** Create production command dependencies backed by shared read and action helpers. */
-export function createRealCommandDeps(): CommandDeps {
+export function createRealCommandDeps(
+  composeFileExists: (path: string) => boolean = existsSync,
+): CommandDeps {
   const agentModelsLib = createAgentModelsLib(AGENT_MODEL_REAL_DEPS);
   return {
     isUpgradeRunning: () => getState() === "running",
@@ -1701,7 +1703,7 @@ export function createRealCommandDeps(): CommandDeps {
         // Mirror restartAiDev: when the compose file is present, recreate the
         // service from compose so a newly pulled image is applied. A plain
         // `docker restart` keeps the container on its old image.
-        if (existsSync(COMPOSE_FILE)) {
+        if (composeFileExists(COMPOSE_FILE)) {
           const project = await getComposeProject();
           if (service === "ai-admin") {
             // ai-admin has no upgrade flow; fetch the latest tag so the

@@ -15,6 +15,7 @@ services:
       - opencode-data-dev:/home/devuser/.local/share/opencode
       - lean-ctx-data-dev:/home/devuser/.local/share/lean-ctx
       - lean-ctx-state-dev:/home/devuser/.local/state/lean-ctx
+      - lean-ctx-config-dev:/home/devuser/.config/lean-ctx
       - opencode-config-dev:/home/devuser/.config/opencode
       - omo-config-dev:/home/devuser/.omo
       - opencode-cache-dev:/home/devuser/.cache/opencode
@@ -74,6 +75,7 @@ volumes:
   opencode-data-dev:
   lean-ctx-data-dev:
   lean-ctx-state-dev:
+  lean-ctx-config-dev:
   opencode-config-dev:
   omo-config-dev:
   opencode-cache-dev:

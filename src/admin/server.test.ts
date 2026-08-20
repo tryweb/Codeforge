@@ -1,6 +1,14 @@
-import { expect, test } from "bun:test";
+import { afterAll, expect, test } from "bun:test";
 
+const originalAdminPassword = process.env.ADMIN_PASSWORD;
 process.env.ADMIN_PASSWORD = "test-admin-password";
+afterAll(() => {
+  if (originalAdminPassword === undefined) {
+    delete process.env.ADMIN_PASSWORD;
+  } else {
+    process.env.ADMIN_PASSWORD = originalAdminPassword;
+  }
+});
 
 const { app } = await import("./server");
 
