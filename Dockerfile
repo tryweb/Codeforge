@@ -147,7 +147,7 @@ RUN mkdir -p /home/${USERNAME}/.config/lean-ctx && \
 permission_inheritance = "on"
 compression_level = "lite"
 cognitive_mode = "full"
-shell_allowlist_extra = ["gh", "glab", "docker", "docker-compose", "docker compose", "pw-mcp", "bun", "marksman", "codegraph", "openspec"]
+shell_allowlist_extra = ["gh", "glab", "docker", "docker-compose", "docker compose", "pw-mcp", "bun", "marksman", "codegraph", "openspec", "ssh", "ssh-keygen", "scp", "sftp", "ssh-add"]
 graph_index_max_files = 5000
 savings_footer = "auto"
 EOF
