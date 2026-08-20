@@ -1,6 +1,19 @@
 ## [Unreleased]
 
 
+## [1.15.2] - 2026-08-20
+
+### Fixed
+- Update lean-ctx compression_level test to match Dockerfile lite setting
+- Lower lean-ctx compression_level to lite and document triage escape hatches
+
+### Documentation
+- Capture lean-ctx triage blind-spot and bash-c permanent block
+- Add lean-ctx shell-script execution guidance to AGENTS.md.default
+
+### Changed
+- Pin openspec version to v1.10.0
+
 ## [1.15.1] - 2026-08-19
 
 ### Fixed
@@ -1460,7 +1473,7 @@
 
 ## Format
 
-[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.15.1...HEAD
+[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.15.2...HEAD
 [0.3.0]: https://github.com/tryweb/ai-engkit/releases/tag/v0.3.0
 [0.3.3]: https://github.com/tryweb/ai-engkit/compare/v0.3.0...v0.3.3
 [0.5.0]: https://github.com/tryweb/ai-engkit/compare/v0.3.3...v0.5.0
@@ -1605,3 +1618,4 @@
 [1.14.14]: https://github.com/tryweb/ai-engkit/compare/v1.14.13...v1.14.14
 [1.15.0]: https://github.com/tryweb/ai-engkit/compare/v1.14.14...v1.15.0
 [1.15.1]: https://github.com/tryweb/ai-engkit/compare/v1.15.0...v1.15.1
+[1.15.2]: https://github.com/tryweb/ai-engkit/compare/v1.15.1...v1.15.2
