@@ -50,4 +50,39 @@ fi
 ```
 
 3. **Pass `$BASE` to test scripts** (e.g., `smoke-test`) — never hardcode `http://localhost:PORT`
+
+### Executing Shell Commands & Dynamically-Generated Scripts (lean-ctx shell security)
+
+lean-ctx's shell layer (`ctx_shell` / `lean-ctx -c`) enforces defense-in-depth
+command gating. **Interpreter inline-code execution is permanently blocked**:
+
+- ❌ `bash -c '...'` and `sh -c '...'` → blocked with
+  `Interpreter 'bash' with inline code execution flag '-c' is blocked. Use a script file instead.`
+  This is intentional and **cannot** be lifted via `shell_allowlist_extra`
+  (adding `bash` was verified to have no effect — the block is allowlist-independent)
+  and should **not** be disabled via `shell_security: warn|off` (that weakens the
+  gate globally for every command).
+
+**To run a multi-step or dynamically-generated script, do NOT wrap it in
+`bash -c`. Write it to a file and execute the file** (all of these pass):
+
+```bash
+# 1) Write the script to a file (heredoc, or your Write/editor tool)
+cat > /tmp/run.sh <<'EOF'
+echo "step 1"
+docker ps
+EOF
+
+# 2) Execute the file (no -c flag)
+bash /tmp/run.sh                      # ✅ allowed
+sh  /tmp/run.sh                      # ✅ allowed
+chmod +x /tmp/run.sh && /tmp/run.sh  # ✅ allowed
+```
+
+For non-trivial conditional / cross-language logic, prefer the **`ctx_execute`**
+MCP tool (sandboxed code execution) over shell scripting.
+
+Single direct commands (`git status`, `docker ps`, `jq ...`) run normally — only
+explicit `bash -c` / `sh -c` wrapper forms are blocked.
+
 <!-- /@ai-engkit -->
