@@ -1,6 +1,17 @@
 ## [Unreleased]
 
 
+## [1.15.3] - 2026-08-20
+
+### Changed
+- Bump OpenCode from 1.18.18 to 1.18.19
+
+### Fixed
+- Add SSH commands to lean-ctx shell allowlist
+
+### Documentation
+- Capture Docker volume persistence and lean-ctx troubleshooting updates
+
 ## [1.15.2] - 2026-08-20
 
 ### Fixed
