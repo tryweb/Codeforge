@@ -28,6 +28,7 @@ import { getStatus as getUpgradeStatus } from "./lib/upgrade";
 import { DashboardPage } from "./views/dashboard";
 import { getSelfContainerRef, dockerCommand, execInAiDev } from "./lib/docker";
 import { createToolStatusProbe } from "./lib/project-tool-status";
+import leanctxRoutes from "./routes/leanctx";
 
 export const app = new Hono();
 
@@ -123,6 +124,7 @@ app.route("/", adminRoutes);
 app.route("/", secretsRoutes);
 app.route("/", providersRoutes);
 app.route("/", openChamberRoutes);
+app.route("/", leanctxRoutes);
 
 // Dashboard main page — gathers data directly instead of HTTP loopback
 app.get("/", async (c) => {
