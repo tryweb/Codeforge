@@ -1,4 +1,4 @@
-import { html } from "hono/html";
+import { html, raw } from "hono/html";
 import type { FC } from "hono/jsx";
 import { Layout } from "./layout";
 import { LEANCTX_SCHEMA, getSchemaBySection, type LeanCtxSchemaEntry } from "../lib/leanctx-schema";
@@ -322,8 +322,8 @@ const LeanCtxEditorContent: FC<LeanCtxEditorProps> = ({ config, meta, schema }) 
 
       function editKey(key) {
         currentEditKey = key;
-        const entry = ${JSON.stringify(LEANCTX_SCHEMA)}.find(e => e.key === key);
-        const currentValue = ${JSON.stringify(config)}[key];
+        const entry = ${raw(JSON.stringify(LEANCTX_SCHEMA))}.find(e => e.key === key);
+        const currentValue = ${raw(JSON.stringify(config).replace(/</g, "\\u003c"))}[key];
         document.getElementById("modal-title").textContent = "Edit " + key;
         const inputType = entry?.type || "string";
         let inputHtml = "";
@@ -378,7 +378,7 @@ const LeanCtxEditorContent: FC<LeanCtxEditorProps> = ({ config, meta, schema }) 
       }
 
       function resetKey(key) {
-        const entry = ${JSON.stringify(LEANCTX_SCHEMA)}.find(e => e.key === key);
+        const entry = ${raw(JSON.stringify(LEANCTX_SCHEMA))}.find(e => e.key === key);
         if (!entry || entry.default === undefined) return;
         fetch("/api/leanctx/config/set", {
           method: "POST",
