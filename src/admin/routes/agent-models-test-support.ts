@@ -26,6 +26,23 @@ export function stubDeps(handlers: readonly ExecHandler[], password: string | nu
           };
         }
       }
+      if (command.includes("/provider")) {
+        return {
+          stdout: JSON.stringify({
+            connected: ["opencode"],
+            all: [{ id: "opencode", models: { "big-pickle": {} } }],
+          }),
+          stderr: "",
+          exitCode: 0,
+        };
+      }
+      if (command.includes("~/.cache/opencode/models.json")) {
+        return {
+          stdout: JSON.stringify({ opencode: { models: { "big-pickle": {} } } }),
+          stderr: "",
+          exitCode: 0,
+        };
+      }
       return { stdout: "", stderr: "", exitCode: 1 };
     },
     restart: async () => ({ ok: true }),
@@ -50,6 +67,16 @@ export const AGENTS_JSON = JSON.stringify([
 export function listHandlers(): readonly ExecHandler[] {
   return [
     { match: /jq -c '\.agents/, stdout: CONFIG_JSON },
+    {
+      match: /\/provider\b/,
+      stdout: JSON.stringify({
+        connected: ["openai", "opencode-go"],
+        all: [
+          { id: "openai", models: { "gpt-5.6-sol": {} } },
+          { id: "opencode-go", models: { "kimi-k3": {} } },
+        ],
+      }),
+    },
     { match: /connected-providers\.json/, stdout: '{"connected":["openai","opencode-go"]}' },
     { match: /provider-models\.json/, stdout: "openai/gpt-5.6-sol\nopencode-go/kimi-k3\n" },
     { match: /\/agent\b/, stdout: AGENTS_JSON },

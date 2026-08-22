@@ -49,6 +49,9 @@ export function createAgentModelsRoutes(deps: AgentModelsDeps): Hono {
     if (!state.agents.some((entry) => entry.name === agent)) {
       return c.json({ error: "agent is not a configurable live subagent" }, 403);
     }
+    if (!state.catalogAvailable && entries.length > 0) {
+      return c.json({ error: "model catalog unavailable" }, 409);
+    }
     const catalog = new Set(state.catalog);
     if (entries.some((entry) => !catalog.has(entry.model))) {
       return c.json({ error: "model is not available in the current environment catalog" }, 400);
