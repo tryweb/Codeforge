@@ -28,6 +28,12 @@ it fails with:
 browserType.launch: Executable doesn't exist at /opt/google/chrome/chrome
 ```
 
+There is a second, separate failure mode: installing the browser during the
+image build does not install the `playwright` or `@playwright/mcp` CLI binaries
+for runtime. A runtime `bunx -y` call can therefore hit the package registry,
+hang when DNS is unavailable, or make a fresh container behave differently
+from a warmed cache.
+
 Earlier attempts (e.g. `playwright install --only-shell chromium` to slim the
 image) made things worse: the headless shell is not what the MCP's
 new-headless mode launches — it expects the full Chromium binary.
@@ -40,10 +46,18 @@ Add a wrapper script `/usr/local/bin/pw-mcp` that:
    `/ms-playwright/chromium-<revision>/chrome-linux64/chrome` (the revision
    directory changes with every Playwright release).
 2. Falls back to the headless shell if the full build is absent.
-3. Bakes the `@playwright/mcp@<version>` reference at build time via
-   `sed` so the wrapper is self-contained (no runtime env var dependency).
-4. Launches `bunx -y @playwright/mcp@<pinned> --executable-path=<path>
-   --no-sandbox --headless`.
+3. Launches the globally installed `playwright-mcp` binary with
+   `--executable-path=<path> --no-sandbox --headless`.
+
+The Dockerfile installs the pinned CLI packages globally with Bun:
+
+```dockerfile
+RUN bun install -g playwright@${PLAYWRIGHT_VERSION} \
+    @playwright/mcp@${PLAYWRIGHT_MCP_VERSION}
+```
+
+Bun exposes their binaries under `/home/devuser/.bun/bin`, which is already on
+the image `PATH`.
 
 Wire it into `opencode.json` (both baked default and runtime regenerator):
 
@@ -61,7 +75,6 @@ The wrapper script (core shape — full version in repo):
 #!/usr/bin/env bash
 set -euo pipefail
 PLAYWRIGHT_BROWSERS_PATH="${PLAYWRIGHT_BROWSERS_PATH:-/ms-playwright}"
-PLAYWRIGHT_MCP_VERSION="${PLAYWRIGHT_MCP_VERSION:-0.0.76}"
 
 CHROME_BIN="$(find "${PLAYWRIGHT_BROWSERS_PATH}" \
     -type f -name chrome -path '*/chromium-*/chrome-linux64/*' 2>/dev/null | sort -V | tail -1)"
@@ -71,7 +84,7 @@ if [ -z "${CHROME_BIN}" ]; then
         -type f -name chrome-headless-shell -path '*/chromium_headless_shell-*/chrome-headless-shell-linux64/*' 2>/dev/null | sort -V | tail -1)"
 fi
 
-exec bunx -y "@playwright/mcp@${PLAYWRIGHT_MCP_VERSION}" \
+exec playwright-mcp \
     --executable-path="${CHROME_BIN}" --no-sandbox --headless "$@"
 ```
 
@@ -85,9 +98,10 @@ exec bunx -y "@playwright/mcp@${PLAYWRIGHT_MCP_VERSION}" \
   `/ms-playwright/chromium-1228/...` breaks the next `playwright install`.
   Using `find` with a glob pattern (`chromium-*/chrome-linux64/chrome`)
   always finds whatever's there.
-- **Build-time `sed` bakes the version**: The wrapper stays self-contained
-  (no env-var requirement at runtime) so the test suite can grep the script
-  for the pinned version and assert it matches the build arg.
+- **Global install removes runtime registry dependency**: The image installs
+  `playwright@${PLAYWRIGHT_VERSION}` and
+  `@playwright/mcp@${PLAYWRIGHT_MCP_VERSION}` during build, and runtime calls
+  their binaries directly instead of invoking `bunx -y`.
 - **Headless + `--no-sandbox`** are required: the Docker image has no
   X server and no namespace to drop into. Both are safe for the dev /
   automation use case the MCP targets.
@@ -100,34 +114,30 @@ exec bunx -y "@playwright/mcp@${PLAYWRIGHT_MCP_VERSION}" \
   image; revisit if shipping as a production runtime.)
 - **Indirection**: An extra `exec` layer between OpenCode and the MCP
   process. Harmless — exit codes and signals propagate. The only visible
-  effect is `pgrep` shows `pw-mcp` rather than the underlying `bunx`/`node`
-  child.
+  effect is `pgrep` shows `pw-mcp` rather than the underlying `node` child.
 - **Playwright CLI ≠ MCP binary**: The Playwright CLI test (e.g.
   `playwright --version`) and the bundled browser work without the wrapper.
   The wrapper is only needed for the MCP server's `chrome` channel default.
 
 ## Evidence
 
-- `v0.17.0` — Added `pw-mcp` wrapper, fixed 2 pre-existing test assertions
-  that were still grepping the old `bunx` / `playwright` string format
-- 51/51 integration tests pass against `docker compose -f docker-compose.dev.yml up`
-- `pw-mcp --help` outputs the MCP server's `Usage: Playwright MCP [options]`
-  — proves the wrapper fully launches the server with the resolved
-  executable path
-- `pw-mcp --version` returns `Version 0.0.76` — version is correctly baked
-- Smoke test: `find /ms-playwright -name chrome -path "*/chrome-linux64/*"`
-  returns `/ms-playwright/chromium-1228/chrome-linux64/chrome` after
-  `playwright install`
+- Build verification: `playwright` resolves to
+  `/home/devuser/.bun/bin/playwright` and reports `Version 1.62.1`.
+- Build verification: `playwright-mcp` resolves to
+  `/home/devuser/.bun/bin/playwright-mcp` and reports `Version 0.0.79`.
+- Main container integration suite: `128 passed, 0 failed, 0 skipped`.
+- MCP smoke test: JSON-RPC `browser_navigate` succeeds through `pw-mcp`
+  using `/ms-playwright/chromium-1234/chrome-linux64/chrome`.
 
 ## Related Files
 
 - `scripts/pw-mcp.sh` — The wrapper itself (~36 lines, executable)
-- `Dockerfile` (lines ~150-175) — `playwright install --with-deps chromium`
-  + `COPY scripts/pw-mcp.sh` + `sed` to bake `PLAYWRIGHT_MCP_VERSION`
+- `Dockerfile` — `playwright install --with-deps chromium`, global pinned
+  CLI installs, and `COPY scripts/pw-mcp.sh`
 - `entrypoint.d/02-init-config.sh` — Regenerates `opencode.json` with
   `"command": ["pw-mcp"]` for `mcp.playwright`
-- `test/run-tests.sh` — 3 new assertions: wrapper installed, config uses
-  it, version is pinned
+- `test/run-tests.sh` — verifies direct `playwright` and `playwright-mcp`
+  binaries, wrapper installation, config routing, and MCP browser navigation
 - `docs/CHANGELOG.md` — `v0.17.0` entry documents the change
 
 ## Subagent Usage (Standalone Mode)

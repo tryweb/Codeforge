@@ -646,14 +646,14 @@ echo ""
 echo "--- Playwright / Chromium ---"
 
 PLAYWRIGHT_VERSION=$(docker exec "$CONTAINER" sh -c 'echo "${PLAYWRIGHT_VERSION}"' 2>/dev/null || echo "unknown")
-if docker exec "$CONTAINER" sh -c 'bunx -y "playwright@${PLAYWRIGHT_VERSION}" --version' >/dev/null 2>&1; then
+if docker exec "$CONTAINER" playwright --version >/dev/null 2>&1; then
   pass "playwright ${PLAYWRIGHT_VERSION} CLI works"
 else
   fail "playwright CLI not available (expected version: ${PLAYWRIGHT_VERSION})"
 fi
 
 PLAYWRIGHT_MCP_VERSION=$(docker exec "$CONTAINER" sh -c 'echo "${PLAYWRIGHT_MCP_VERSION}"' 2>/dev/null || echo "unknown")
-if docker exec "$CONTAINER" sh -c 'bunx -y "@playwright/mcp@${PLAYWRIGHT_MCP_VERSION}" --help' >/dev/null 2>&1; then
+if docker exec "$CONTAINER" playwright-mcp --help >/dev/null 2>&1; then
   pass "@playwright/mcp ${PLAYWRIGHT_MCP_VERSION} CLI works"
 else
   fail "@playwright/mcp CLI not available (expected version: ${PLAYWRIGHT_MCP_VERSION})"
@@ -704,7 +704,7 @@ else
   fail "opencode.json mcp.playwright command is '${CONFIG_PW_CMD}', expected 'pw-mcp'"
 fi
 
-WRAPPER_VERSION=$(docker exec "$CONTAINER" sh -c 'grep -oP "@playwright/mcp@\K[^\"]+" /usr/local/bin/pw-mcp 2>/dev/null | head -1')
+WRAPPER_VERSION=$(docker exec "$CONTAINER" sh -c 'playwright-mcp --version 2>/dev/null' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
 if [ "$WRAPPER_VERSION" = "$PLAYWRIGHT_MCP_VERSION" ]; then
   pass "pw-mcp wrapper pins @playwright/mcp@${WRAPPER_VERSION}"
 else

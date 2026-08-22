@@ -503,7 +503,11 @@ fi
 
 PROJECTS_HTML=$(curl -s -b "$COOKIE_JAR" "$BASE/projects" 2>/dev/null || echo "")
 assert_contains "Projects page renders CodeGraph column" "CodeGraph" "$PROJECTS_HTML"
-assert_not_contains "Projects page has no leanCTX column" "leanCTX" "$PROJECTS_HTML"
+# The shared Layout sidebar always carries a "LeanCTX Config" nav link, so a
+# whole-page absence check would false-fail. Tool columns surface as filter
+# selects; a leanCTX column would add an id="filter-leanctx" select here.
+PROJECTS_FILTERS=$(printf '%s' "$PROJECTS_HTML" | grep -oE 'id="filter-[a-z]+"')
+assert_not_contains "Projects toolbar has no leanCTX filter" 'leanctx' "$PROJECTS_FILTERS"
 assert_contains "Projects page loads projects-page.js" 'projects-page.js' "$PROJECTS_HTML"
 assert_contains "Projects page has re-scan button" "btn-tool-refresh" "$PROJECTS_HTML"
 

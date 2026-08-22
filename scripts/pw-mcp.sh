@@ -10,7 +10,6 @@
 set -euo pipefail
 
 PLAYWRIGHT_BROWSERS_PATH="${PLAYWRIGHT_BROWSERS_PATH:-/ms-playwright}"
-PLAYWRIGHT_MCP_VERSION="${PLAYWRIGHT_MCP_VERSION:-latest}"
 
 find_executable() {
     local name="$1"
@@ -46,7 +45,7 @@ fi
 export PLAYWRIGHT_BROWSERS_PATH
 echo "pw-mcp: using $(basename "$(dirname "$(dirname "$CHROME_BIN")")") (${CHROME_BIN})" >&2
 
-exec bunx -y "@playwright/mcp@${PLAYWRIGHT_MCP_VERSION}" \
+exec playwright-mcp \
     --executable-path="${CHROME_BIN}" \
     --no-sandbox --headless \
     --output-dir .playwright-mcp \
