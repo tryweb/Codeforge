@@ -17,7 +17,8 @@ sshKeys.post("/api/ssh/keys", async (c) => {
 
   const result = await addKey(name, type, passphrase);
   if (!result.ok) {
-    return c.json({ error: result.error }, 500);
+    const status = result.error.startsWith("Invalid key name") ? 400 : 500;
+    return c.json({ error: result.error }, status);
   }
   return c.json({ ok: true });
 });
