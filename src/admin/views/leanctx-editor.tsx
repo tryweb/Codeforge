@@ -1,7 +1,7 @@
 import { html, raw } from "hono/html";
 import type { FC } from "hono/jsx";
 import { Layout } from "./layout";
-import { LEANCTX_SCHEMA, getSchemaBySection, type LeanCtxSchemaEntry } from "../lib/leanctx-schema";
+import { getSchemaBySection, type LeanCtxSchemaEntry } from "../lib/leanctx-schema";
 
 interface LeanCtxEditorProps {
   config: Record<string, unknown>;
@@ -10,6 +10,10 @@ interface LeanCtxEditorProps {
     globalPath: string;
     projectPath: string;
     hasProjectOverride: boolean;
+    baselinePath: string;
+    runtimeParseError?: string;
+    projectParseError?: string;
+    baselineParseError?: string;
   };
   schema: LeanCtxSchemaEntry[];
 }
@@ -54,7 +58,7 @@ function renderInput(entry: LeanCtxSchemaEntry, value: unknown, disabled: boolea
 }
 
 const LeanCtxEditorContent: FC<LeanCtxEditorProps> = ({ config, meta, schema }) => {
-  const sections = getSchemaBySection();
+  const sections = getSchemaBySection(schema);
 
   return html`
     <div class="leanctx-editor">
@@ -72,22 +76,25 @@ const LeanCtxEditorContent: FC<LeanCtxEditorProps> = ({ config, meta, schema }) 
           `}
         </div>
       </div>
+      ${(meta?.runtimeParseError || meta?.projectParseError || meta?.baselineParseError) && html`
+        <div class="config-error text-danger" role="alert">
+          <strong>Configuration requires repair.</strong>
+          ${meta.runtimeParseError || meta.projectParseError || meta.baselineParseError}
+          <span>Use Reset to Defaults, then Save Changes before applying.</span>
+        </div>
+      `}
 
       <div class="editor-actions">
+        <button class="btn-primary" onclick="saveConfig()">Save Changes</button>
         <button class="btn-primary" onclick="validateConfig()">Validate Config</button>
-        <button class="btn-primary" onclick="applyConfig()">Apply (Hot Reload)</button>
-        <button class="btn-outline" onclick="runDoctor()">Run Doctor</button>
-        <button class="btn-outline" onclick="toggleRaw()">Raw TOML</button>
+        <button class="btn-primary" id="apply-config" onclick="applyConfig(event)" disabled>Apply Saved Config (restarts daemon)</button>
+        <button class="btn-outline" onclick="runDoctor(event)">Run LeanCTX Doctor</button>
         <button class="btn-danger" onclick="resetConfig()">Reset to Defaults</button>
       </div>
-
-      <div id="raw-editor" style="display:none; margin-bottom: 1rem;">
-        <textarea id="raw-toml" rows="20" style="width:100%;font-family:monospace;font-size:0.85rem;"></textarea>
-        <div class="editor-actions" style="margin-top:0.5rem;">
-          <button class="btn-primary" onclick="saveRaw()">Save Raw TOML</button>
-          <button class="btn-outline" onclick="toggleRaw()">Cancel</button>
-        </div>
-      </div>
+      <p class="workflow-hint text-sm text-muted">
+        Edit values, then select <strong>Save Changes</strong>. Apply is a separate step and restarts the LeanCTX daemon in ai-dev.
+      </p>
+      <p id="config-status" class="text-sm text-muted" aria-live="polite">No changes saved in this session. Save Changes before applying.</p>
 
       <form id="config-form">
         ${Object.entries(sections).map(([sectionName, entries]) => html`
@@ -119,7 +126,6 @@ const LeanCtxEditorContent: FC<LeanCtxEditorProps> = ({ config, meta, schema }) 
                         <div class="value-cell">
                           ${renderInput(entry, value, false)}
                           <div class="value-actions">
-                            <button type="button" class="btn-icon" onclick="editKey('${entry.key}')" title="Edit">✎</button>
                             <button type="button" class="btn-icon" onclick="resetKey('${entry.key}')" title="Reset to default">↺</button>
                           </div>
                         </div>
@@ -132,20 +138,6 @@ const LeanCtxEditorContent: FC<LeanCtxEditorProps> = ({ config, meta, schema }) 
           </fieldset>
         `)}
       </form>
-
-      <div id="modal-overlay" class="modal-overlay" style="display:none;">
-        <div class="modal">
-          <div class="modal-header">
-            <h3 id="modal-title"></h3>
-            <button class="btn-icon" onclick="closeModal()">✕</button>
-          </div>
-          <div class="modal-body" id="modal-body"></div>
-          <div class="modal-footer">
-            <button class="btn-outline" onclick="closeModal()">Cancel</button>
-            <button class="btn-primary" id="modal-save">Save</button>
-          </div>
-        </div>
-      </div>
 
       <div id="doctor-modal" class="modal-overlay" style="display:none;">
         <div class="modal modal-large">
@@ -165,7 +157,7 @@ const LeanCtxEditorContent: FC<LeanCtxEditorProps> = ({ config, meta, schema }) 
       <div id="validate-modal" class="modal-overlay" style="display:none;">
         <div class="modal">
           <div class="modal-header">
-            <h3>Validation Result</h3>
+            <h3 id="result-modal-title">Validation Result</h3>
             <button class="btn-icon" onclick="closeValidateModal()">✕</button>
           </div>
           <div class="modal-body" id="validate-output"></div>
@@ -177,8 +169,7 @@ const LeanCtxEditorContent: FC<LeanCtxEditorProps> = ({ config, meta, schema }) 
     </div>
 
     <script>${html`
-      let currentEditKey = null;
-      let currentEditTarget = "global";
+      let hasSavedChanges = false;
 
       function getFormData() {
         const form = document.getElementById("config-form");
@@ -207,7 +198,11 @@ const LeanCtxEditorContent: FC<LeanCtxEditorProps> = ({ config, meta, schema }) 
       }
 
       async function saveConfig(target = "global") {
-        currentEditTarget = target;
+        const btn = document.querySelector('button[onclick="saveConfig()"]');
+        if (btn) {
+          btn.disabled = true;
+          btn.textContent = "Saving...";
+        }
         const config = getFormData();
         const res = await fetch("/api/leanctx/config", {
           method: "PUT",
@@ -215,10 +210,16 @@ const LeanCtxEditorContent: FC<LeanCtxEditorProps> = ({ config, meta, schema }) 
           body: JSON.stringify({ config, target }),
         });
         if (res.ok) {
-          location.reload();
+          hasSavedChanges = true;
+          document.getElementById("apply-config").disabled = false;
+          document.getElementById("config-status").textContent = "Saved. Apply when ready; applying restarts the LeanCTX daemon in ai-dev.";
         } else {
           const d = await res.json();
           alert(d.error || "Failed to save");
+        }
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = "Save Changes";
         }
       }
 
@@ -239,160 +240,78 @@ const LeanCtxEditorContent: FC<LeanCtxEditorProps> = ({ config, meta, schema }) 
         } else {
           output.innerHTML = '<div class="text-danger">✗ Validation failed: ' + (data.error || "Unknown error") + '</div>';
         }
+        document.getElementById("result-modal-title").textContent = "Validation Result";
         document.getElementById("validate-modal").style.display = "flex";
       }
 
-      async function applyConfig() {
+      async function applyConfig(event) {
+        if (!hasSavedChanges) {
+          alert("Save Changes before applying. Apply restarts the LeanCTX daemon in ai-dev.");
+          return;
+        }
         const btn = event.target;
         btn.disabled = true;
-        btn.textContent = "Applying...";
+        btn.textContent = "Applying (daemon restarting)...";
         const res = await fetch("/api/leanctx/apply", { method: "POST" });
         const data = await res.json();
         btn.disabled = false;
-        btn.textContent = "Apply (Hot Reload)";
+        btn.textContent = "Apply Saved Config (restarts daemon)";
         const output = document.getElementById("validate-output");
         if (data.ok) {
-          output.innerHTML = '<div class="text-success">✓ Configuration applied successfully</div>';
+          output.innerHTML = '<div class="text-success">✓ Saved configuration applied. The LeanCTX daemon in ai-dev was restarted.</div>';
         } else {
-          output.innerHTML = '<div class="text-danger">✗ Apply failed: ' + (data.output || "Unknown error") + '</div>';
+          output.innerHTML = '<div class="text-danger">✗ Apply failed; the LeanCTX daemon may not have restarted: ' + (data.output || "Unknown error") + '</div>';
         }
+        document.getElementById("result-modal-title").textContent = "Apply Result";
         document.getElementById("validate-modal").style.display = "flex";
       }
 
-      async function runDoctor() {
+      async function runDoctor(event) {
         const btn = event.target;
         btn.disabled = true;
         btn.textContent = "Running...";
         const res = await fetch("/api/leanctx/doctor");
         const data = await res.json();
         btn.disabled = false;
-        btn.textContent = "Run Doctor";
+        btn.textContent = "Run LeanCTX Doctor";
         document.getElementById("doctor-output").textContent = data.output;
         document.getElementById("doctor-modal").style.display = "flex";
       }
 
-      function toggleRaw() {
-        const rawEditor = document.getElementById("raw-editor");
-        const form = document.getElementById("config-form");
-        if (rawEditor.style.display === "none") {
-          rawEditor.style.display = "block";
-          form.style.display = "none";
-          const config = getFormData();
-          document.getElementById("raw-toml").value = JSON.stringify(config, null, 2);
-        } else {
-          rawEditor.style.display = "none";
-          form.style.display = "block";
+      function resetConfig() {
+        if (!confirm("Reset all visible values to their defaults? Save Changes to write this reset to config.toml.")) return;
+        for (const entry of ${raw(JSON.stringify(schema))}) {
+          setInputValue(entry.key, entry.default);
         }
+        markDirty();
       }
 
-      async function saveRaw() {
-        try {
-          const toml = document.getElementById("raw-toml").value;
-          const config = JSON.parse(toml);
-          const res = await fetch("/api/leanctx/config", {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ config, target: "global" }),
-          });
-          if (res.ok) {
-            location.reload();
-          } else {
-            const d = await res.json();
-            alert(d.error || "Failed to save");
-          }
-        } catch (e) {
-          alert("Invalid JSON: " + e.message);
-        }
-      }
-
-      async function resetConfig() {
-        if (!confirm("Reset all configuration to defaults? This cannot be undone.")) return;
-        const res = await fetch("/api/leanctx/config/reset", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ target: "global" }),
-        });
-        if (res.ok) {
-          location.reload();
-        } else {
-          const d = await res.json();
-          alert(d.error || "Failed to reset");
-        }
-      }
-
-      function editKey(key) {
-        currentEditKey = key;
-        const entry = ${raw(JSON.stringify(LEANCTX_SCHEMA))}.find(e => e.key === key);
-        const currentValue = ${raw(JSON.stringify(config).replace(/</g, "\\u003c"))}[key];
-        document.getElementById("modal-title").textContent = "Edit " + key;
-        const inputType = entry?.type || "string";
-        let inputHtml = "";
-        const formattedValue = currentValue === undefined ? "" : (typeof currentValue === "object" ? JSON.stringify(currentValue, null, 2) : String(currentValue));
-
-        switch (inputType) {
-          case "boolean":
-            inputHtml = '<label><input type="checkbox" id="modal-input" ' + (currentValue === true ? "checked" : "") + '> Enabled</label>';
-            break;
-          case "number":
-            inputHtml = '<input type="number" id="modal-input" value="' + formattedValue + '" ' + (entry?.min !== undefined ? 'min="' + entry.min + '"' : "") + ' ' + (entry?.max !== undefined ? 'max="' + entry.max + '"' : "") + ' step="any" style="width:100%">';
-            break;
-          case "select":
-            inputHtml = '<select id="modal-input" style="width:100%">' + (entry?.options?.map(opt => '<option value="' + opt + '"' + (formattedValue === opt ? ' selected' : '') + '>' + opt + '</option>').join('') || '') + '</select>';
-            break;
-          case "json":
-          case "textarea":
-            inputHtml = '<textarea id="modal-input" rows="6" style="width:100%;font-family:monospace;font-size:0.85rem;">' + formattedValue + '</textarea>';
-            break;
-          default:
-            inputHtml = '<input type="text" id="modal-input" value="' + formattedValue + '" style="width:100%">';
-        }
-
-        document.getElementById("modal-body").innerHTML = inputHtml + (entry?.description ? '<p class="text-sm text-muted mt-2">' + entry.description + '</p>' : '');
-        document.getElementById("modal-save").onclick = saveKey;
-        document.getElementById("modal-overlay").style.display = "flex";
-      }
-
-      function saveKey() {
-        const input = document.getElementById("modal-input");
+      function setInputValue(key, value) {
+        const row = document.querySelector('tr[data-key="' + key + '"]');
+        const input = row?.querySelector("input, select, textarea");
         if (!input) return;
-        let value = input.value;
         if (input.type === "checkbox") {
-          value = input.checked;
-        } else if (input.type === "number") {
-          value = value === "" ? null : Number(value);
-        } else if (input.tagName === "TEXTAREA") {
-          try {
-            value = JSON.parse(value);
-          } catch {
-            // keep as string
-          }
+          input.checked = value === true;
+        } else if (value === undefined || value === null) {
+          input.value = "";
+        } else if (typeof value === "object") {
+          input.value = JSON.stringify(value, null, 2);
+        } else {
+          input.value = String(value);
         }
-        fetch("/api/leanctx/config/set", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ key: currentEditKey, value, target: currentEditTarget }),
-        }).then(r => {
-          if (r.ok) location.reload();
-          else r.json().then(d => alert(d.error || "Failed to save"));
-        });
       }
 
       function resetKey(key) {
-        const entry = ${raw(JSON.stringify(LEANCTX_SCHEMA))}.find(e => e.key === key);
+        const entry = ${raw(JSON.stringify(schema))}.find(e => e.key === key);
         if (!entry || entry.default === undefined) return;
-        fetch("/api/leanctx/config/set", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ key, value: entry.default, target: currentEditTarget }),
-        }).then(r => {
-          if (r.ok) location.reload();
-          else r.json().then(d => alert(d.error || "Failed to reset"));
-        });
+        setInputValue(key, entry.default);
+        markDirty();
       }
 
-      function closeModal() {
-        document.getElementById("modal-overlay").style.display = "none";
-        currentEditKey = null;
+      function markDirty() {
+        hasSavedChanges = false;
+        document.getElementById("apply-config").disabled = true;
+        document.getElementById("config-status").textContent = "Unsaved changes. Save before applying.";
       }
 
       function closeDoctorModal() {
@@ -402,6 +321,11 @@ const LeanCtxEditorContent: FC<LeanCtxEditorProps> = ({ config, meta, schema }) 
       function closeValidateModal() {
         document.getElementById("validate-modal").style.display = "none";
       }
+
+      document.querySelectorAll("#config-form input, #config-form select, #config-form textarea").forEach(input => {
+        input.addEventListener("input", markDirty);
+        input.addEventListener("change", markDirty);
+      });
 
       document.querySelectorAll(".modal-overlay").forEach(overlay => {
         overlay.addEventListener("click", (e) => {
@@ -418,6 +342,9 @@ const LeanCtxEditorContent: FC<LeanCtxEditorProps> = ({ config, meta, schema }) 
       .editor-header h1 { margin: 0; }
       .editor-meta { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
       .editor-actions { display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap; }
+      .workflow-hint { margin: -0.5rem 0 1rem; }
+      .config-error { margin-bottom: 1rem; padding: 0.75rem 1rem; border: 1px solid var(--danger); border-radius: 6px; background: var(--danger-bg); }
+      .config-error span { display: block; margin-top: 0.25rem; }
       .config-section { margin-bottom: 2rem; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
       .config-section legend { padding: 0.5rem 1rem; background: var(--bg-secondary); border-bottom: 1px solid var(--border); font-weight: 600; }
       .config-table { width: 100%; border-collapse: collapse; }

@@ -1,28 +1,34 @@
 import { Hono } from "hono";
 import {
-  readLeanCtxConfig,
-  writeLeanCtxConfig,
-  validateLeanCtxConfig,
-  runLeanCtxDoctor,
   applyLeanCtxConfig,
-  getConfigValue,
-  setConfigValue,
   deleteConfigValue,
+  readLeanCtxBaseline,
+  readLeanCtxConfig,
+  runLeanCtxDoctor,
+  setConfigValue,
+  validateLeanCtxConfig,
+  writeLeanCtxConfig,
   type LeanCtxConfig,
 } from "../lib/leanctx";
-import { LEANCTX_SCHEMA, type LeanCtxSchemaEntry } from "../lib/leanctx-schema";
+import { resolveSchemaDefaults } from "../lib/leanctx-schema";
 import { LeanCtxEditorPage } from "../views/leanctx-editor";
 
 const leanctx = new Hono();
 
+function writeErrorStatus(error: string | undefined): 409 | 500 {
+  return error?.includes("malformed") ? 409 : 500;
+}
+
 leanctx.get("/api/leanctx/config", async (c) => {
   const config = await readLeanCtxConfig();
+  const baseline = await readLeanCtxBaseline();
   const { _meta, ...cleanConfig } = config;
-  return c.json({ config: cleanConfig, meta: _meta });
+  return c.json({ config: cleanConfig, baseline: baseline.config, meta: _meta });
 });
 
-leanctx.get("/api/leanctx/schema", (c) => {
-  return c.json({ schema: LEANCTX_SCHEMA });
+leanctx.get("/api/leanctx/schema", async (c) => {
+  const baseline = await readLeanCtxBaseline();
+  return c.json({ schema: resolveSchemaDefaults(baseline.config) });
 });
 
 leanctx.put("/api/leanctx/config", async (c) => {
@@ -36,7 +42,7 @@ leanctx.put("/api/leanctx/config", async (c) => {
     }
 
     const result = await writeLeanCtxConfig(config, target);
-    if (!result.ok) return c.json({ error: result.error || "Failed to write config" }, 500);
+    if (!result.ok) return c.json({ error: result.error || "Failed to write config" }, writeErrorStatus(result.error));
     return c.json({ ok: true });
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : "Invalid JSON" }, 400);
@@ -52,37 +58,28 @@ leanctx.post("/api/leanctx/config/validate", async (c) => {
       return c.json({ error: "Config must be an object" }, 400);
     }
 
-    const result = await validateLeanCtxConfig(config);
-    return c.json(result);
+    return c.json(await validateLeanCtxConfig(config));
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : "Invalid JSON" }, 400);
   }
 });
 
-leanctx.get("/api/leanctx/doctor", async (c) => {
-  const result = await runLeanCtxDoctor();
-  return c.json(result);
-});
+leanctx.get("/api/leanctx/doctor", async (c) => c.json(await runLeanCtxDoctor()));
 
-leanctx.post("/api/leanctx/apply", async (c) => {
-  const result = await applyLeanCtxConfig();
-  return c.json(result);
-});
+leanctx.post("/api/leanctx/apply", async (c) => c.json(await applyLeanCtxConfig()));
 
 leanctx.post("/api/leanctx/config/set", async (c) => {
   try {
     const body = await c.req.json();
     const { key, value, target } = body;
 
-    if (!key || typeof key !== "string") {
-      return c.json({ error: "Key is required" }, 400);
-    }
+    if (!key || typeof key !== "string") return c.json({ error: "Key is required" }, 400);
 
     const currentConfig = await readLeanCtxConfig();
     const { _meta, ...cleanConfig } = currentConfig;
     const updatedConfig = setConfigValue(cleanConfig, key, value);
     const result = await writeLeanCtxConfig(updatedConfig, target || "global");
-    if (!result.ok) return c.json({ error: result.error || "Failed to write config" }, 500);
+    if (!result.ok) return c.json({ error: result.error || "Failed to write config" }, writeErrorStatus(result.error));
 
     return c.json({ ok: true, config: updatedConfig });
   } catch (e) {
@@ -95,15 +92,13 @@ leanctx.post("/api/leanctx/config/delete", async (c) => {
     const body = await c.req.json();
     const { key, target } = body;
 
-    if (!key || typeof key !== "string") {
-      return c.json({ error: "Key is required" }, 400);
-    }
+    if (!key || typeof key !== "string") return c.json({ error: "Key is required" }, 400);
 
     const currentConfig = await readLeanCtxConfig();
     const { _meta, ...cleanConfig } = currentConfig;
     const updatedConfig = deleteConfigValue(cleanConfig, key);
     const result = await writeLeanCtxConfig(updatedConfig, target || "global");
-    if (!result.ok) return c.json({ error: result.error || "Failed to write config" }, 500);
+    if (!result.ok) return c.json({ error: result.error || "Failed to write config" }, writeErrorStatus(result.error));
 
     return c.json({ ok: true, config: updatedConfig });
   } catch (e) {
@@ -114,18 +109,13 @@ leanctx.post("/api/leanctx/config/delete", async (c) => {
 leanctx.post("/api/leanctx/config/reset", async (c) => {
   try {
     const body = await c.req.json();
-    const { target } = body;
+    const target = (body.target as "global" | "project") || "global";
+    const baseline = await readLeanCtxBaseline();
+    if (baseline.parseError) return c.json({ error: baseline.parseError }, 500);
 
-    const schemaDefaults = LEANCTX_SCHEMA.reduce((acc, entry) => {
-      if (entry.default !== undefined) {
-        acc[entry.key] = entry.default;
-      }
-      return acc;
-    }, {} as LeanCtxConfig);
-
-    const result = await writeLeanCtxConfig(schemaDefaults, target || "global");
-    if (!result.ok) return c.json({ error: result.error || "Failed to write config" }, 500);
-    return c.json({ ok: true, config: schemaDefaults });
+    const result = await writeLeanCtxConfig(baseline.config, target, { allowOverwriteMalformed: true });
+    if (!result.ok) return c.json({ error: result.error || "Failed to reset config" }, 500);
+    return c.json({ ok: true, config: baseline.config });
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : "Failed to reset config" }, 400);
   }
@@ -133,8 +123,9 @@ leanctx.post("/api/leanctx/config/reset", async (c) => {
 
 leanctx.get("/leanctx", async (c) => {
   const config = await readLeanCtxConfig();
+  const baseline = await readLeanCtxBaseline();
   const { _meta, ...cleanConfig } = config;
-  return c.html(LeanCtxEditorPage(cleanConfig, _meta, LEANCTX_SCHEMA));
+  return c.html(LeanCtxEditorPage(cleanConfig, _meta, resolveSchemaDefaults(baseline.config)));
 });
 
 export default leanctx;
