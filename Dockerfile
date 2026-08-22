@@ -141,18 +141,9 @@ RUN curl -fsSL "https://github.com/yvgude/lean-ctx/releases/download/v${LEANCTX_
     sudo chmod +x /usr/local/bin/lean-ctx && \
     rm -f /tmp/lean-ctx.tar.gz
 
-RUN mkdir -p /home/${USERNAME}/.config/lean-ctx && \
-    cat > /home/${USERNAME}/.config/lean-ctx/config.toml <<'EOF'
-# lean-ctx ai-engkit tuning — overrides conservative defaults
-permission_inheritance = "on"
-compression_level = "lite"
-cognitive_mode = "full"
-shell_allowlist_extra = ["gh", "glab", "docker", "docker-compose", "docker compose", "pw-mcp", "bun", "marksman", "codegraph", "openspec", "ssh", "ssh-keygen", "scp", "sftp", "ssh-add"]
-graph_index_max_files = 5000
-savings_footer = "auto"
-EOF
+RUN sudo install -d -m 0755 /etc/lean-ctx
+COPY --chmod=0644 docker/lean-ctx/config.default.toml /etc/lean-ctx/config.default.toml
 
-# lean-ctx 3.8.5+ XDG shell env — 讓 ctx_shell / bash -c 自動載入 lean-ctx 環境
 ENV BASH_ENV="/home/${USERNAME}/.config/lean-ctx/env.sh"
 ENV CLAUDE_ENV_FILE="/home/${USERNAME}/.config/lean-ctx/env.sh"
 ENV LEANCTX_VERSION=${LEANCTX_VERSION}

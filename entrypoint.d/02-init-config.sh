@@ -4,6 +4,54 @@ set -euo pipefail
 OPCODE_CONFIG_DIR="$HOME/.config/opencode"
 OPENCHAMBER_DATA_DIR="${OPENCHAMBER_DATA_DIR:-$HOME/.config/openchamber}"
 WORKSPACE_DIR="${WORKSPACE_DIR:-$HOME/workspace}"
+LEANCTX_BASELINE_CONFIG="${LEANCTX_BASELINE_CONFIG:-/etc/lean-ctx/config.default.toml}"
+LEANCTX_RUNTIME_CONFIG="${LEANCTX_RUNTIME_CONFIG:-$HOME/.config/lean-ctx/config.toml}"
+
+ensure_leanctx_config() {
+  mkdir -p "$(dirname "$LEANCTX_RUNTIME_CONFIG")"
+
+  if [[ ! -f "$LEANCTX_RUNTIME_CONFIG" ]]; then
+    if [[ -f "$LEANCTX_BASELINE_CONFIG" ]]; then
+      cp "$LEANCTX_BASELINE_CONFIG" "$LEANCTX_RUNTIME_CONFIG"
+      chmod 600 "$LEANCTX_RUNTIME_CONFIG"
+      printf 'lean-ctx: seeded runtime config from %s\n' "$LEANCTX_BASELINE_CONFIG"
+    fi
+    return
+  fi
+
+  sed -i -E \
+    -e 's/^tools\.profile[[:space:]]*=/tool_profile =/' \
+    -e '/^budget\.information_gate\.(enabled|max_overlap_ratio|min_novel_lines|track_granularity)[[:space:]]*=/d' \
+    "$LEANCTX_RUNTIME_CONFIG"
+
+  if ! lean-ctx config validate >/dev/null 2>&1; then
+    local backup_path
+    backup_path="${LEANCTX_RUNTIME_CONFIG}.malformed.$(date -u +%Y%m%dT%H%M%SZ)"
+    mv "$LEANCTX_RUNTIME_CONFIG" "$backup_path"
+    if [[ -f "$LEANCTX_BASELINE_CONFIG" ]]; then
+      cp "$LEANCTX_BASELINE_CONFIG" "$LEANCTX_RUNTIME_CONFIG"
+      chmod 600 "$LEANCTX_RUNTIME_CONFIG"
+      printf 'lean-ctx: malformed config backed up to %s; reseeded from baseline\n' "$backup_path" >&2
+    else
+      printf 'lean-ctx: malformed config backed up to %s; baseline is missing\n' "$backup_path" >&2
+    fi
+    return
+  fi
+
+  if [[ -f "$LEANCTX_BASELINE_CONFIG" ]]; then
+    while IFS= read -r line; do
+      if [[ "$line" =~ ^([a-zA-Z_][a-zA-Z0-9_]*)[[:space:]]*= ]]; then
+        local key="${BASH_REMATCH[1]}"
+        if ! grep -qE "^${key}[[:space:]]*=" "$LEANCTX_RUNTIME_CONFIG"; then
+          printf '\n%s\n' "$line" >> "$LEANCTX_RUNTIME_CONFIG"
+          printf 'lean-ctx: migrated missing key %s\n' "$key"
+        fi
+      fi
+    done < "$LEANCTX_BASELINE_CONFIG"
+  fi
+}
+
+ensure_leanctx_config
 PROJECT_OPENCODE_DIR="$WORKSPACE_DIR/.opencode"
 PROJECT_LSP_CONFIG_FILE="$PROJECT_OPENCODE_DIR/lsp.json"
 DEFAULT_LSP_CONFIG_FILE="/etc/opencode/lsp.json.default"
