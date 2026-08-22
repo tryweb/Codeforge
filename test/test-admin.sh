@@ -95,7 +95,7 @@ echo "--- Auth Setup ---"
 # Verify setup page is accessible when ADMIN_PASSWORD not set
 # First, check if admin container is running and serving requests
 ADMIN_LOGS=$(timeout 5 docker logs "$CONTAINER" 2>/dev/null || echo "")
-assert_contains "Admin container logs show server started" "development server" "$ADMIN_LOGS"
+assert_eq "Admin health endpoint confirms server started" "200" "$(get_code "${BASE}/healthz")"
 
 # --------------------------------------------------
 # 4. OpenAPI spec
@@ -130,6 +130,62 @@ done
 # --------------------------------------------------
 echo ""
 echo "============================================"
+echo ""
+echo "=== P1/P2 Admin Contract Checks ==="
+
+P1P2_COOKIE_JAR=$(mktemp)
+trap 'rm -f "$P1P2_COOKIE_JAR"' EXIT
+P1P2_PASSWORD="${ADMIN_PASSWORD:-testadmin123}"
+P1P2_LOGIN=$(curl -s -o /dev/null -w "%{http_code}" -c "$P1P2_COOKIE_JAR" \
+  -H 'Content-Type: application/json' -d "{\"password\":\"$P1P2_PASSWORD\"}" \
+  "$BASE/api/login" 2>/dev/null || echo "000")
+if [ "$P1P2_LOGIN" = "200" ]; then
+  pass "P1/P2 contract checks authenticate"
+else
+  fail "P1/P2 contract checks login returned ${P1P2_LOGIN}"
+fi
+
+for endpoint in \
+  /api/agent/status \
+  /api/env \
+  /api/env/schema \
+  /api/openchamber/settings \
+  /api/git/config \
+  /api/ssh/keys \
+  /api/upgrade/status; do
+  CODE=$(curl -s -o /dev/null -w "%{http_code}" -b "$P1P2_COOKIE_JAR" "$BASE$endpoint" 2>/dev/null || echo "000")
+  if [ "$CODE" = "200" ]; then
+    pass "GET ${endpoint} returns 200"
+  else
+    fail "GET ${endpoint} returned ${CODE} (expected 200)"
+  fi
+done
+
+AGENT_BAD=$(curl -s -o /dev/null -w "%{http_code}" -b "$P1P2_COOKIE_JAR" \
+  -X PUT -H 'Content-Type: application/json' -d '{"CENTER_URL":"http://invalid"}' \
+  "$BASE/api/agent/config" 2>/dev/null || echo "000")
+[ "$AGENT_BAD" = "400" ] && pass "Agent rejects non-websocket center URLs" || fail "Agent invalid URL returned ${AGENT_BAD}"
+
+ENV_BAD=$(curl -s -o /dev/null -w "%{http_code}" -b "$P1P2_COOKIE_JAR" \
+  -X PUT -H 'Content-Type: application/json' -d '{"value":false}' \
+  "$BASE/api/env/AI_ENGKIT_E2E_INVALID" 2>/dev/null || echo "000")
+[ "$ENV_BAD" = "400" ] && pass "Environment editor rejects non-string values" || fail "Environment invalid value returned ${ENV_BAD}"
+
+OPENCHAMBER_BAD=$(curl -s -o /dev/null -w "%{http_code}" -b "$P1P2_COOKIE_JAR" \
+  -X PUT -H 'Content-Type: application/json' -d '{}' \
+  "$BASE/api/openchamber/settings" 2>/dev/null || echo "000")
+[ "$OPENCHAMBER_BAD" = "400" ] && pass "OpenChamber rejects incomplete settings" || fail "OpenChamber invalid settings returned ${OPENCHAMBER_BAD}"
+
+GIT_BAD=$(curl -s -o /dev/null -w "%{http_code}" -b "$P1P2_COOKIE_JAR" \
+  -X PUT -H 'Content-Type: application/json' -d '{"key":"","value":""}' \
+  "$BASE/api/git/config" 2>/dev/null || echo "000")
+[ "$GIT_BAD" = "400" ] && pass "Git config rejects empty key/value" || fail "Git config invalid payload returned ${GIT_BAD}"
+
+SSH_BAD=$(curl -s -o /dev/null -w "%{http_code}" -b "$P1P2_COOKIE_JAR" \
+  -X POST -H 'Content-Type: application/json' -d '{"name":"../invalid","type":"ed25519","passphrase":""}' \
+  "$BASE/api/ssh/keys" 2>/dev/null || echo "000")
+[ "$SSH_BAD" = "400" ] && pass "SSH keys reject path traversal names" || fail "SSH invalid name returned ${SSH_BAD}"
+
 echo " Results: ${GREEN}$PASS passed${NC}, ${RED}$FAIL failed${NC}"
 echo "============================================"
 
