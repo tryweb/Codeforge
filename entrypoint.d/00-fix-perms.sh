@@ -15,6 +15,7 @@ fix_perms() {
 
 echo "Fixing permissions"
 fix_perms "$HOME"/.config/opencode
+fix_perms "$HOME"/.config/lean-ctx
 fix_perms "$HOME"/.omo
 fix_perms "$HOME"/.local/share/opencode
 fix_perms "$HOME"/.local/share/lean-ctx
