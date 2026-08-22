@@ -139,47 +139,37 @@ describe("fetchResolvedAgentModels", () => {
 describe("fetchConnectedCatalog", () => {
   test("returns unique provider/model ids across connected providers", async () => {
     const { deps, calls } = stubDeps([
-      { stdout: '{"connected":["openai","opencode-go"]}' }, // r1 connected-providers
-      { stdout: "openai\nopencode-go\n" }, // r2 provider keys (unused when conn non-empty)
-      { stdout: "openai/gpt-5.6-sol\nopenai/gpt-5.6-luna-fast\nopencode-go/kimi-k3\n" },
+      {
+        stdout: JSON.stringify({
+          connected: ["opencode"],
+          all: [{ id: "opencode", models: { "big-pickle": {}, "hy3-free": {} } }],
+        }),
+      },
     ]);
     const lib = createAgentModelsLib(deps);
     expect(await lib.fetchConnectedCatalog("testpass")).toEqual([
-      "openai/gpt-5.6-sol",
-      "openai/gpt-5.6-luna-fast",
-      "opencode-go/kimi-k3",
+      "opencode/big-pickle",
+      "opencode/hy3-free",
     ]);
-    expect(calls[2]).toContain('"\\($provider)/\\(.id)"');
+    expect(calls).toHaveLength(1);
   });
 
-  test("falls back to all catalog providers when connected-providers cache is absent", async () => {
+  test("uses opencode models cache when live provider is unavailable", async () => {
     const { deps } = stubDeps([
-      { stdout: "", exitCode: 1 }, // r1 connected-providers missing
-      { stdout: "openai\nopencode-go\n" }, // r2 provider keys
-      { stdout: "opencode-go/kimi-k3\nopenai/gpt-5.6-sol\n" }, // r3 model ids
+      { stdout: "", exitCode: 1 },
+      { stdout: JSON.stringify({ opencode: { models: { "big-pickle": {} } } }) },
     ]);
     const lib = createAgentModelsLib(deps);
-    expect(await lib.fetchConnectedCatalog("testpass")).toEqual([
-      "opencode-go/kimi-k3",
-      "openai/gpt-5.6-sol",
-    ]);
+    expect(await lib.fetchConnectedCatalog("testpass")).toEqual(["opencode/big-pickle"]);
   });
 
-  test("falls back to live /agent models when all caches are absent", async () => {
-    const agentsJson = JSON.stringify([
-      { name: "explore", model: { modelID: "gpt-5.6-luna-fast", providerID: "openai" } },
-      { name: "momus", model: { modelID: "gpt-5.6-terra", providerID: "openai" } },
-    ]);
+  test("returns an empty catalog without falling back to resolved agents", async () => {
     const { deps } = stubDeps([
-      { stdout: "", exitCode: 1 }, // r1 connected-providers missing
-      { stdout: "", exitCode: 1 }, // r2 provider keys missing
-      { stdout: agentsJson }, // r4 /agent fallback
+      { stdout: "", exitCode: 1 },
+      { stdout: "", exitCode: 1 },
     ]);
     const lib = createAgentModelsLib(deps);
-    expect(await lib.fetchConnectedCatalog("testpass")).toEqual([
-      "openai/gpt-5.6-luna-fast",
-      "openai/gpt-5.6-terra",
-    ]);
+    expect(await lib.fetchConnectedCatalog("testpass")).toEqual([]);
   });
 });
 

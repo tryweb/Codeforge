@@ -5,7 +5,7 @@ import {
   type ResolvedModel,
 } from "./agent-model-types";
 
-function buildAgentFetchScript(auth: string): string {
+function buildManagedFetchScript(auth: string, endpoint: string): string {
   return `for attempt in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
   for f in ${MANAGED_OPENCODE_DIR}/*.json; do
     [ -f "\$f" ] || continue
@@ -13,11 +13,51 @@ function buildAgentFetchScript(auth: string): string {
     port=\$(jq -r '.port' "\$f" 2>/dev/null)
     [ -n "\$pid" ] && [ -n "\$port" ] || continue
     kill -0 "\$pid" 2>/dev/null || continue
-    OUT=\$(curl -fsS -m 3 -H "Authorization: Basic ${auth}" "http://127.0.0.1:\${port}/agent" 2>/dev/null) && { printf '%s' "\$OUT"; exit 0; }
+    OUT=\$(curl -fsS -m 3 -H "Authorization: Basic ${auth}" "http://127.0.0.1:\${port}${endpoint}" 2>/dev/null) && { printf '%s' "\$OUT"; exit 0; }
   done
   sleep 1
 done
 exit 2`;
+}
+
+function buildAgentFetchScript(auth: string): string {
+  return buildManagedFetchScript(auth, "/agent");
+}
+
+function parseProviderCatalog(stdout: string): readonly string[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stdout);
+  } catch {
+    return [];
+  }
+  if (!isRecord(parsed) || !Array.isArray(parsed.connected) || !Array.isArray(parsed.all)) return [];
+
+  const connected = new Set(parsed.connected.filter((provider): provider is string => typeof provider === "string"));
+  const catalog = new Set<string>();
+  for (const provider of parsed.all) {
+    if (!isRecord(provider) || typeof provider.id !== "string" || !connected.has(provider.id)) continue;
+    if (!isRecord(provider.models)) continue;
+    for (const model of Object.keys(provider.models)) catalog.add(`${provider.id}/${model}`);
+  }
+  return [...catalog].sort();
+}
+
+function parseCachedCatalog(stdout: string): readonly string[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stdout);
+  } catch {
+    return [];
+  }
+  if (!isRecord(parsed)) return [];
+
+  const catalog = new Set<string>();
+  for (const [provider, value] of Object.entries(parsed)) {
+    if (!isRecord(value) || !isRecord(value.models)) continue;
+    for (const model of Object.keys(value.models)) catalog.add(`${provider}/${model}`);
+  }
+  return [...catalog].sort();
 }
 
 export function createAgentModelLiveClient(deps: Pick<AgentModelsDeps, "exec">) {
@@ -66,48 +106,15 @@ export function createAgentModelLiveClient(deps: Pick<AgentModelsDeps, "exec">) 
   }
 
   async function fetchConnectedCatalog(password: string | null): Promise<readonly string[]> {
-    const connectedResult = await deps.exec(
-      `cat ~/.cache/oh-my-opencode/connected-providers.json 2>/dev/null || echo '{}'`,
-      10_000,
-    );
-    let connected: readonly string[] = [];
-    try {
-      const parsed: unknown = JSON.parse(connectedResult.stdout);
-      if (isRecord(parsed) && Array.isArray(parsed.connected)) {
-        connected = parsed.connected.filter((provider): provider is string => typeof provider === "string");
-      }
-    } catch {
-      connected = [];
-    }
-
-    const providersResult = await deps.exec(
-      `jq -r '.models | keys[]' ~/.cache/oh-my-opencode/provider-models.json 2>/dev/null || true`,
-      10_000,
-    );
-    const allProviders = providersResult.exitCode === 0
-      ? providersResult.stdout.split("\n").filter((line) => line.trim().length > 0)
-      : [];
-    const providers = connected.length > 0 ? connected : allProviders;
-
-    if (providers.length > 0) {
-      const providerJson = providers.map((provider) => JSON.stringify(provider)).join(",");
-      const catalogResult = await deps.exec(
-        `jq -r --argjson conn '[${providerJson}]' '[.models | to_entries[] | select(.key as $k | ($conn | index($k))) | .key as $provider | .value[]? | select(type == "object" and (.id | type == "string")) | "\\($provider)/\\(.id)"] | unique[]' ~/.cache/oh-my-opencode/provider-models.json 2>/dev/null || true`,
-        15_000,
-      );
-      if (catalogResult.exitCode === 0 && catalogResult.stdout) {
-        const catalog = catalogResult.stdout.split("\n").filter((line) => line.trim().length > 0);
-        if (catalog.length > 0) return catalog;
-      }
-    }
-
     if (password !== null) {
-      const resolved = await fetchResolvedAgentModels(password);
-      if (resolved !== null) {
-        return [...new Set([...resolved.values()].map((model) => `${model.providerID}/${model.modelID}`))].sort();
-      }
+      const auth = Buffer.from(`opencode:${password}`).toString("base64");
+      const liveResult = await deps.exec(buildManagedFetchScript(auth, "/provider"), 90_000);
+      const liveCatalog = liveResult.exitCode === 0 ? parseProviderCatalog(liveResult.stdout) : [];
+      if (liveCatalog.length > 0) return liveCatalog;
     }
-    return [];
+
+    const cacheResult = await deps.exec(`cat ~/.cache/opencode/models.json 2>/dev/null`, 15_000);
+    return cacheResult.exitCode === 0 ? parseCachedCatalog(cacheResult.stdout) : [];
   }
 
   return { fetchConnectedCatalog, fetchResolvedAgentModels, fetchSubagentNames };
