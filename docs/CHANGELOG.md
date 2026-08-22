@@ -1,6 +1,32 @@
 ## [Unreleased]
 
 
+## [1.15.4] - 2026-08-22
+
+### Added
+- Bump OpenCode 1.18.19 -> 1.18.21, gh 2.97.0 -> 2.98.0
+- Add LeanCTX config management
+
+### Fixed
+- Return invalid SSH key names as bad requests
+- Enforce leanctx admin config contract
+- Canonicalize leanctx runtime config
+- Render leanctx editor inline script unescaped
+
+### Documentation
+- Archive leanctx admin config change
+- Sync leanctx admin config specification
+
+### Changed
+- Bake playwright and @playwright/mcp CLIs into the image
+- Add Bun Playwright E2E manifest
+- Harden admin e2e coverage
+- Align leanctx admin editor with schema
+
+### Changed
+- Upgrade OpenCode from 1.18.19 to 1.18.21.
+- Upgrade GitHub CLI from 2.97.0 to 2.98.0.
+
 ## [1.15.3] - 2026-08-20
 
 ### Changed
@@ -1484,7 +1510,7 @@
 
 ## Format
 
-[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.15.2...HEAD
+[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.15.4...HEAD
 [0.3.0]: https://github.com/tryweb/ai-engkit/releases/tag/v0.3.0
 [0.3.3]: https://github.com/tryweb/ai-engkit/compare/v0.3.0...v0.3.3
 [0.5.0]: https://github.com/tryweb/ai-engkit/compare/v0.3.3...v0.5.0
@@ -1630,3 +1656,5 @@
 [1.15.0]: https://github.com/tryweb/ai-engkit/compare/v1.14.14...v1.15.0
 [1.15.1]: https://github.com/tryweb/ai-engkit/compare/v1.15.0...v1.15.1
 [1.15.2]: https://github.com/tryweb/ai-engkit/compare/v1.15.1...v1.15.2
+[1.15.3]: https://github.com/tryweb/ai-engkit/compare/v1.15.2...v1.15.3
+[1.15.4]: https://github.com/tryweb/ai-engkit/compare/v1.15.3...v1.15.4
