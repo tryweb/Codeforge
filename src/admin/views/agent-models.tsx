@@ -7,13 +7,19 @@ interface AgentModelsState {
   agents: AgentModelEntry[];
   catalog: string[];
   hasPassword: boolean;
+  catalogAvailable: boolean;
 }
 
 const VARIANTS = ["low", "medium", "high", "xhigh", "max"];
 
 const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
   const json = raw(
-    JSON.stringify({ agents: state.agents, catalog: state.catalog }).replace(/</g, "\\u003c"),
+    JSON.stringify({
+      agents: state.agents,
+      catalog: state.catalog,
+      hasPassword: state.hasPassword,
+      catalogAvailable: state.catalogAvailable,
+    }).replace(/</g, "\\u003c"),
   );
   return (
     <div>
@@ -33,6 +39,13 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
           <strong>Prerequisite missing:</strong> <code>OPENCODE_SERVER_PASSWORD</code> is not set in{" "}
           <code>.env</code>. Live resolved models and "Save &amp; Restart" are unavailable until it is
           set (see the Environment page).
+        </div>
+      )}
+
+      {!state.catalogAvailable && (
+        <div class="card" style="border-color:var(--danger);margin-bottom:16px;">
+          <strong>Model catalog unavailable:</strong> Live provider models and the local OpenCode model catalog
+          could not be read. Model selection is disabled until the catalog becomes available.
         </div>
       )}
 
@@ -95,7 +108,18 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
                 </span>
               </td>
               <td>
-                <button class="btn-outline" style="padding:4px 8px;font-size:0.75rem;" onclick={`editAgent('${a.name}')`}>
+                <button
+                  class="btn-outline"
+                  style={{
+                    padding: "4px 8px",
+                    fontSize: "0.75rem",
+                    opacity: state.catalogAvailable && state.hasPassword ? 1 : 0.5,
+                    cursor: state.catalogAvailable && state.hasPassword ? "pointer" : "not-allowed",
+                  }}
+                  title={!state.catalogAvailable ? "Model catalog unavailable" : !state.hasPassword ? "OpenCode password unavailable" : undefined}
+                  disabled={!state.catalogAvailable || !state.hasPassword}
+                  onclick={`editAgent('${a.name}')`}
+                >
                   Edit
                 </button>
               </td>
@@ -139,6 +163,7 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
         }
 
         function editAgent(name) {
+          if (!agentModelsState.catalogAvailable || !agentModelsState.hasPassword) return;
           editAgentName = name;
           var agent = agentModelsState.agents.filter(function (a) { return a.name === name; })[0];
           var rows = document.getElementById('model-rows');
