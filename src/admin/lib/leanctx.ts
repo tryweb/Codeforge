@@ -1,8 +1,10 @@
 import { execInAiDev } from "./docker";
+import { filterToSchema } from "./leanctx-schema";
 import { parse, stringify } from "smol-toml";
 
-const GLOBAL_CONFIG_PATH = "/home/devuser/.config/lean-ctx/config.toml";
-const PROJECT_CONFIG_PATH = "/home/devuser/workspace/ai-engkit/.lean-ctx.toml";
+export const BASELINE_CONFIG_PATH = "/etc/lean-ctx/config.default.toml";
+export const GLOBAL_CONFIG_PATH = "/home/devuser/.config/lean-ctx/config.toml";
+export const PROJECT_CONFIG_PATH = "/home/devuser/workspace/ai-engkit/.lean-ctx.toml";
 
 export interface LeanCtxConfig {
   [key: string]: unknown;
@@ -14,6 +16,10 @@ export interface LeanCtxConfigWithMeta extends LeanCtxConfig {
     globalPath: string;
     projectPath: string;
     hasProjectOverride: boolean;
+    baselinePath: string;
+    runtimeParseError?: string;
+    projectParseError?: string;
+    baselineParseError?: string;
   };
 }
 
@@ -38,6 +44,24 @@ export interface ApplyResult {
   output: string;
 }
 
+export interface ConfigFileResult {
+  config: LeanCtxConfig;
+  present: boolean;
+  parseError?: string;
+}
+
+export function parseLeanCtxToml(content: string, path: string): ConfigFileResult {
+  try {
+    return { config: parse(content) as LeanCtxConfig, present: true };
+  } catch (error) {
+    return {
+      config: {},
+      present: true,
+      parseError: `${path} is malformed TOML: ${error instanceof Error ? error.message : "unknown parse error"}`,
+    };
+  }
+}
+
 function parseTomlSafe(content: string): LeanCtxConfig {
   try {
     return parse(content) as LeanCtxConfig;
@@ -60,22 +84,27 @@ async function writeRawConfigFile(path: string, content: string): Promise<boolea
   return result.exitCode === 0;
 }
 
-async function readConfigFile(path: string): Promise<LeanCtxConfig> {
+async function readConfigFile(path: string): Promise<ConfigFileResult> {
   const raw = await readRawConfigFile(path);
-  return raw === null ? {} : parseTomlSafe(raw);
+  return raw === null ? { config: {}, present: false } : parseLeanCtxToml(raw, path);
+}
+
+export async function readLeanCtxBaseline(): Promise<ConfigFileResult> {
+  return readConfigFile(BASELINE_CONFIG_PATH);
 }
 
 export async function readLeanCtxConfig(): Promise<LeanCtxConfigWithMeta> {
-  const globalConfig = await readConfigFile(GLOBAL_CONFIG_PATH);
-  const projectConfig = await readConfigFile(PROJECT_CONFIG_PATH);
+  const baseline = await readLeanCtxBaseline();
+  const global = await readConfigFile(GLOBAL_CONFIG_PATH);
+  const project = await readConfigFile(PROJECT_CONFIG_PATH);
 
-  const hasProjectOverride = (await readRawConfigFile(PROJECT_CONFIG_PATH)) !== null;
-  let merged: LeanCtxConfig = { ...globalConfig };
+  const hasProjectOverride = project.present;
+  let merged: LeanCtxConfig = mergeLeanCtxConfig(baseline.config, global.config);
   let source: "global" | "project" | "merged" = "global";
 
   if (hasProjectOverride) {
-    merged = deepMerge(globalConfig, projectConfig);
-    source = Object.keys(projectConfig).length > 0 ? "merged" : "global";
+    merged = mergeLeanCtxConfig(merged, project.config);
+    source = Object.keys(project.config).length > 0 ? "merged" : "global";
   }
 
   return {
@@ -85,8 +114,16 @@ export async function readLeanCtxConfig(): Promise<LeanCtxConfigWithMeta> {
       globalPath: GLOBAL_CONFIG_PATH,
       projectPath: PROJECT_CONFIG_PATH,
       hasProjectOverride,
+      baselinePath: BASELINE_CONFIG_PATH,
+      runtimeParseError: global.parseError,
+      projectParseError: project.parseError,
+      baselineParseError: baseline.parseError,
     },
   };
+}
+
+export function mergeLeanCtxConfig(...configs: LeanCtxConfig[]): LeanCtxConfig {
+  return configs.reduce((merged, config) => deepMerge(merged, config), {});
 }
 
 function deepMerge(target: LeanCtxConfig, source: LeanCtxConfig): LeanCtxConfig {
@@ -111,16 +148,25 @@ function deepMerge(target: LeanCtxConfig, source: LeanCtxConfig): LeanCtxConfig 
 export async function writeLeanCtxConfig(
   config: LeanCtxConfig,
   target: "global" | "project" = "global",
+  options: { allowOverwriteMalformed?: boolean } = {},
 ): Promise<{ ok: boolean; error?: string }> {
   const path = target === "global" ? GLOBAL_CONFIG_PATH : PROJECT_CONFIG_PATH;
+  const supportedConfig = filterToSchema(config);
 
   // Merge into the existing raw text to preserve comments/sections; fall back
   // to a full serialization when the file is absent or the merge is unsafe.
-  let toml = stringify(config);
+  let toml = stringify(supportedConfig);
   const raw = await readRawConfigFile(path);
   if (raw !== null) {
-    const merged = mergeConfigIntoToml(raw, config);
+    const rawConfig = parseTomlSafe(raw);
+    const mergedConfig = mergeLeanCtxConfig(rawConfig, supportedConfig);
+    const hasUnsupportedKeys = !deepEqual(rawConfig, filterToSchema(rawConfig));
+    const merged = hasUnsupportedKeys ? null : mergeConfigIntoToml(raw, supportedConfig);
+    if (merged === null && !options.allowOverwriteMalformed && !hasUnsupportedKeys) {
+      return { ok: false, error: `${path} is malformed; reset the configuration before saving` };
+    }
     if (merged !== null) toml = merged;
+    else if (hasUnsupportedKeys) toml = stringify(filterToSchema(mergedConfig));
   }
 
   const ok = await writeRawConfigFile(path, toml);

@@ -119,44 +119,9 @@ export const LEANCTX_SCHEMA: LeanCtxSchemaEntry[] = [
     section: "Archive",
   },
 
-  // Budget / Information Gate section
-  {
-    key: "budget.information_gate.enabled",
-    type: "boolean",
-    description: "Enable Marginal Information Gate (MIG) — suppresses redundant tool responses",
-    default: true,
-    section: "Budget",
-  },
-  {
-    key: "budget.information_gate.max_overlap_ratio",
-    type: "number",
-    description: "Suppress response if overlap with already-delivered content exceeds this ratio (0.0-1.0)",
-    default: 0.85,
-    min: 0,
-    max: 1,
-    section: "Budget",
-  },
-  {
-    key: "budget.information_gate.min_novel_lines",
-    type: "number",
-    description: "Suppress response if fewer than this many novel lines",
-    default: 3,
-    min: 0,
-    max: 100,
-    section: "Budget",
-  },
-  {
-    key: "budget.information_gate.track_granularity",
-    type: "select",
-    description: "Granularity for tracking delivered content",
-    default: "line",
-    options: ["line", "chunk", "file"],
-    section: "Budget",
-  },
-
   // Tools / Profile section
   {
-    key: "tools.profile",
+    key: "tool_profile",
     type: "select",
     description: "MCP tool profile — how many of the 67+ tools are exposed to the agent",
     default: "power",
@@ -423,9 +388,9 @@ export const LEANCTX_SCHEMA: LeanCtxSchemaEntry[] = [
   },
 ];
 
-export function getSchemaBySection(): Record<string, LeanCtxSchemaEntry[]> {
+export function getSchemaBySection(schema: LeanCtxSchemaEntry[] = LEANCTX_SCHEMA): Record<string, LeanCtxSchemaEntry[]> {
   const sections: Record<string, LeanCtxSchemaEntry[]> = {};
-  for (const entry of LEANCTX_SCHEMA) {
+  for (const entry of schema) {
     const section = entry.section || "Other";
     if (!sections[section]) sections[section] = [];
     sections[section].push(entry);
@@ -437,12 +402,49 @@ export function getSchemaEntry(key: string): LeanCtxSchemaEntry | undefined {
   return LEANCTX_SCHEMA.find((e) => e.key === key);
 }
 
-export function getDefaultConfig(): Record<string, unknown> {
+export function resolveSchemaDefaults(
+  baseline: Record<string, unknown> = {},
+): LeanCtxSchemaEntry[] {
+  return LEANCTX_SCHEMA.map((entry) =>
+    Object.hasOwn(baseline, entry.key) ? { ...entry, default: baseline[entry.key] } : entry,
+  );
+}
+
+export function getDefaultConfig(baseline: Record<string, unknown> = {}): Record<string, unknown> {
   const defaults: Record<string, unknown> = {};
-  for (const entry of LEANCTX_SCHEMA) {
+  for (const entry of resolveSchemaDefaults(baseline)) {
     if (entry.default !== undefined) {
       defaults[entry.key] = entry.default;
     }
   }
   return defaults;
+}
+
+export function filterToSchema(
+  config: Record<string, unknown>,
+  schema: readonly LeanCtxSchemaEntry[] = LEANCTX_SCHEMA,
+): Record<string, unknown> {
+  const supported = new Set(schema.map((entry) => entry.key));
+
+  function isRecord(value: unknown): value is Record<string, unknown> {
+    return value !== null && typeof value === "object" && !Array.isArray(value);
+  }
+
+  function filter(value: Record<string, unknown>, prefix = ""): Record<string, unknown> {
+    const result: Record<string, unknown> = {};
+    for (const [key, entryValue] of Object.entries(value)) {
+      const fullKey = prefix ? `${prefix}.${key}` : key;
+      if (supported.has(fullKey)) {
+        result[key] = entryValue;
+        continue;
+      }
+      if (isRecord(entryValue)) {
+        const nested = filter(entryValue, fullKey);
+        if (Object.keys(nested).length > 0) result[key] = nested;
+      }
+    }
+    return result;
+  }
+
+  return filter(config);
 }

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { parse } from "smol-toml";
-import { mergeConfigIntoToml } from "./leanctx";
+import { mergeConfigIntoToml, mergeLeanCtxConfig, parseLeanCtxToml } from "./leanctx";
 
 function assignmentKeys(toml: string): string[] {
   return toml
@@ -101,5 +101,24 @@ describe("mergeConfigIntoToml", () => {
     expect(merged).not.toBeNull();
     expect((merged as string).includes("# lean-ctx ai-engkit tuning")).toBe(true);
     expect((merged as string).includes('compression_level = "max"')).toBe(true);
+  });
+});
+
+describe("LeanCTX config lifecycle", () => {
+  test("reports malformed TOML instead of treating it as an empty config", () => {
+    const result = parseLeanCtxToml("broken = [", "/tmp/config.toml");
+
+    expect(result.config).toEqual({});
+    expect(result.parseError).toContain("/tmp/config.toml is malformed TOML");
+  });
+
+  test("merges baseline, runtime, and project values in precedence order", () => {
+    const merged = mergeLeanCtxConfig(
+      { compression_level: "lite", archive: { enabled: true } },
+      { compression_level: "max" },
+      { archive: { enabled: false } },
+    );
+
+    expect(merged).toEqual({ compression_level: "max", archive: { enabled: false } });
   });
 });
