@@ -166,6 +166,7 @@ export type AgentModelsViewState = {
   agents: AgentModelEntry[];
   catalog: string[];
   hasPassword: boolean;
+  catalogAvailable: boolean;
 };
 
 /** Merge configured agents with live /agent names into per-agent view entries. */
@@ -239,5 +240,10 @@ export async function collectAgentModelState(
     };
   });
 
-  return { agents, catalog: [...catalog], hasPassword: password !== null };
+  return {
+    agents,
+    catalog: [...catalog],
+    hasPassword: password !== null,
+    catalogAvailable: catalog.length > 0,
+  };
 }

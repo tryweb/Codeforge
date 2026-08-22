@@ -207,7 +207,7 @@ function createKeyDeps(): CommandDeps {
     projectDisable: async () => ({ ok: true }),
     projectEnableFeature: async () => ({ ok: true }),
     projectSync: async () => ({ ok: true, messages: [] }),
-    readAgentModelsState: async () => ({ agents: [], catalog: [], hasPassword: false }),
+    readAgentModelsState: async () => ({ agents: [], catalog: [], hasPassword: false, catalogAvailable: false }),
     applyAgentModel: async () => ({ ok: true, status: "verified", resolved: { providerID: "anthropic", modelID: "claude-sonnet-4-5" } }),
   };
 }
@@ -267,7 +267,7 @@ function createIntegrationRuntime(
       projectDisable: async () => ({ ok: true }),
       projectEnableFeature: async () => ({ ok: true }),
       projectSync: async () => ({ ok: true, messages: [] }),
-      readAgentModelsState: async () => ({ agents: [], catalog: [], hasPassword: false }),
+       readAgentModelsState: async () => ({ agents: [], catalog: [], hasPassword: false, catalogAvailable: false }),
       applyAgentModel: async () => ({ ok: true, status: "verified", resolved: { providerID: "anthropic", modelID: "claude-sonnet-4-5" } }),
     }),
     heartbeatMs: () => 25,
