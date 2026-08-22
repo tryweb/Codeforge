@@ -139,7 +139,7 @@ jobs:
       - name: Collect logs on failure
         if: failure()
         run: |
-          docker compose -f docker-compose.dev.yml logs ci-test ai-engkit-admin-dev || true
+          docker compose -f docker-compose.dev.yml logs ai-dev ai-admin || true
           docker compose -f docker-compose.dev.yml ps || true
 
       - name: Cleanup
