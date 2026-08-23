@@ -1,4 +1,4 @@
-# OMO Fallback Model Config (v4.19.4 config-driven)
+# OMO Fallback Model Config (v4.19.4)
 
 ## Context
 
@@ -7,7 +7,7 @@ ai-engkit uses oh-my-openagent (OMO) 4.19.4. The plugin assigns default models t
 ## Problem
 
 - The previous 4.19.3-era model-default migration (`apply_omo_model_defaults`) was verified inert — see `troubleshooting/omo-model-default-migration-inert.md`.
-- Unknown whether `agents.<name>.fallback_models` in `.opencode/omo.jsonc.default` / `~/.omo/omo.jsonc` is actually consumed by plugin 4.19.4, and whether it survives restart (the plugin runs a strict migration validation at startup that flags unknown config keys).
+- The plugin source accepts and consumes `agents.<name>.model` and `fallback_models`, but live `/agent` and direct child-session probes can still show the compiled OMO fallback chain instead of the persisted model.
 
 ## Solution
 
@@ -23,19 +23,25 @@ Set `fallback_models` under `agents.plan` and `agents.prometheus` in both `.open
 }
 ```
 
-Bump the live `$schema` pin to v4.19.4 to match the installed plugin.
+Keep the live `$schema` pin at v4.19.4 and treat persisted config, `/agent`, and executed delegation as separate observations.
 
 ## Why It Works
 
-- `getRawFallbackModelsForSession` (dist/index.js ~119502) reads `pluginConfig.agents.plan.fallback_models` directly — the key is genuinely consumed.
+- `getRawFallbackModelsForSession` reads `pluginConfig.agents.<name>.fallback_models` directly — the key is genuinely consumed by fallback handling.
+- `collectPendingBuiltinAgents` passes `pluginConfig.agents` into `applyModelResolution`, whose `userModel` path accepts `agents.<name>.model`.
 - Runtime schema `AgentOverrideConfigSchema` (dist/index.js ~26808) defines both `fallback_models` and `permission` fields for each known agent.
 - Migration validation accepts `fallback_models` (neither `plan` nor `prometheus.fallback_models` appear in the startup validation error), while `permission` is flagged — see Side Effects.
-- Restart confirmed: post-restart log shows `config-handler agents loaded` (13 agents) and `config handler applied {agentCount:13}`.
+- Runtime probing on 192.168.11.195 with OMO 4.19.4 persisted `opencode/big-pickle` for all tested OMO agents, but live results remained `plan=opencode-go/kimi-k3` and `librarian=opencode-go/qwen3.7-plus`; do not call this configuration effective without matching runtime evidence.
+- First-class `subtask` delegation reproduced the same mismatch: completed `plan` and `librarian` children used those fallback models, with non-zero token usage.
 
 ## Side Effects / Tradeoffs
 
+- **Admin "SubAgent 預設模型" wipes fallback chains on apply**: `src/admin/lib/agent-model-config.ts` `buildJqWriteCommand` writes `.agents[$agent].model` + `.variant` and **deletes** `models`/`fallback_models` every time the Admin UI applies a model. So a manually configured `fallback_models` chain under `agents.plan`/`prometheus` survives until the next Admin apply, then is removed. The Admin UI has no fallback-chain editor — it only sets the primary.
+- **v5 migration opportunity**: v5's canonical chain key is `models` (array of `{model, variant?}`), present in both v4/v5 schemas. Adopting v5 chains requires changing `buildJqWriteCommand` to write `models` instead of deleting it (see `omo-v5-upgrade-impact.md`).
 - **Startup migration validation error (pre-existing noise)**: the migration schema `OmoAgentDefInputSchema` has no `permission` field, so 11 agents' `permission` blocks produce `Unrecognized key: "permission"` in `[config-migration] startup completed`. This predates the fallback_models change (admin's original permission-only config triggered it), does not block runtime config loading, and is harmless — but appears at every startup.
 - Restart required for config changes to take effect.
+- A direct `POST /session` with `agent:<name>` bypasses OMO's `delegate-task`/`call_omo_agent` resolver and is not valid evidence for OMO delegation.
+- The startup reconciler validates OMO targets against the connected catalog but only performs child-request verification for native `general`.
 - All fallback models must exist on connected providers or fallback resolution returns empty (log: `connected providers unknown, returning empty set for fallback resolution`).
 
 ## Evidence
@@ -45,14 +51,17 @@ Bump the live `$schema` pin to v4.19.4 to match the installed plugin.
   - `[config-migration] startup completed {"error":"Migration validation failed ... Unrecognized key: \"permission\" ..."}` — 11 agents flagged for `permission` only; `plan` and `fallback_models` not flagged.
 - Provider cache `/home/devuser/.cache/oh-my-opencode/provider-models.json` (17:19 refresh): `opencode-go` has `kimi-k3`; `openai` has `gpt-5.6-sol`, `gpt-5.6-luna`. `connected-providers.json`: opencode-go, openai, opencode, nvidia connected.
 - Schema validation: SCHEMA-OK against `oh-my-opencode.schema.json` v4.19.4 for both config files.
-- Code references: `getRawFallbackModelsForSession` (dist/index.js ~119502), `AgentOverrideConfigSchema` (dist/index.js ~26808), `OmoConfigSchema` (dist/index.js ~5705).
+- Code references: `getRawFallbackModelsForSession`, `collectPendingBuiltinAgents`, `resolveSubagentModel`, and `AgentOverrideConfigSchema` in OMO 4.19.4 `dist/index.js`.
 
 ## Related Files
 
 - `.opencode/omo.jsonc.default`
 - `~/.omo/omo.jsonc`
+- `src/admin/lib/agent-model-config.ts` (`buildJqWriteCommand` — deletes `models`/`fallback_models` on apply)
+- `src/admin/lib/agent-models.ts`
 - `docs/knowledge/troubleshooting/omo-model-default-migration-inert.md`
 - `docs/knowledge/patterns/omo-agent-permission-defaults.md`
+- `docs/knowledge/patterns/omo-v5-upgrade-impact.md`
 
 ## Tags
 

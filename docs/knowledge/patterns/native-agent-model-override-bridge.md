@@ -37,7 +37,7 @@ Verification must exercise execution, not only configuration acceptance. The E2E
 
 ## Side Effects / Tradeoffs
 
-- The native-agent allowlist currently contains only `general`; adding another native agent requires an explicit code and test change.
+- The native-agent allowlist currently contains `general` and `plan`; adding another native agent requires an explicit code and test change. This bridge does not control OMO's other built-in agents such as `librarian`.
 - A container restart is required before a persisted native override reaches `opencode.json`.
 - The E2E performs a real model request. It must delete both sessions and restore the byte-identical OMO baseline even on failure.
 - `GET /agent` is useful but insufficient by itself; only completed child-message metadata proves the execution model.
@@ -49,7 +49,7 @@ Verification must exercise execution, not only configuration acceptance. The E2E
 - Generated config: `.agent.general.model = "opencode/big-pickle"`.
 - Live agent: `general`, `native: true`, model `opencode/big-pickle`.
 - Native override unit test: all cases passed, including variant merge, clear, allowlist, invalid model, and corrupt JSON.
-- Real child-session E2E: 8/8 passed; completed `general` assistant message used `opencode/big-pickle`.
+- Real child-session E2E: native `general` completed with `opencode/big-pickle`. Direct child-session probes for OMO `librarian` are not valid delegation evidence because they bypass OMO's resolver.
 - E2E cleanup query returned zero `agent-model-e2e-*` sessions.
 - Admin test suite: 279/279 passed.
 

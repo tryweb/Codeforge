@@ -4,11 +4,11 @@
 
 > **Update (2026-08-15):** ai-engkit now supports the OpenCode-native `general` agent through an explicit startup bridge from `~/.omo/omo.jsonc` to generated `opencode.json → agent.general`. This does not revive the removed generic migration. See `../patterns/native-agent-model-override-bridge.md`.
 
-> **Correction for OMO 4.19.4 (2026-08-15):** a schema-valid top-level `agents.<name>.model` override is effective for OMO subagents. The earlier inert result remains historical evidence for 4.19.3 and for invalid or shadowed configurations; it is not the current 4.19.4 contract.
+> **Correction (2026-08-23):** OMO 4.19.4 source accepts `agents.<name>.model` and `fallback_models`, but first-class OMO `subtask` delegation on 192.168.11.195 still resolved `plan` and `librarian` through the compiled fallback chain. Treat the override as persisted configuration, not effective runtime assignment.
 
 ## Current 4.19.4 Resolution Contract
 
-Admin-managed OMO subagent primary models have one canonical source:
+Admin-managed OMO subagent primary models are persisted at:
 
 ```text
 ~/.omo/omo.jsonc → agents.<name>.model
@@ -21,13 +21,13 @@ Two legacy conditions can prevent that value from taking effect together:
 
 The startup normalization in `entrypoint.d/lib-omo-model-defaults.bash` is atomic and idempotent. It preserves top-level models and unrelated user settings, converts known direct permission values, removes redundant allow-all permission maps, and leaves the original file byte-identical when conversion is unsafe.
 
-Verification proceeds through three distinct observations:
+Verification must distinguish three observations:
 
 1. Persisted config: `jq -r '.agents.librarian.model' ~/.omo/omo.jsonc` reports the selected `provider/model` and no agent entry contains `permission`.
-2. Advertised runtime: authenticated `GET /agent` reports the same `providerID/modelID` for librarian.
-3. Executed runtime: a real librarian child session is created without an explicit request model, and its completed assistant message records the same provider and model.
+2. Advertised runtime: authenticated `GET /agent` reports the runtime model, which may still be the compiled OMO fallback for OMO agents.
+3. OMO execution: a first-class `subtask` part invokes the actual OMO `delegate-task` path; creating a child with `POST /session` and `agent:<name>` bypasses that resolver.
 
-`test/test-agent-model-e2e.sh` automates all three checks, restores the baseline file byte-for-byte, and removes its parent and child sessions on every exit path. A `/agent` match alone is not sufficient execution evidence.
+`test/test-agent-model-e2e.sh` currently proves native `general` execution and restores the baseline file byte-for-byte. OMO child execution is intentionally not asserted through the direct `/session` API.
 
 ## Context
 
@@ -39,7 +39,7 @@ Enabling the migration appears to do nothing: agent models in the live system st
 
 ## Solution
 
-None exists at the config level — the mechanism cannot work with plugin 4.19.3. Verified end-to-end on the dev environment (`ai-engkit-dev`, host 192.168.11.196, `docker-compose.dev.yml`):
+For plugin 4.19.3, no config-level solution was found. For 4.19.4, source-level support exists, but live OMO assignment remains unproven and was mismatched on 192.168.11.195:
 
 1. Removed the one-time marker `~/.omo/.ai-engkit-omo-model-defaults-v1` and recreated the container with `AI_ENGKIT_APPLY_OMO_MODEL_DEFAULTS=1`.
 2. Confirmed the migration re-ran: `jq '.["[opencode]"].agents.sisyphus.model' ~/.omo/omo.jsonc` → `opencode/deepseek-v4-flash`, marker recreated.
@@ -50,7 +50,7 @@ All four candidate config layers were tested and are inert for agent model assig
 | Config layer | Tested via | Result |
 |---|---|---|
 | `[opencode].agents.<name>.model` (migration target, harness layer) | migration re-run + container recreate | overridden |
-| omo.jsonc native `agents.<name>.model` (schema-supported) | direct edit + container recreate | overridden |
+| omo.jsonc native `agents.<name>.model` (schema-supported) | direct edit + container recreate | persisted; live OMO result mismatched in observed run |
 | opencode.json native `agent.<name>.model` | direct edit + container recreate | stripped by openchamber rewrite, and overridden |
 | agent frontmatter `model:` in `~/.config/opencode/agents/*.md` | /agent vs frontmatter diff | overridden |
 
@@ -58,7 +58,7 @@ All four candidate config layers were tested and are inert for agent model assig
 
 The plugin's config schema accepts `[opencode]` as a free-form harness layer (`OmoOpenCodeHarnessConfigSchema = z9.record(z9.string(), z9.unknown())`) and merges it into the resolved config view, so the migration's values do reach `agents.<name>.model` in OMO's resolved config. However, agent model resolution runs through `AGENT_MODEL_REQUIREMENTS` (`packages/model-core/src/agent-model-requirements.ts`, inlined in `dist/index.js`): each agent gets the best model from its `fallbackChain` whose provider is connected, and this result is what the opencode server reports. The harness-layer config values are observably not part of the final agent definitions.
 
-The `fallbackChain` × connected-provider mechanism is the only thing that decides agent models, and it is cache- and credential-driven:
+When no effective user override reaches the runtime boundary, the `fallbackChain` × connected-provider mechanism decides agent models, and it is cache- and credential-driven:
 
 - Connected providers come from the plugin's probe of real credentials: the `opencode auth` store (`~/.local/share/opencode/auth.json`) plus env vars (`OPENCODE_PROVIDER`, API keys). Not necessarily `.env` keys — `opencode auth logout <provider>` is the removal lever.
 - Provider state is cached in `~/.cache/oh-my-opencode/{connected-providers,provider-models,model-capabilities}.json`, written lazily. With no cache (`isFirstRunNoCache`), `getFirstFallbackModel` assigns each agent the **first** (top-tier) chain entry; with a stale cache it reflects the old provider set; with a fresh cache it reflects real credentials.
@@ -68,7 +68,7 @@ If the goal is cost control, the effective levers are:
 
 - **Credentials**: `opencode auth logout openai` / `opencode auth logout anthropic` (and moonshotai/nvidia if undesired) so the fallback chains land on the low-cost `opencode-go` tier. Verified by contrast: prod (openai authenticated) runs oracle on `gpt-5.6-sol`; dev (only opencode-go) runs the same agents on `kimi-k3`/`glm-5.2`/`minimax-m3`.
 - `settings.json` → `defaultModel` in OpenChamber (governs the new-session picker only — verified working).
-- Pin models inside the plugin's own config if a supported override exists — none was found in 4.19.3.
+- Native OpenCode agents can be pinned through the explicit `opencode.json → agent.<name>.model` bridge; this is proven for `general` and is allowlisted with `plan` in ai-engkit.
 
 ## Side Effects / Tradeoffs
 
@@ -79,9 +79,9 @@ If the goal is cost control, the effective levers are:
 
 ## Evidence
 
-- `GET /agent` before and after a forced recreate with the flag on: identical model assignments (sisyphus/prometheus/atlas/metis/multimodal-looker/plan → `opencode-go/kimi-k3`, momus/oracle → `opencode-go/glm-5.2`, explore/librarian → `opencode-go/minimax-m3`).
+- Live 2026-08-23 probe with OMO 4.19.4: persisted `big-pickle` for OMO agents, `/agent` reported `plan=opencode-go/kimi-k3` and `librarian=opencode-go/qwen3.7-plus`, and first-class OMO subtask children completed on those same fallback models; `general` reported `opencode/big-pickle` through the native bridge.
 - `jq '.["[opencode]"].agents.sisyphus.model' ~/.omo/omo.jsonc` → `opencode/deepseek-v4-flash` while the live model is `kimi-k3`.
-- Plugin source: `oh-my-openagent@4.19.3` `dist/index.js` — `AGENT_MODEL_REQUIREMENTS` (~line 23530+), harness layer merge `resolveOmoConfigView` (~line 5788), agent model resolver with fallback chain (~line 24549).
+- Plugin source: `oh-my-openagent@4.19.4` `dist/index.js` — `AGENT_MODEL_REQUIREMENTS`, `collectPendingBuiltinAgents`, `resolveModelPipeline`, and `resolveSubagentModel`.
 - Marker mtime 2026-07-31 10:41 on the dev volume predates the container start 12:15 — the config was already written before the server booted, and the server still ignored it.
 
 ## Related Files
