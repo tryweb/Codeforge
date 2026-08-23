@@ -32,11 +32,12 @@ omo_config="$TEMP_DIR/omo.jsonc"
 
 base_config > "$opencode_config"
 cat > "$omo_config" <<'EOF'
-{"agents":{"general":{"model":"opencode/big-pickle","variant":"high","permission":{"bash":"allow"}},"build":{"model":"opencode/should-not-merge"},"explore":{"model":"opencode/also-not-native"}}}
+{"agents":{"general":{"model":"opencode/big-pickle","variant":"high","permission":{"bash":"allow"}},"plan":{"model":"opencode/plan-model"},"build":{"model":"opencode/should-not-merge"},"explore":{"model":"opencode/also-not-native"}}}
 EOF
 merge_native_agent_overrides "$opencode_config" "$omo_config"
 assert_eq "general model merged" "opencode/big-pickle" "$(jq -r '.agent.general.model' "$opencode_config")"
 assert_eq "general variant merged" "high" "$(jq -r '.agent.general.variant' "$opencode_config")"
+assert_eq "plan model merged" "opencode/plan-model" "$(jq -r '.agent.plan.model' "$opencode_config")"
 assert_eq "unrelated OpenCode agent preserved" "opencode/reviewer" "$(jq -r '.agent.reviewer.model' "$opencode_config")"
 assert_eq "non-allowlisted native agent ignored" "false" "$(jq 'has("agent") and (.agent | has("build"))' "$opencode_config")"
 assert_eq "unrelated top-level config preserved" "true" "$(jq '.mcp.codegraph.enabled' "$opencode_config")"

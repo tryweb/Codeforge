@@ -11,7 +11,7 @@ merge_native_agent_overrides() {
   if ! jq -s '
     .[0] as $opencode
     | .[1] as $omo
-    | reduce ["general"][] as $name ($opencode;
+     | reduce ["general", "plan"][] as $name ($opencode;
         ($omo.agents[$name] // {}) as $override
         | if (($override.model | type) == "string"
               and ($override.model | test("^[^/[:space:]]+/[^/[:space:]]+$"))) then

@@ -282,6 +282,7 @@ RUN mkdir -p /opt/ai-engkit && echo "$AI_ENGKIT_VERSION" > /opt/ai-engkit/VERSIO
 # OpenChamber registration reconcile — shipped at a fixed path so both upgrade
 # paths (host upgrade.sh, admin runUpgrade) can exec it inside ai-dev.
 COPY --chmod=0755 scripts/reconcile-openchamber-projects.sh /opt/ai-engkit/scripts/reconcile-openchamber-projects.sh
+COPY --chmod=0755 scripts/reconcile-agent-models.sh /opt/ai-engkit/scripts/reconcile-agent-models.sh
 
 # 預裝 baked skills 到 image（供 entrypoint 在 runtime 時 symlink 到 SKILLS_ROOT）
 COPY .opencode/baked-skills /opt/opencode/baked-skills
@@ -340,6 +341,4 @@ EXPOSE 3000 4095
 # tini 用絕對路徑，避免 PATH 未初始化時找不到
 ENTRYPOINT ["/usr/bin/tini", "--", "/entrypoint.sh"]
 
-# openchamber serve（daemon 模式）後接 logs follow
-# 若要前景執行改為：openchamber serve --foreground
-CMD ["/bin/bash", "-c", "openchamber serve && openchamber logs"]
+CMD ["/bin/bash", "-c", "openchamber serve && /opt/ai-engkit/scripts/reconcile-agent-models.sh && exec openchamber logs"]
