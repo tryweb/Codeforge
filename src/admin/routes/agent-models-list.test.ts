@@ -51,7 +51,16 @@ describe("createAgentModelsRoutes — GET /api/agent-models", () => {
   test("reports runtime mismatch when configured and live primary models differ", async () => {
     const { deps, cleanup } = stubDeps([
       { match: /jq -c '\.agents/, stdout: '{"librarian":{"model":"opencode/nemotron-3.5-lightning-free"}}' },
-      { match: /connected-providers\.json/, stdout: '{"connected":["opencode","opencode-go"]}' },
+      {
+        match: /\/provider\b/,
+        stdout: JSON.stringify({
+          connected: ["opencode", "opencode-go"],
+          all: [
+            { id: "opencode", models: { "nemotron-3.5-lightning-free": {} } },
+            { id: "opencode-go", models: { "qwen3.7-plus": {} } },
+          ],
+        }),
+      },
       {
         match: /provider-models\.json/,
         stdout: "opencode/nemotron-3.5-lightning-free\nopencode-go/qwen3.7-plus\n",
@@ -61,6 +70,10 @@ describe("createAgentModelsRoutes — GET /api/agent-models", () => {
         stdout: JSON.stringify([
           { name: "librarian", mode: "subagent", model: { modelID: "qwen3.7-plus", providerID: "opencode-go" } },
         ]),
+      },
+      {
+        match: /\/session/,
+        stdout: JSON.stringify({ info: { role: "assistant", modelID: "qwen3.7-plus", providerID: "opencode-go" } }),
       },
     ]);
     const res = await createAgentModelsRoutes(deps).request("http://localhost/api/agent-models");
@@ -118,6 +131,11 @@ describe("createAgentModelsRoutes — GET /api/agent-models", () => {
     const names = data.agents.map((agent: { name: string }) => agent.name);
     expect(names).toContain("general");
     expect(names).toContain("explore");
+    const general = data.agents.find((agent: { name: string }) => agent.name === "general");
+    expect(general.configured).toEqual([]);
+    expect(general.resolved).toBeNull();
+    expect(general.requestVerified).toEqual({ modelID: "big-pickle", providerID: "opencode" });
+    expect(general.effectiveness).toBe("plugin");
     expect(names).not.toContain("build");
     expect(names).not.toContain("compaction");
     expect(names).not.toContain("summary");

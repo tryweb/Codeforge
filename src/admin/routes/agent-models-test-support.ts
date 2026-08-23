@@ -36,6 +36,13 @@ export function stubDeps(handlers: readonly ExecHandler[], password: string | nu
           exitCode: 0,
         };
       }
+      if (command.includes("/session")) {
+        return {
+          stdout: JSON.stringify({ info: { role: "assistant", modelID: "big-pickle", providerID: "opencode" } }),
+          stderr: "",
+          exitCode: 0,
+        };
+      }
       if (command.includes("~/.cache/opencode/models.json")) {
         return {
           stdout: JSON.stringify({ opencode: { models: { "big-pickle": {} } } }),
@@ -76,6 +83,10 @@ export function listHandlers(): readonly ExecHandler[] {
           { id: "opencode-go", models: { "kimi-k3": {} } },
         ],
       }),
+    },
+    {
+      match: /\/session/,
+      stdout: JSON.stringify({ info: { role: "assistant", modelID: "kimi-k3", providerID: "opencode-go" } }),
     },
     { match: /connected-providers\.json/, stdout: '{"connected":["openai","opencode-go"]}' },
     { match: /provider-models\.json/, stdout: "openai/gpt-5.6-sol\nopencode-go/kimi-k3\n" },

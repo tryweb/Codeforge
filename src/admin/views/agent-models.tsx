@@ -33,11 +33,16 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
         The primary agent's own model and internal mechanism agents (compaction, summary, title,
         build) are not configurable here.
       </p>
+      <p class="text-sm text-muted" style="margin-top:8px;">
+        <strong>Assigned model</strong> is OpenCode's current agent assignment. <strong>Last successful request</strong>
+        is the model metadata returned by the most recent real request. A model is <strong>effective</strong> only when both
+        match the configured model and its provider is connected.
+      </p>
 
       {!state.hasPassword && (
         <div class="card" style="border-color:var(--danger);margin-bottom:16px;">
           <strong>Prerequisite missing:</strong> <code>OPENCODE_SERVER_PASSWORD</code> is not set in{" "}
-          <code>.env</code>. Live resolved models and "Save &amp; Restart" are unavailable until it is
+          <code>.env</code>. Assigned models, request verification, and "Save &amp; Restart" are unavailable until it is
           set (see the Environment page).
         </div>
       )}
@@ -54,8 +59,9 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
           <tr>
             <th>Subagent</th>
             <th>Configured model</th>
-            <th>Resolved model</th>
-            <th>Source</th>
+            <th>Assigned model</th>
+            <th>Last successful request</th>
+            <th>Source / status</th>
             <th></th>
           </tr>
           {state.agents.map((a) => (
@@ -82,6 +88,15 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
                 )}
               </td>
               <td>
+                {a.requestVerified ? (
+                  <code>
+                    {a.requestVerified.modelID} @ {a.requestVerified.providerID}
+                  </code>
+                ) : (
+                  <span class="text-muted">not verified</span>
+                )}
+              </td>
+              <td>
                 {a.invalid && (
                   <span
                     title="Config has keys the OMO plugin no longer recognizes (e.g. permission). Fix or remove them for overrides to take effect."
@@ -105,6 +120,9 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
                   }}
                 >
                   {a.source}
+                </span>
+                <span class="text-muted" style="font-size:0.75rem;margin-left:0.5rem;">
+                  {a.effectiveness}
                 </span>
               </td>
               <td>
@@ -198,8 +216,9 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
             el.textContent = 'Configured model cleared. Automatic model: ' + automatic;
           } else if (r.ok && r.status === 'verified') {
             var resolved = r.resolved ? r.resolved.modelID + ' @ ' + r.resolved.providerID : 'n/a';
+            var requestVerified = r.requestVerified ? r.requestVerified.modelID + ' @ ' + r.requestVerified.providerID : 'not verified';
             el.style.color = '#22c55e';
-            el.textContent = 'Applied and restarted. Current model (plugin default): ' + resolved;
+            el.textContent = 'Applied and restarted. Successful request model: ' + requestVerified + ' (assigned: ' + resolved + ')';
           } else if (!r.ok && r.status === 'unverified') {
             el.style.color = '#f59e0b';
             el.textContent = 'Applied but could not confirm the server came back: ' + r.error;
