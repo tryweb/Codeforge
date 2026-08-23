@@ -95,7 +95,7 @@ export const Layout: FC<LayoutProps> = ({ title, children, currentPath }) => {
                   ? <div style="height:1px;background:var(--border);margin:8px 12px;" />
                   : <a
                       href={item.href}
-                      class={(currentPath === item.href || (item.href !== "/" && currentPath?.startsWith(item.href)))
+                      class={(currentPath === item.href || (item.href !== "/" && currentPath?.startsWith(`${item.href}/`)))
                         ? "active" : ""}
                     >
                       <span>{item.icon}</span>
