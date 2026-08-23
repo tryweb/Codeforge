@@ -291,7 +291,16 @@ function createFixture(overrides: Partial<CommandDeps> = {}): Fixture {
         agentModelReads.push("agent-models.list");
         return {
           agents: [
-            { name: "general", configured: [], resolved: null, source: "plugin", invalid: false, effectiveness: "plugin" },
+            {
+              name: "general",
+              configured: [],
+              resolved: null,
+              requestVerified: null,
+              providerConnected: false,
+              source: "plugin",
+              invalid: false,
+              effectiveness: "plugin",
+            },
           ],
           catalog: ["anthropic/claude-sonnet-4-5"],
           hasPassword: true,
