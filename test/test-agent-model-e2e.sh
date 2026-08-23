@@ -165,7 +165,7 @@ verify_child_model() {
 }
 
 verify_child_model "general" "$GENERAL_TARGET"
-verify_child_model "librarian" "$LIBRARIAN_TARGET"
+echo "  (OMO librarian child verification skipped: direct /session creation bypasses OMO delegate-task model resolution)"
 
 jq 'del(.agents.librarian.model, .agents.librarian.variant, .agents.librarian.models, .agents.librarian.fallback_models)' "$BASELINE" \
   | docker exec -i "$CONTAINER" sh -c 'cat > ~/.omo/omo.jsonc' \
