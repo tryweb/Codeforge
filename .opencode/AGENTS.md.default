@@ -124,4 +124,25 @@ file, then `ctx_read` that file with a narrow `lines:N-M` window; or use
 `compression_level` to `standard`/`max` to "see more" — it makes the
 blind spot worse, not better.
 
+## Project Knowledge Base — Recall Before You Debug
+
+Projects may carry a knowledge base (bootstrapped via the
+`enable-project-knowledge` skill): structured markdown under `docs/knowledge/`
+plus key-value memory in `ctx_knowledge`. Use it so you never re-solve a
+problem that was already fixed:
+
+1. **Check first**: before investigating any non-obvious error, recall prior
+   knowledge — `ctx_knowledge(action="recall", query="...")` for project
+   facts, and search `docs/knowledge/` (`troubleshooting/`, `tooling/`,
+   `patterns/`, `architecture/`) for matching symptoms. Do not burn turns
+   re-deriving a known fix.
+2. **Follow it when it applies**: if an entry covers the case, apply it.
+   Only experiment beyond the documentation when no entry matches or the
+   documented solution fails — and say explicitly which situation you are in.
+3. **Write back what you learn**: if your successful fix showed an existing
+   entry was wrong or incomplete, correct that entry; if nothing covered the
+   problem, capture a new one with the `knowledge-capture` skill
+   (Context / Problem / Solution / Evidence) so the next session starts
+   ahead instead of repeating your work.
+
 <!-- /@ai-engkit -->
