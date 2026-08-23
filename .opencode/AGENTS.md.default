@@ -85,6 +85,20 @@ MCP tool (sandboxed code execution) over shell scripting.
 Single direct commands (`git status`, `docker ps`, `jq ...`) run normally — only
 explicit `bash -c` / `sh -c` wrapper forms are blocked.
 
+### Defensive jq Usage
+
+jq is preinstalled (`/usr/bin/jq`, v1.7). Most jq errors agents hit are
+data-shape mismatches, not a missing tool — e.g.
+`jq: error: Cannot index string with string "id"` (exit 5) means the piped
+input was a plain JSON string while the filter assumed an object/array.
+
+1. **Probe unknown shapes first**: run `... | jq 'type'` or `... | jq 'keys'`
+   before writing an indexing filter against unfamiliar output.
+2. **Defend every index**: prefer `try .id catch empty`, `.data // []`, or
+   `.[] | select(type == "object") | .id` over a bare `.id`.
+3. **Fail loudly**: use `jq -e` so null/empty results exit non-zero instead of
+   silently feeding garbage into the next command.
+
 ### When lean-ctx Triage Hides Diagnostic Output
 
 This image bakes `compression_level = "lite"` (lean-ctx's upstream default)
