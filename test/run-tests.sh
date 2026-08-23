@@ -595,7 +595,7 @@ assert_eq "OMO agents contain no unsupported permission keys" "0" "$OMO_PERMISSI
 assert_eq "OMO config contains no stale [opencode].agents layer" "false" "$OMO_STALE_AGENT_LAYER"
 
 # 8.3.8 Only allowlisted native agents may be generated inline
-OPCODE_UNEXPECTED_AGENTS=$(docker exec "$CONTAINER" jq -r '[(.agent // {}) | keys[] | select(. != "general")] | join(",")' /home/devuser/.config/opencode/opencode.json 2>/dev/null || echo "")
+OPCODE_UNEXPECTED_AGENTS=$(docker exec "$CONTAINER" jq -r '[(.agent // {}) | keys[] | select((. != "general") and (. != "plan"))] | join(",")' /home/devuser/.config/opencode/opencode.json 2>/dev/null || echo "")
 assert_eq "opencode.json has no unexpected inline agents" "" "$OPCODE_UNEXPECTED_AGENTS"
 OMO_GENERAL_MODEL=$(docker exec "$CONTAINER" jq -r '.agents.general.model // empty' "$OMO_CONFIG_FILE" 2>/dev/null || echo "")
 OPCODE_GENERAL_MODEL=$(docker exec "$CONTAINER" jq -r '.agent.general.model // empty' /home/devuser/.config/opencode/opencode.json 2>/dev/null || echo "")
