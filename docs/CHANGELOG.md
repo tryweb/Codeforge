@@ -1,6 +1,40 @@
 ## [Unreleased]
 
 
+## [1.15.5] - 2026-08-23
+
+### Added
+- Expose verified agent model status
+- Verify agent model runtime assignments
+- Use connected provider capability policy
+
+### Fixed
+- Mirror native plan model overrides
+- Prevent overlapping sidebar active states
+- Disable agent model editing without catalog
+- Reject model changes without available catalog
+- Expose model catalog availability in agent state
+- Source agent model catalog from live providers
+- Allowlist plan native agent in inline-agents integration check
+
+### Removed
+- Remove test file
+
+### Documentation
+- Add agent model troubleshooting records
+- Update agent model migration knowledge
+- Capture connected provider reconciliation rules
+- Add knowledge recall-first workflow to baked AGENTS.md
+- Add defensive jq usage guidance to baked AGENTS.md
+- Document OpenChamber upgrade verification
+
+### Changed
+- Verify agent model request assignments
+- Cover provider model verification commands
+
+### Changed
+- Upgrade OpenChamber from 1.19.0 to 1.20.0.
+
 ## [1.15.4] - 2026-08-22
 
 ### Added
@@ -1510,7 +1544,7 @@
 
 ## Format
 
-[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.15.4...HEAD
+[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.15.5...HEAD
 [0.3.0]: https://github.com/tryweb/ai-engkit/releases/tag/v0.3.0
 [0.3.3]: https://github.com/tryweb/ai-engkit/compare/v0.3.0...v0.3.3
 [0.5.0]: https://github.com/tryweb/ai-engkit/compare/v0.3.3...v0.5.0
@@ -1658,3 +1692,4 @@
 [1.15.2]: https://github.com/tryweb/ai-engkit/compare/v1.15.1...v1.15.2
 [1.15.3]: https://github.com/tryweb/ai-engkit/compare/v1.15.2...v1.15.3
 [1.15.4]: https://github.com/tryweb/ai-engkit/compare/v1.15.3...v1.15.4
+[1.15.5]: https://github.com/tryweb/ai-engkit/compare/v1.15.4...v1.15.5
