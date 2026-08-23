@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { createAgentModelsLib, type AgentModelsDeps } from "./agent-models";
 import type { ExecResult as DockerExecResult } from "./docker";
 
-type ExecResponse = { stdout: string; stderr?: string; exitCode?: number };
+type ExecResponse = { match?: RegExp; stdout: string; stderr?: string; exitCode?: number };
 type StubOptions = {
   readonly password?: string | null;
   readonly restart?: AgentModelsDeps["restart"];
@@ -19,7 +19,8 @@ function stubDeps(responses: ExecResponse[] = [], options: StubOptions = {}) {
   const deps: AgentModelsDeps = {
     exec: async (command: string, _timeoutMs?: number): Promise<DockerExecResult> => {
       calls.push(command);
-      const next = responses.shift() ?? { stdout: "", exitCode: 0 };
+      const index = responses.findIndex((response) => response.match === undefined || response.match.test(command));
+      const next = index >= 0 ? responses.splice(index, 1)[0] ?? { stdout: "", exitCode: 0 } : { stdout: "", exitCode: 0 };
       return { stdout: next.stdout, stderr: next.stderr ?? "", exitCode: next.exitCode ?? 0 };
     },
     restart: options.restart ?? (async () => { restartCount += 1; return { ok: true }; }),
@@ -156,17 +157,53 @@ describe("fetchConnectedCatalog", () => {
 
   test("uses opencode models cache when live provider is unavailable", async () => {
     const { deps } = stubDeps([
-      { stdout: "", exitCode: 1 },
-      { stdout: JSON.stringify({ opencode: { models: { "big-pickle": {} } } }) },
+      { match: /\/provider\b/, stdout: "", exitCode: 1 },
+      { match: /connected-providers\.json/, stdout: JSON.stringify({ connected: ["opencode"] }) },
+      {
+        match: /models\.json/, stdout: JSON.stringify({
+          opencode: { models: { "big-pickle": {} } },
+          openai: { models: { "gpt-5.6-luna": {} } },
+        }),
+      },
     ]);
     const lib = createAgentModelsLib(deps);
     expect(await lib.fetchConnectedCatalog("testpass")).toEqual(["opencode/big-pickle"]);
   });
 
+  test("returns no cached models when no provider is connected", async () => {
+    const { deps } = stubDeps([
+      { match: /\/provider\b/, stdout: "", exitCode: 1 },
+      { match: /connected-providers\.json/, stdout: JSON.stringify({ connected: [] }) },
+      { match: /models\.json/, stdout: JSON.stringify({ opencode: { models: { "big-pickle": {} } } }) },
+    ]);
+    const lib = createAgentModelsLib(deps);
+    expect(await lib.fetchConnectedCatalog("testpass")).toEqual([]);
+  });
+
+  test("filters provider snapshot cache by connected providers", async () => {
+    const { deps } = stubDeps([
+      { match: /\/provider\b/, stdout: "", exitCode: 1 },
+      { match: /connected-providers\.json/, stdout: JSON.stringify({ connected: ["opencode"] }) },
+      {
+        match: /models\.json/, stdout: JSON.stringify({
+          opencode: { models: { "big-pickle": {} } },
+          openai: { models: { "gpt-5.6-luna": {} } },
+        }),
+      },
+    ]);
+    const lib = createAgentModelsLib(deps);
+    expect(await lib.fetchProviderSnapshot("testpass")).toEqual({
+      connectedProviders: ["opencode"],
+      catalog: ["opencode/big-pickle"],
+      source: "cache",
+    });
+  });
+
   test("returns an empty catalog without falling back to resolved agents", async () => {
     const { deps } = stubDeps([
-      { stdout: "", exitCode: 1 },
-      { stdout: "", exitCode: 1 },
+      { match: /\/provider\b/, stdout: "", exitCode: 1 },
+      { match: /connected-providers\.json/, stdout: "", exitCode: 1 },
+      { match: /models\.json/, stdout: "", exitCode: 1 },
     ]);
     const lib = createAgentModelsLib(deps);
     expect(await lib.fetchConnectedCatalog("testpass")).toEqual([]);
@@ -204,6 +241,7 @@ describe("applyAndVerify", () => {
       ok: true,
       status: "cleared",
       resolved: { modelID: "qwen3.7-plus", providerID: "opencode-go" },
+      requestVerified: null,
     });
     expect(ctx.calls[1]).toContain("del(.agents[$agent].model");
     ctx.cleanup();
@@ -241,6 +279,14 @@ describe("applyAndVerify", () => {
       { stdout: '{"agents":{}}' }, // snapshot: cat
       { stdout: "" }, // write: jq ok
       { stdout: agentsJson }, // fetch
+      {
+        match: /\/provider\b/,
+        stdout: JSON.stringify({ connected: ["openai"], all: [{ id: "openai", models: { "gpt-5.6-luna-fast": {} } }] }),
+      },
+      {
+        match: /\/session/,
+        stdout: JSON.stringify({ info: { role: "assistant", modelID: "gpt-5.6-luna-fast", providerID: "openai" } }),
+      },
     ]);
     const lib = createAgentModelsLib(deps);
     const result = await lib.applyAndVerify("explore", [{ model: "openai/gpt-5.6-luna-fast" }]);
@@ -304,6 +350,14 @@ describe("applyAndVerify", () => {
       { stdout: '{"agents":{"librarian":{}}}' },
       { stdout: "" },
       { stdout: agentsJson },
+      {
+        match: /\/provider\b/,
+        stdout: JSON.stringify({ connected: ["opencode-go"], all: [{ id: "opencode-go", models: { "qwen3.7-plus": {} } }] }),
+      },
+      {
+        match: /\/session/,
+        stdout: JSON.stringify({ info: { role: "assistant", modelID: "qwen3.7-plus", providerID: "opencode-go" } }),
+      },
     ]);
     const lib = createAgentModelsLib(ctx.deps);
     const result = await lib.applyAndVerify("librarian", [
@@ -314,7 +368,8 @@ describe("applyAndVerify", () => {
       status: "runtime_mismatch",
       configured: "opencode/nemotron-3.5-lightning-free",
       resolved: { modelID: "qwen3.7-plus", providerID: "opencode-go" },
-      error: "Configured model opencode/nemotron-3.5-lightning-free was persisted, but the live agent resolved opencode-go/qwen3.7-plus",
+      requestVerified: { modelID: "qwen3.7-plus", providerID: "opencode-go" },
+      error: "Configured model opencode/nemotron-3.5-lightning-free did not match assigned opencode-go/qwen3.7-plus and request-verified opencode-go/qwen3.7-plus",
     });
     expect(ctx.calls.some((command) => command.includes("base64 -d > ~/.omo/omo.jsonc"))).toBe(false);
     ctx.cleanup();

@@ -133,17 +133,30 @@ export function createAgentModelsLib(deps: AgentModelsDeps = REAL_DEPS) {
       return { ok: false, status: "unverified", error: `live agent ${agent} did not resolve a model after restart` };
     }
     const configured = entries[0]?.model;
-    if (configured !== undefined && `${resolved.providerID}/${resolved.modelID}` !== configured) {
-      const actual = `${resolved.providerID}/${resolved.modelID}`;
+    if (configured === undefined) {
+      return { ok: true, status: "cleared", resolved, requestVerified: null };
+    }
+    const providerSnapshot = await live.fetchProviderSnapshot(password);
+    if (!providerSnapshot.connectedProviders.includes(resolved.providerID)) {
+      return { ok: false, status: "unverified", error: `provider ${resolved.providerID} is not connected` };
+    }
+    const requestVerified = await live.fetchSuccessfulRequestModel(password, agent);
+    if (requestVerified === null) {
+      return { ok: false, status: "unverified", error: `a successful request for ${agent} did not return model metadata` };
+    }
+    const configuredActual = `${resolved.providerID}/${resolved.modelID}`;
+    const requestActual = `${requestVerified.providerID}/${requestVerified.modelID}`;
+    if (configuredActual !== configured || requestActual !== configured || requestActual !== configuredActual) {
       return {
         ok: false,
         status: "runtime_mismatch",
         configured,
         resolved,
-        error: `Configured model ${configured} was persisted, but the live agent resolved ${actual}`,
+        requestVerified,
+        error: `Configured model ${configured} did not match assigned ${configuredActual} and request-verified ${requestActual}`,
       };
     }
-    return { ok: true, status: entries.length === 0 ? "cleared" : "verified", resolved };
+    return { ok: true, status: "verified", resolved, requestVerified };
   }
 
   return {
@@ -153,6 +166,9 @@ export function createAgentModelsLib(deps: AgentModelsDeps = REAL_DEPS) {
     restoreAgentModelsConfig,
     getServerPassword,
     fetchConnectedCatalog: live.fetchConnectedCatalog,
+    fetchProviderSnapshot: live.fetchProviderSnapshot,
+    fetchRecentSuccessfulRequestModel: live.fetchRecentSuccessfulRequestModel,
+    fetchSuccessfulRequestModel: live.fetchSuccessfulRequestModel,
     fetchResolvedAgentModels: live.fetchResolvedAgentModels,
     fetchSubagentNames: live.fetchSubagentNames,
     applyAndVerify,
@@ -174,10 +190,10 @@ export async function collectAgentModelState(
   lib: AgentModelsLib,
   password: string | null,
 ): Promise<AgentModelsViewState> {
-  const [config, resolvedMap, catalog, subagentNames] = await Promise.all([
+  const [config, resolvedMap, providerSnapshot, subagentNames] = await Promise.all([
     lib.readAgentModelsConfig(),
     password !== null ? lib.fetchResolvedAgentModels(password) : Promise.resolve(null),
-    lib.fetchConnectedCatalog(password),
+    lib.fetchProviderSnapshot(password),
     password !== null ? lib.fetchSubagentNames(password) : Promise.resolve([]),
   ]);
 
@@ -203,12 +219,22 @@ export async function collectAgentModelState(
 
   const names = [...configurableKeys].sort();
 
+  const requestVerifiedEntries = await Promise.all(names.map(async (name): Promise<readonly [string, ResolvedModel | null]> => {
+    const entry = config[name];
+    if (password === null || entry?.invalid === true) return [name, null];
+    return [name, await lib.fetchRecentSuccessfulRequestModel(password, name)];
+  }));
+  const requestVerifiedByKey = new Map(requestVerifiedEntries);
+
   const agents: AgentModelEntry[] = names.map((name) => {
     const entry = config[name];
     const configured = entry?.model
       ? [{ model: entry.model, ...(entry.variant ? { variant: entry.variant } : {}) }]
       : [];
     const resolved = resolvedByKey.get(name) ?? null;
+    const requestVerified = requestVerifiedByKey.get(name) ?? null;
+    const observedModel = requestVerified ?? resolved;
+    const providerConnected = observedModel !== null && providerSnapshot.connectedProviders.includes(observedModel.providerID);
     let source: AgentModelEntry["source"] = "plugin";
     if (configured.length > 0) {
       source = "configured";
@@ -220,20 +246,20 @@ export async function collectAgentModelState(
       effectiveness = "invalid";
     } else if (configured.length > 0) {
       const configuredModel = configured[0]?.model;
-      if (resolved === null || configuredModel === undefined) {
+      if (resolved === null || requestVerified === null || configuredModel === undefined || !providerConnected) {
         effectiveness = "unverified";
-      } else if (`${resolved.providerID}/${resolved.modelID}` === configuredModel) {
+      } else if (`${resolved.providerID}/${resolved.modelID}` === configuredModel && `${requestVerified.providerID}/${requestVerified.modelID}` === configuredModel && `${resolved.providerID}/${resolved.modelID}` === `${requestVerified.providerID}/${requestVerified.modelID}`) {
         effectiveness = "effective";
       } else {
         effectiveness = "runtime_mismatch";
       }
-    } else if (resolved === null) {
-      effectiveness = "unverified";
     }
     return {
       name,
       configured,
       resolved,
+      requestVerified,
+      providerConnected,
       source,
       invalid: entry?.invalid ?? false,
       effectiveness,
@@ -242,8 +268,8 @@ export async function collectAgentModelState(
 
   return {
     agents,
-    catalog: [...catalog],
+    catalog: [...providerSnapshot.catalog],
     hasPassword: password !== null,
-    catalogAvailable: catalog.length > 0,
+    catalogAvailable: providerSnapshot.catalog.length > 0,
   };
 }

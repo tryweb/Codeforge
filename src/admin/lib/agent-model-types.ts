@@ -13,7 +13,11 @@ export interface ResolvedModel {
 export interface AgentModelEntry {
   readonly name: string;
   readonly configured: readonly FallbackModelEntry[];
+  /** Model assignment reported by OpenCode's /agent endpoint. */
   readonly resolved: ResolvedModel | null;
+  /** Model metadata reported by the most recent successful request for this agent. */
+  readonly requestVerified: ResolvedModel | null;
+  readonly providerConnected: boolean;
   readonly source: "configured" | "inherited" | "plugin";
   readonly invalid: boolean;
   readonly effectiveness: "effective" | "runtime_mismatch" | "invalid" | "plugin" | "unverified";
@@ -27,12 +31,18 @@ export interface AgentModelConfig {
 }
 
 export type ApplyResult =
-  | { readonly ok: true; readonly status: "verified" | "cleared"; readonly resolved: ResolvedModel | null }
+  | {
+      readonly ok: true;
+      readonly status: "verified" | "cleared";
+      readonly resolved: ResolvedModel | null;
+      readonly requestVerified: ResolvedModel | null;
+    }
   | {
       readonly ok: false;
       readonly status: "runtime_mismatch";
       readonly configured: string;
       readonly resolved: ResolvedModel | null;
+      readonly requestVerified: ResolvedModel | null;
       readonly error: string;
     }
   | { readonly ok: false; readonly status: "write_failed"; readonly error: string }

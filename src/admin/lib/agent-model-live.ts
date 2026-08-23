@@ -24,26 +24,97 @@ function buildAgentFetchScript(auth: string): string {
   return buildManagedFetchScript(auth, "/agent");
 }
 
-function parseProviderCatalog(stdout: string): readonly string[] {
+function buildRequestVerificationScript(auth: string, agent: string): string {
+  const agentBase64 = Buffer.from(agent).toString("base64");
+  return `for f in ${MANAGED_OPENCODE_DIR}/*.json; do
+  [ -f "\$f" ] || continue
+  pid=\$(jq -r '.pid' "\$f" 2>/dev/null)
+  port=\$(jq -r '.port' "\$f" 2>/dev/null)
+  [ -n "\$pid" ] && [ -n "\$port" ] || continue
+  kill -0 "\$pid" 2>/dev/null || continue
+  BASE="http://127.0.0.1:\${port}"
+  AGENT=\$(printf '%s' '${agentBase64}' | base64 -d)
+  SESSION=\$(jq -nc --arg agent "\$AGENT" '{agent:\$agent,title:"agent model verification"}' | curl -fsS -m 5 -H "Authorization: Basic ${auth}" -H 'Content-Type: application/json' -X POST "\$BASE/session" -d @- 2>/dev/null | jq -r '.id // empty')
+  [ -n "\$SESSION" ] || exit 2
+  OUT=\$(curl -fsS -m 45 -H "Authorization: Basic ${auth}" -H 'Content-Type: application/json' -X POST "\$BASE/session/\${SESSION}/message" -d '{"parts":[{"type":"text","text":"Reply with exactly OK."}]}' 2>/dev/null || true)
+  curl -fsS -m 5 -H "Authorization: Basic ${auth}" -X DELETE "\$BASE/session/\${SESSION}" >/dev/null 2>&1 || true
+  printf '%s' "\$OUT"
+  exit 0
+done
+exit 2`;
+}
+
+function buildRecentRequestScript(auth: string, agent: string): string {
+  const agentBase64 = Buffer.from(agent).toString("base64");
+  return `for f in ${MANAGED_OPENCODE_DIR}/*.json; do
+  [ -f "\$f" ] || continue
+  pid=\$(jq -r '.pid' "\$f" 2>/dev/null)
+  port=\$(jq -r '.port' "\$f" 2>/dev/null)
+  [ -n "\$pid" ] && [ -n "\$port" ] || continue
+  kill -0 "\$pid" 2>/dev/null || continue
+  BASE="http://127.0.0.1:\${port}"
+  AGENT=\$(printf '%s' '${agentBase64}' | base64 -d)
+  SESSIONS=\$(curl -fsS -m 10 -H "Authorization: Basic ${auth}" "\$BASE/session?limit=100" 2>/dev/null || true)
+  for SESSION in \$(printf '%s' "\$SESSIONS" | jq -r --arg agent "\$AGENT" '.[] | select(.agent == $agent) | .id' 2>/dev/null); do
+    OUT=\$(curl -fsS -m 10 -H "Authorization: Basic ${auth}" "\$BASE/session/\${SESSION}/message" 2>/dev/null || true)
+    MODEL=\$(printf '%s' "\$OUT" | jq -c '[.[] | .info | select(.role == "assistant" and (.error == null) and (.modelID | type == "string") and (.providerID | type == "string"))] | last | if . == null then empty else {info: {role,modelID,providerID}} end' 2>/dev/null || true)
+    [ -n "\$MODEL" ] && { printf '%s' "\$MODEL"; exit 0; }
+  done
+  exit 2
+done
+exit 2`;
+}
+
+function parseProviderSnapshot(stdout: string): { readonly connectedProviders: readonly string[]; readonly catalog: readonly string[] } | null {
   let parsed: unknown;
   try {
     parsed = JSON.parse(stdout);
   } catch {
-    return [];
+    return null;
   }
-  if (!isRecord(parsed) || !Array.isArray(parsed.connected) || !Array.isArray(parsed.all)) return [];
+  if (!isRecord(parsed) || !Array.isArray(parsed.connected) || !Array.isArray(parsed.all)) return null;
 
-  const connected = new Set(parsed.connected.filter((provider): provider is string => typeof provider === "string"));
+  const connectedProviders = parsed.connected.filter((provider): provider is string => typeof provider === "string");
+  const connected = new Set(connectedProviders);
   const catalog = new Set<string>();
   for (const provider of parsed.all) {
     if (!isRecord(provider) || typeof provider.id !== "string" || !connected.has(provider.id)) continue;
     if (!isRecord(provider.models)) continue;
     for (const model of Object.keys(provider.models)) catalog.add(`${provider.id}/${model}`);
   }
-  return [...catalog].sort();
+  return { connectedProviders, catalog: [...catalog].sort() };
 }
 
-function parseCachedCatalog(stdout: string): readonly string[] {
+function parseSuccessfulRequestModel(stdout: string): ResolvedModel | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stdout);
+  } catch {
+    return null;
+  }
+  if (!isRecord(parsed) || !isRecord(parsed.info)) return null;
+  const info = parsed.info;
+  if (info.role !== "assistant" || typeof info.modelID !== "string" || typeof info.providerID !== "string") return null;
+  if (info.error !== undefined) return null;
+  return { modelID: info.modelID, providerID: info.providerID };
+}
+
+function parseProviderCatalog(stdout: string): readonly string[] {
+  return parseProviderSnapshot(stdout)?.catalog ?? [];
+}
+
+function parseConnectedProviders(stdout: string): readonly string[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stdout);
+  } catch {
+    return [];
+  }
+  if (!isRecord(parsed) || !Array.isArray(parsed.connected)) return [];
+  return parsed.connected.filter((provider): provider is string => typeof provider === "string");
+}
+
+function parseCachedCatalog(stdout: string, connectedProviders: readonly string[]): readonly string[] {
   let parsed: unknown;
   try {
     parsed = JSON.parse(stdout);
@@ -52,8 +123,10 @@ function parseCachedCatalog(stdout: string): readonly string[] {
   }
   if (!isRecord(parsed)) return [];
 
+  const connected = new Set(connectedProviders);
   const catalog = new Set<string>();
   for (const [provider, value] of Object.entries(parsed)) {
+    if (!connected.has(provider)) continue;
     if (!isRecord(value) || !isRecord(value.models)) continue;
     for (const model of Object.keys(value.models)) catalog.add(`${provider}/${model}`);
   }
@@ -106,16 +179,52 @@ export function createAgentModelLiveClient(deps: Pick<AgentModelsDeps, "exec">) 
   }
 
   async function fetchConnectedCatalog(password: string | null): Promise<readonly string[]> {
+    const snapshot = await fetchProviderSnapshot(password);
+    return snapshot.catalog;
+  }
+
+  async function fetchProviderSnapshot(password: string | null): Promise<{
+    readonly connectedProviders: readonly string[];
+    readonly catalog: readonly string[];
+    readonly source: "live" | "cache" | "unavailable";
+  }> {
     if (password !== null) {
       const auth = Buffer.from(`opencode:${password}`).toString("base64");
       const liveResult = await deps.exec(buildManagedFetchScript(auth, "/provider"), 90_000);
-      const liveCatalog = liveResult.exitCode === 0 ? parseProviderCatalog(liveResult.stdout) : [];
-      if (liveCatalog.length > 0) return liveCatalog;
+      const liveSnapshot = liveResult.exitCode === 0 ? parseProviderSnapshot(liveResult.stdout) : null;
+      if (liveSnapshot !== null) return { ...liveSnapshot, source: "live" };
     }
 
+    const connectedResult = await deps.exec(
+      `cat ~/.cache/oh-my-opencode/connected-providers.json 2>/dev/null`,
+      10_000,
+    );
+    const connectedProviders = connectedResult.exitCode === 0
+      ? parseConnectedProviders(connectedResult.stdout)
+      : [];
     const cacheResult = await deps.exec(`cat ~/.cache/opencode/models.json 2>/dev/null`, 15_000);
-    return cacheResult.exitCode === 0 ? parseCachedCatalog(cacheResult.stdout) : [];
+    if (cacheResult.exitCode !== 0) return { connectedProviders: [], catalog: [], source: "unavailable" };
+    return { connectedProviders, catalog: parseCachedCatalog(cacheResult.stdout, connectedProviders), source: "cache" };
   }
 
-  return { fetchConnectedCatalog, fetchResolvedAgentModels, fetchSubagentNames };
+  async function fetchSuccessfulRequestModel(password: string, agent: string): Promise<ResolvedModel | null> {
+    const auth = Buffer.from(`opencode:${password}`).toString("base64");
+    const result = await deps.exec(buildRequestVerificationScript(auth, agent), 90_000);
+    return result.exitCode === 0 ? parseSuccessfulRequestModel(result.stdout) : null;
+  }
+
+  async function fetchRecentSuccessfulRequestModel(password: string, agent: string): Promise<ResolvedModel | null> {
+    const auth = Buffer.from(`opencode:${password}`).toString("base64");
+    const result = await deps.exec(buildRecentRequestScript(auth, agent), 90_000);
+    return result.exitCode === 0 ? parseSuccessfulRequestModel(result.stdout) : null;
+  }
+
+  return {
+    fetchConnectedCatalog,
+    fetchProviderSnapshot,
+    fetchRecentSuccessfulRequestModel,
+    fetchSuccessfulRequestModel,
+    fetchResolvedAgentModels,
+    fetchSubagentNames,
+  };
 }
