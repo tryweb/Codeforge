@@ -1,5 +1,6 @@
 import { execInAiDev } from "./docker";
 import { filterToSchema } from "./leanctx-schema";
+import { restartAiDev } from "./restart-ai-dev";
 import { parse, stringify } from "smol-toml";
 
 export const BASELINE_CONFIG_PATH = "/etc/lean-ctx/config.default.toml";
@@ -40,8 +41,16 @@ export interface DoctorResult {
 }
 
 export interface ApplyResult {
-  ok: boolean;
-  output: string;
+  readonly ok: boolean;
+  readonly output: string;
+  readonly status: "apply_failed" | "restart_failed" | "unverified" | "applied";
+  readonly error?: string;
+}
+
+export interface LeanCtxApplyDeps {
+  readonly exec: typeof execInAiDev;
+  readonly restart: typeof restartAiDev;
+  readonly sleep: (delayMs: number) => Promise<void>;
 }
 
 export interface ConfigFileResult {
@@ -361,8 +370,8 @@ export async function validateLeanCtxConfig(config: LeanCtxConfig): Promise<Vali
   };
 }
 
-export async function runLeanCtxDoctor(): Promise<DoctorResult> {
-  const result = await execInAiDev("lean-ctx doctor 2>&1", 30_000);
+export async function runLeanCtxDoctor(exec: typeof execInAiDev = execInAiDev): Promise<DoctorResult> {
+  const result = await exec("lean-ctx doctor 2>&1", 30_000);
 
   const output = result.stdout || result.stderr || "";
   const warnings: string[] = [];
@@ -387,12 +396,53 @@ export async function runLeanCtxDoctor(): Promise<DoctorResult> {
   };
 }
 
-export async function applyLeanCtxConfig(): Promise<ApplyResult> {
-  const result = await execInAiDev("lean-ctx config apply 2>&1", 15_000);
+const MAX_DOCTOR_ATTEMPTS = 5;
+const DOCTOR_RETRY_DELAY_MS = 1_000;
+
+const REAL_APPLY_DEPS: LeanCtxApplyDeps = {
+  exec: execInAiDev,
+  restart: restartAiDev,
+  sleep: (delayMs) => new Promise((resolve) => setTimeout(resolve, delayMs)),
+};
+
+export async function applyLeanCtxConfig(deps: LeanCtxApplyDeps = REAL_APPLY_DEPS): Promise<ApplyResult> {
+  const result = await deps.exec("lean-ctx config apply 2>&1", 15_000);
+  const output = result.stdout || result.stderr || "";
+
+  if (result.exitCode !== 0) {
+    return {
+      ok: false,
+      status: "apply_failed",
+      output,
+      error: output || "LeanCTX config apply failed",
+    };
+  }
+
+  const restart = await deps.restart();
+  if (!restart.ok) {
+    return {
+      ok: false,
+      status: "restart_failed",
+      output,
+      error: restart.error || "Failed to restart ai-dev container",
+    };
+  }
+
+  let lastDoctor: DoctorResult | undefined;
+  for (let attempt = 0; attempt < MAX_DOCTOR_ATTEMPTS; attempt += 1) {
+    const doctor = await runLeanCtxDoctor(deps.exec);
+    if (doctor.ok && !doctor.output.toLowerCase().includes("not running")) {
+      return { ok: true, status: "applied", output };
+    }
+    lastDoctor = doctor;
+    if (attempt < MAX_DOCTOR_ATTEMPTS - 1) await deps.sleep(DOCTOR_RETRY_DELAY_MS);
+  }
 
   return {
-    ok: result.exitCode === 0,
-    output: result.stdout || result.stderr || "",
+    ok: false,
+    status: "unverified",
+    output,
+    error: lastDoctor?.output || "LeanCTX daemon verification failed",
   };
 }
 
