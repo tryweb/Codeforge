@@ -1,0 +1,80 @@
+# Promote a published release to the stable channel.
+#
+# Publishing and recommending are deliberately separate steps: cutting vX.Y.Z
+# only pushes immutable version tags; this workflow moves the shared `latest`
+# tag to a version AFTER it has been validated (staging/dogfood soak).
+# Users tracking :latest therefore always receive a soaked release, and their
+# digest-based update check stays quiet until promotion happens.
+#
+name: Promote stable
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release tag to promote to latest (e.g. v0.4.2)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  packages: write
+
+concurrency:
+  group: promote-stable
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    name: Promote to latest
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Validate version input
+        run: |
+          if ! [[ "${{ inputs.version }}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::version must match v<major>.<minor>.<patch> (e.g. v0.4.2), got: ${{ inputs.version }}"
+            exit 1
+          fi
+
+      - name: Login to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Re-tag the EXISTING published image — same digest, never rebuilt.
+      - name: Promote image tag to latest
+        run: |
+          set -euo pipefail
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}"
+          docker pull "${IMAGE}:${{ inputs.version }}"
+          docker tag "${IMAGE}:${{ inputs.version }}" "${IMAGE}:latest"
+          docker push "${IMAGE}:latest"
+          DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' "${IMAGE}:latest" | cut -f2 -d'@')
+          echo "::notice::Promoted ${{ inputs.version }} to latest (digest sha256:${DIGEST})"
+
+      - name: Mark GitHub Release as latest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release edit "${{ inputs.version }}" --latest=true --repo "$GITHUB_REPOSITORY"
+
+      - name: Append promotion note to release notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # Best-effort audit trail: never fail promotion over note editing.
+          BODY=$(gh release view "${{ inputs.version }}" --repo "$GITHUB_REPOSITORY" --json body --jq '.body' || echo "")
+          STAMP="$(date -u '+%Y-%m-%d %H:%M UTC')"
+          NEW_BODY=$(printf '%s\n\n---\nPromoted to stable channel: %s' "$BODY" "$STAMP")
+          gh release edit "${{ inputs.version }}" --repo "$GITHUB_REPOSITORY" --notes "$NEW_BODY" || \
+            echo "::warning::Could not append promotion note (non-fatal)"
+
+      - name: Summary
+        run: |
+          echo "### Promoted \`${{ inputs.version }}\` to \`latest\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Digest moved as-is (no rebuild)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- GitHub Release marked as latest" >> "$GITHUB_STEP_SUMMARY"
