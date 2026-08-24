@@ -394,24 +394,64 @@ if [ -d "$BAKED_SKILLS_DIR" ]; then
 fi
 
 # --- ai-engkit environment knowledge (AGENTS.md) ---
-# Append ai-engkit-specific sections to user's AGENTS.md if not already present.
-# Uses HTML-comment sentinel markers for idempotent dedup: each section identified
-# by <!-- @ai-engkit --> is appended exactly once, surviving container restarts.
+# Sync ai-engkit-specific sections into the user's AGENTS.md.
+# The template is delimited by <!-- @ai-engkit --> ... <!-- /@ai-engkit -->
+# sentinels. First install appends it; afterwards the block between the
+# sentinels is compared by content hash against the baked default and
+# replaced in place on mismatch, so template updates propagate across image
+# rebuilds while anything outside the markers (user notes, generated blocks)
+# is preserved.
 AI_ENGKIT_AGENTS_DEFAULT="/etc/opencode/AGENTS.md.default"
 USER_AGENTS_MD="$OPCODE_CONFIG_DIR/AGENTS.md"
 
-if [ -f "$AI_ENGKIT_AGENTS_DEFAULT" ]; then
-  if [ -f "$USER_AGENTS_MD" ]; then
-    if ! grep -q '<!-- @ai-engkit -->' "$USER_AGENTS_MD" 2>/dev/null; then
-      echo "" >> "$USER_AGENTS_MD"
-      cat "$AI_ENGKIT_AGENTS_DEFAULT" >> "$USER_AGENTS_MD"
-      echo "Appended AI-EngKit environment knowledge to AGENTS.md"
-    fi
-  else
-    cp "$AI_ENGKIT_AGENTS_DEFAULT" "$USER_AGENTS_MD"
+sync_ai_engkit_agents_md() {
+  local default_file="$1"
+  local user_file="$2"
+  local tmp_file
+  [ -f "$default_file" ] || return 0
+
+  if [ ! -f "$user_file" ]; then
+    cp "$default_file" "$user_file"
     echo "Created AGENTS.md with AI-EngKit environment knowledge"
+    return 0
   fi
-fi
+
+  if ! grep -q '<!-- @ai-engkit -->' "$user_file" 2>/dev/null; then
+    echo "" >> "$user_file"
+    cat "$default_file" >> "$user_file"
+    echo "Appended AI-EngKit environment knowledge to AGENTS.md"
+    return 0
+  fi
+
+  if ! grep -q '<!-- /@ai-engkit -->' "$user_file" 2>/dev/null; then
+    echo "Warning: unterminated @ai-engkit block in AGENTS.md; skipping auto-update" >&2
+    return 0
+  fi
+
+  tmp_file="$(mktemp)"
+  # The baked default includes its own sentinels.
+  awk -v repl_file="$default_file" '
+    BEGIN { replaced = 0 }
+    !replaced && /<!-- @ai-engkit -->/ {
+      replaced = 1
+      while ((getline line < repl_file) > 0) print line
+      close(repl_file)
+      next
+    }
+    replaced == 1 && /<!-- \/@ai-engkit -->/ { replaced = 2; next }
+    replaced == 1 { next }
+    { print }
+  ' "$user_file" > "$tmp_file"
+
+  if [ "$(md5sum "$tmp_file" | cut -d' ' -f1)" != "$(md5sum "$user_file" | cut -d' ' -f1)" ]; then
+    mv "$tmp_file" "$user_file"
+    echo "Updated AI-EngKit environment knowledge block in AGENTS.md"
+  else
+    rm -f "$tmp_file"
+  fi
+}
+
+sync_ai_engkit_agents_md "$AI_ENGKIT_AGENTS_DEFAULT" "$USER_AGENTS_MD"
 
 # --- OpenChamber default settings (seed + backfill defaultModel, update notifications off) ---
 ensure_openchamber_default_settings "$OPENCHAMBER_DATA_DIR/settings.json" "opencode/big-pickle"
