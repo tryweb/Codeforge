@@ -1,6 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { parse } from "smol-toml";
-import { mergeConfigIntoToml, mergeLeanCtxConfig, parseLeanCtxToml } from "./leanctx";
+import {
+  applyLeanCtxConfig,
+  mergeConfigIntoToml,
+  mergeLeanCtxConfig,
+  parseLeanCtxToml,
+  type LeanCtxApplyDeps,
+} from "./leanctx";
+import type { ExecResult } from "./docker";
 
 function assignmentKeys(toml: string): string[] {
   return toml
@@ -120,5 +127,112 @@ describe("LeanCTX config lifecycle", () => {
     );
 
     expect(merged).toEqual({ compression_level: "max", archive: { enabled: false } });
+  });
+});
+
+type ApplyFixtureOptions = {
+  readonly apply?: ExecResult;
+  readonly doctors?: readonly ExecResult[];
+  readonly restart?: { readonly ok: boolean; readonly error?: string };
+};
+
+function createApplyFixture(options: ApplyFixtureOptions = {}): {
+  readonly deps: LeanCtxApplyDeps;
+  readonly calls: readonly string[];
+  readonly sleepCalls: readonly number[];
+  readonly restartCalls: number;
+} {
+  const calls: string[] = [];
+  const sleepCalls: number[] = [];
+  let restartCalls = 0;
+  const doctors = [...(options.doctors ?? [])];
+
+  const deps: LeanCtxApplyDeps = {
+    exec: async (command, _timeoutMs): Promise<ExecResult> => {
+      calls.push(command);
+      if (command.startsWith("lean-ctx config apply")) {
+        return options.apply ?? { stdout: "applied", stderr: "", exitCode: 0 };
+      }
+      return doctors.shift() ?? { stdout: "daemon is not running", stderr: "", exitCode: 1 };
+    },
+    restart: async () => {
+      restartCalls += 1;
+      return options.restart ?? { ok: true };
+    },
+    sleep: async (delayMs) => {
+      sleepCalls.push(delayMs);
+    },
+  };
+
+  return {
+    deps,
+    calls,
+    sleepCalls,
+    get restartCalls() {
+      return restartCalls;
+    },
+  };
+}
+
+describe("applyLeanCtxConfig", () => {
+  test("reports apply_failed and does not restart when config apply fails", async () => {
+    const fixture = createApplyFixture({ apply: { stdout: "apply failed", stderr: "", exitCode: 1 } });
+
+    const result = await applyLeanCtxConfig(fixture.deps);
+
+    expect(result).toEqual({ ok: false, status: "apply_failed", output: "apply failed", error: "apply failed" });
+    expect(fixture.calls).toEqual(["lean-ctx config apply 2>&1"]);
+  });
+
+  test("reports restart_failed without checking the daemon when restart fails", async () => {
+    const fixture = createApplyFixture({ restart: { ok: false, error: "compose failed" } });
+
+    const result = await applyLeanCtxConfig(fixture.deps);
+
+    expect(result).toEqual({ ok: false, status: "restart_failed", output: "applied", error: "compose failed" });
+    expect(fixture.calls).toEqual(["lean-ctx config apply 2>&1"]);
+  });
+
+  test("reports applied only after the daemon doctor check succeeds", async () => {
+    const fixture = createApplyFixture({ doctors: [{ stdout: "daemon is running", stderr: "", exitCode: 0 }] });
+
+    const result = await applyLeanCtxConfig(fixture.deps);
+
+    expect(result).toEqual({ ok: true, status: "applied", output: "applied" });
+    expect(fixture.calls).toEqual(["lean-ctx config apply 2>&1", "lean-ctx doctor 2>&1"]);
+    expect(fixture.sleepCalls).toEqual([]);
+    expect(fixture.restartCalls).toBe(1);
+  });
+
+  test("polls through transient daemon startup before reporting applied", async () => {
+    const fixture = createApplyFixture({
+      doctors: [
+        { stdout: "daemon is not running", stderr: "", exitCode: 0 },
+        { stdout: "daemon is running", stderr: "", exitCode: 0 },
+      ],
+    });
+
+    const result = await applyLeanCtxConfig(fixture.deps);
+
+    expect(result).toMatchObject({ ok: true, status: "applied", output: "applied" });
+    expect(fixture.calls).toEqual([
+      "lean-ctx config apply 2>&1",
+      "lean-ctx doctor 2>&1",
+      "lean-ctx doctor 2>&1",
+    ]);
+    expect(fixture.sleepCalls).toEqual([1000]);
+  });
+
+  test("reports unverified after bounded doctor failures", async () => {
+    const fixture = createApplyFixture({
+      doctors: Array.from({ length: 5 }, () => ({ stdout: "doctor failed", stderr: "", exitCode: 1 })),
+    });
+
+    const result = await applyLeanCtxConfig(fixture.deps);
+
+    expect(result).toEqual({ ok: false, status: "unverified", output: "applied", error: "doctor failed" });
+    expect(fixture.calls).toHaveLength(6);
+    expect(fixture.sleepCalls).toEqual([1000, 1000, 1000, 1000]);
+    expect(fixture.restartCalls).toBe(1);
   });
 });
