@@ -101,28 +101,39 @@ input was a plain JSON string while the filter assumed an object/array.
 
 ### When lean-ctx Triage Hides Diagnostic Output
 
-This image bakes `compression_level = "lite"` (lean-ctx's upstream default)
-to keep diagnostic output visible — the higher `standard`/`max` settings
-actively suppress shell output *and* `ctx_read` content, including the
-low-level diagnostics (`od -c`, `sed` byte inspection, binary inventories)
-you need to fix whitespace/encoding mismatches and similar issues.
+The baked config is `compression_level = "lite"`. Even `lite` runs an
+Intelligent-Triage pass that replaces matched content with
+`[lean-ctx: N lines filtered by triage (level 2)]` — including whole-file
+`ctx_read` results and plain `stat` / `od -c` / `head` shell output. Narrow
+`lines:N-M` windows (small outputs only) and hatch-prefixed commands get
+through.
 
-If you hit `[lean-ctx: N lines filtered by triage (level 2)]` and need
-the raw content to make progress, use one of the per-command escape
-hatches (the allowlist still applies):
+If you hit that placeholder and need the raw content:
+
+1. Prefix the command with an escape hatch (the allowlist still applies).
+   These work while the lean-ctx daemon matches the on-disk config:
 
 ```bash
 LEAN_CTX_RAW=1 od -c /path/to/file.tsx          # uncompressed this run
 LEAN_CTX_DISABLED=1 sed -n '460,476p' file.tsx  # bypass compression + hook
+lean-ctx raw "od -c file.tsx"                   # CLI form
 ```
 
-Or via the CLI: `lean-ctx raw "od -c file.tsx"`.
+2. If the hatches ALSO come back filtered or empty, the daemon is stale
+   relative to disk — typically `compression_level` was changed without
+   `apply`, or the daemon predates a config/container change. Fix in order:
+   `lean-ctx config set <key> <value> && lean-ctx config apply` (restarts the
+   daemon; running sessions' ctx tools hang with `-32001` until
+   OpenChamber / `opencode serve` restarts), then retry. Full details:
+   `docs/knowledge/troubleshooting/lean-ctx-triage-blinds-diagnostic-output.md`.
 
-Other workarounds when shell output is filtered: write the result to a
-file, then `ctx_read` that file with a narrow `lines:N-M` window; or use
-`ctx_execute` (sandboxed) for multi-line logic. Do **not** raise
-`compression_level` to `standard`/`max` to "see more" — it makes the
-blind spot worse, not better.
+3. For file content, avoid whole-file reads under triage: write the bytes you
+   need to inspect and read them back with `ctx_read(mode="lines:N-M")` —
+   small windows pass where full reads do not. `ctx_execute` (sandboxed)
+   covers multi-line logic.
+
+Do **not** raise `compression_level` to `standard`/`max` to "see more" —
+it makes the blind spot worse, not better.
 
 ## Project Knowledge Base — Recall Before You Debug
 
