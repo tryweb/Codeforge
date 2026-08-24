@@ -500,3 +500,22 @@ pre { background: rgba(0,0,0,0.3); padding: 16px; border-radius: var(--radius); 
   letter-spacing: 0.15em; color: var(--text);
 }
 .oauth-flow .btn, .oauth-flow .btn-outline { min-height: 44px; }
+
+.spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin .6s linear infinite;
+  vertical-align: middle;
+  margin-right: 6px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.probe-hint { font-size: 12px; opacity: .7; margin-left: 4px; }
+.probe-elapsed { font-size: 13px; font-weight: 600; margin-left: 8px; }

@@ -155,7 +155,7 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
           </p>
           <div id="model-rows"></div>
           <div class="flex gap-2" style="justify-content:flex-end;margin-top:14px;">
-            <button class="btn-outline" onclick="closeModal()">Cancel</button>
+            <button id="btn-cancel" class="btn-outline" onclick="closeModal()">Cancel</button>
             <button id="btn-clear" class="btn-outline" style="display:none;" onclick="clearAgent()">Use automatic model</button>
             <button id="btn-save" onclick="saveAgent()">Save &amp; Restart</button>
           </div>
@@ -247,10 +247,18 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
           if (!confirm(confirmation)) return;
           var btn = document.getElementById('btn-save');
           var clearBtn = document.getElementById('btn-clear');
+          var cancelBtn = document.getElementById('btn-cancel');
           var status = document.getElementById('restart-status');
           btn.disabled = true;
           clearBtn.disabled = true;
-          status.textContent = 'Applying & restarting…';
+          if (cancelBtn) cancelBtn.disabled = true;
+          var elapsed = 0;
+          status.innerHTML = '<span class="spinner"></span> Applying &amp; restarting… <span class="probe-hint">This restarts ai-dev and typically takes 30–60 seconds.</span> <span class="probe-elapsed">0s</span>';
+          var timer = setInterval(function () {
+            elapsed += 1;
+            var el = status.querySelector('.probe-elapsed');
+            if (el) el.textContent = elapsed + 's';
+          }, 1000);
           try {
             var res = await fetch('/api/agent-models/' + encodeURIComponent(editAgentName), {
               method: 'PUT',
@@ -258,26 +266,31 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
               body: JSON.stringify({ entries: entries }),
             });
             var data = await res.json();
+            clearInterval(timer);
             if (!res.ok) {
               renderResult({ ok: false, error: data.error || ('HTTP ' + res.status) });
               btn.disabled = false;
               clearBtn.disabled = false;
+              if (cancelBtn) cancelBtn.disabled = false;
               status.textContent = '';
               return;
             }
             renderResult(data);
             if (data.ok === true) {
               status.textContent = 'Restarted ✔';
-              setTimeout(function () { status.textContent = ''; btn.disabled = false; clearBtn.disabled = false; location.reload(); }, 2500);
+              setTimeout(function () { status.textContent = ''; btn.disabled = false; clearBtn.disabled = false; if (cancelBtn) cancelBtn.disabled = false; location.reload(); }, 2500);
             } else {
               btn.disabled = false;
               clearBtn.disabled = false;
+              if (cancelBtn) cancelBtn.disabled = false;
               status.textContent = '';
             }
           } catch (e) {
+            clearInterval(timer);
             renderResult({ ok: false, error: e.message });
             btn.disabled = false;
             clearBtn.disabled = false;
+            if (cancelBtn) cancelBtn.disabled = false;
             status.textContent = '';
           }
         }
