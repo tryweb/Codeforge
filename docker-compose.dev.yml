@@ -51,8 +51,19 @@ services:
         sudo chown -R devuser:devuser /opt/ai-engkit
         mkdir -p /opt/ai-engkit/backups
         [ -f /opt/ai-engkit/VERSION ] || echo dev > /opt/ai-engkit/VERSION
-        [ -f /opt/ai-engkit/.env ] || env | grep -v -E '^(HOME|PATH|BUN_|NODE_|npm_|HOSTNAME|PWD|SHLVL|TERM|TZ|LS_COLORS|LESS[ _]|PAGER|EDITOR|LC_|LANG|SHELL|USER|SUDO_|TMPDIR|OLDPWD|_|LOGNAME|PLAYWRIGHT_|DEBIAN_|CLAUDE_)' > /opt/ai-engkit/.env
-        mkdir -p /opt/ai-engkit/admin-data
+         [ -f /opt/ai-engkit/.env ] || env | grep -v -E '^(HOME|PATH|BUN_|NODE_|npm_|HOSTNAME|PWD|SHLVL|TERM|TZ|LS_COLORS|LESS[ _]|PAGER|EDITOR|LC_|LANG|SHELL|USER|SUDO_|TMPDIR|OLDPWD|_|LOGNAME|PLAYWRIGHT_|DEBIAN_|CLAUDE_)' > /opt/ai-engkit/.env
+         if [ "$${OPENCODE_PROVIDER+x}" = x ]; then
+           env_tmp="$$(mktemp /opt/ai-engkit/.env.sync.XXXXXX)"
+           persisted_provider="$$(sed -n 's/^[[:space:]]*OPENCODE_PROVIDER=//p' /opt/ai-engkit/.env | tail -n 1)"
+           merged_provider="$$(jq -cn \
+             --arg persisted "$$persisted_provider" \
+             --arg compose "$$OPENCODE_PROVIDER" \
+             'def providers: try fromjson catch {} | if type == "object" then . else {} end; ($$persisted | providers) * ($$compose | providers)')"
+           grep -vE '^[[:space:]]*OPENCODE_PROVIDER=' /opt/ai-engkit/.env > "$$env_tmp" || true
+           printf 'OPENCODE_PROVIDER=%s\n' "$$merged_provider" >> "$$env_tmp"
+           mv "$$env_tmp" /opt/ai-engkit/.env
+         fi
+         mkdir -p /opt/ai-engkit/admin-data
         if [ -d /opt/ai-engkit/provider-state/provider-keys.json ]; then mv /opt/ai-engkit/provider-state/provider-keys.json /opt/ai-engkit/provider-state/provider-keys.json.legacy.$$(date +%s); fi
         if [ -f /opt/ai-engkit/provider-state/provider-keys.json ] && [ ! -e /opt/ai-engkit/admin-data/provider-keys.json ]; then mv /opt/ai-engkit/provider-state/provider-keys.json /opt/ai-engkit/admin-data/provider-keys.json; fi
         if [ -f /opt/ai-engkit/provider-keys.json ] && [ ! -e /opt/ai-engkit/admin-data/provider-keys.json ]; then mv /opt/ai-engkit/provider-keys.json /opt/ai-engkit/admin-data/provider-keys.json; fi
