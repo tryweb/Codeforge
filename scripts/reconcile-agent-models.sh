@@ -292,22 +292,53 @@ reconcile() {
       && endpoint="$(wait_for_provider 60)"; then
       cp "${TMPDIR:-/tmp}/agent-model-provider.$$.json" "$provider_file"
       post_available="$(catalog_from_provider_json "$provider_file")"
+      verify_tmp="$(mktemp -d "${TMPDIR:-/tmp}/agent-model-verify.XXXXXX")" || verify_tmp="${TMPDIR:-/tmp}/agent-model-verify.$$"
+      verify_pids=()
       for agent in "${AGENTS[@]}"; do
         if ! grep -Fqx "${targets[$agent]}" <<<"$post_available"; then
           log "WARNING: ${agent} target ${targets[$agent]} is no longer connected after restart"
-        elif verify_runtime "$endpoint" "$agent" "${targets[$agent]}"; then
+          continue
+        fi
+        (
+          if verify_runtime "$endpoint" "$agent" "${targets[$agent]}"; then
+            printf 'ok\n' > "$verify_tmp/$agent"
+          else
+            printf 'fail\n' > "$verify_tmp/$agent"
+          fi
+        ) &
+        verify_pids+=("$!")
+      done
+      for pid in "${verify_pids[@]}"; do
+        wait "$pid" 2>/dev/null || true
+      done
+      for agent in "${AGENTS[@]}"; do
+        [ -f "$verify_tmp/$agent" ] || continue
+        if [ "$(cat "$verify_tmp/$agent")" = ok ]; then
           log "${agent}: runtime verified (${targets[$agent]})"
         else
           log "WARNING: ${agent} /agent does not report ${targets[$agent]} yet"
+          VERIFY_FAILED=1
         fi
       done
+      rm -rf "$verify_tmp"
     else
       log "WARNING: managed server did not come back within 60s; skipping verification"
     fi
   fi
 
+  if [ "${VERIFY_FAILED:-0}" -eq 1 ] && [ -f "$backup_file" ]; then
+    log "runtime model verification failed; restoring the pre-reconcile configuration"
+    cp "$backup_file" "$OMO_CONFIG"
+    if [ -n "${native_backup_file:-}" ] && [ -f "$native_backup_file" ]; then
+      cp "$native_backup_file" "$OPENCODE_CONFIG"
+    fi
+    restart_managed_server || log "WARNING: managed server restart after rollback failed"
+  fi
+
   rm -f "$provider_file" "$backup_file" "$native_backup_file" "${TMPDIR:-/tmp}/agent-model-provider.$$.json"
 }
+
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/agent-model-health.sh"
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
   reconcile || true

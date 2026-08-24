@@ -283,6 +283,7 @@ RUN mkdir -p /opt/ai-engkit && echo "$AI_ENGKIT_VERSION" > /opt/ai-engkit/VERSIO
 # paths (host upgrade.sh, admin runUpgrade) can exec it inside ai-dev.
 COPY --chmod=0755 scripts/reconcile-openchamber-projects.sh /opt/ai-engkit/scripts/reconcile-openchamber-projects.sh
 COPY --chmod=0755 scripts/reconcile-agent-models.sh /opt/ai-engkit/scripts/reconcile-agent-models.sh
+COPY --chmod=0755 scripts/agent-model-health.sh /opt/ai-engkit/scripts/agent-model-health.sh
 
 # 預裝 baked skills 到 image（供 entrypoint 在 runtime 時 symlink 到 SKILLS_ROOT）
 COPY .opencode/baked-skills /opt/opencode/baked-skills
