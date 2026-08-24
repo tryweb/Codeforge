@@ -1,6 +1,27 @@
 ## [Unreleased]
 
 
+## [1.15.6] - 2026-08-24
+
+- Fix release test container and password setup
+- Record release-channel publish/promote design
+- Add promote-stable workflow
+- Cancel superseded runs, gate suites post-merge, drop auto-latest
+- Honor AI_ENGKIT_VERSION pin in upgrade.sh
+- Parametrize image tag with AI_ENGKIT_VERSION
+- Resolve deployable image ref via AI_ENGKIT_VERSION pin
+- Rewrite triage escape-hatch guidance in baked AGENTS.md
+- Correct lean-ctx triage guidance after live verification
+- Record AGENTS.md default sync deadlock knowledge
+- Sync AGENTS.md template block by content hash
+- Preserve custom providers during dev sync
+- Record agent-model verification knowledge
+- Add agent-model health verification tests
+- Route agent-model verification to the specified agent
+- Add agent-model health verification with rollback
+- Label Nvidia provider in admin
+- Add Nvidia auth key support
+
 ## [1.15.5] - 2026-08-23
 
 ### Added
@@ -1544,7 +1565,7 @@
 
 ## Format
 
-[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.15.5...HEAD
+[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.15.6...HEAD
 [0.3.0]: https://github.com/tryweb/ai-engkit/releases/tag/v0.3.0
 [0.3.3]: https://github.com/tryweb/ai-engkit/compare/v0.3.0...v0.3.3
 [0.5.0]: https://github.com/tryweb/ai-engkit/compare/v0.3.3...v0.5.0
@@ -1693,3 +1714,4 @@
 [1.15.3]: https://github.com/tryweb/ai-engkit/compare/v1.15.2...v1.15.3
 [1.15.4]: https://github.com/tryweb/ai-engkit/compare/v1.15.3...v1.15.4
 [1.15.5]: https://github.com/tryweb/ai-engkit/compare/v1.15.4...v1.15.5
+[1.15.6]: https://github.com/tryweb/ai-engkit/compare/v1.15.5...v1.15.6
