@@ -18,7 +18,7 @@ const CACHE_FILES = [
 ];
 
 /** Providers whose credentials are managed via the opencode auth store. */
-export const KEY_MANAGED_PROVIDERS = ["opencode-go", "openai"] as const;
+export const KEY_MANAGED_PROVIDERS = ["opencode-go", "openai", "nvidia"] as const;
 
 export interface AuthSnapshotDeps {
   readonly execInAiDev: (command: string, timeoutMs: number) => Promise<ExecResult>;
