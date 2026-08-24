@@ -267,14 +267,14 @@ pull_image() {
     header "6. Pulling Latest Docker Image"
 
     local old_id
-    old_id=$(docker images ghcr.io/tryweb/ai-engkit:latest -q 2>/dev/null || true)
+    old_id=$(docker images "$IMAGE_REF" -q 2>/dev/null || true)
     if [ -n "$old_id" ]; then
         echo "  Current image ID: ${old_id:0:12}"
     else
         info "No AI-EngKit image found locally"
     fi
 
-    echo "  Pulling ghcr.io/tryweb/ai-engkit:latest..."
+    echo "  Pulling ${IMAGE_REF}..."
     if docker compose pull 2>&1; then
         ok "Image updated to latest version"
     else
@@ -282,7 +282,7 @@ pull_image() {
     fi
 
     local new_id
-    new_id=$(docker images ghcr.io/tryweb/ai-engkit:latest -q 2>/dev/null || true)
+    new_id=$(docker images "$IMAGE_REF" -q 2>/dev/null || true)
     if [ -n "$new_id" ] && [ "$new_id" != "$old_id" ] && [ -n "$old_id" ]; then
         echo "  New image ID: ${new_id:0:12}"
     fi
@@ -492,6 +492,24 @@ self_update() {
 }
 
 # ──────────────────────────────────────────────────────────
+# Resolve version pin (AI_ENGKIT_VERSION in .env)
+# ──────────────────────────────────────────────────────────
+resolve_pins() {
+    # Pinned installs fetch runtime assets (compose, .env.example) and
+    # images matching their running version; unset tracks the stable
+    # channel (:latest, moved only on explicit promotion).
+    local pinned
+    pinned="$(grep -E '^AI_ENGKIT_VERSION=' .env 2>/dev/null | tail -n1 | cut -d= -f2 | tr -d '"' || true)"
+    if [ -n "$pinned" ]; then
+        REPO_URL="https://raw.githubusercontent.com/tryweb/ai-engkit/${pinned}"
+        IMAGE_REF="ghcr.io/tryweb/ai-engkit:${pinned}"
+        info "Version pin detected: ${pinned}"
+    else
+        IMAGE_REF="ghcr.io/tryweb/ai-engkit:latest"
+    fi
+}
+
+# ──────────────────────────────────────────────────────────
 # Main
 # ──────────────────────────────────────────────────────────
 verify_installed_environment() {
@@ -515,6 +533,7 @@ main() {
 
     # Self-update before any operations (skipped when piped to shell)
     self_update "$@"
+    resolve_pins
 
     echo
     echo -e "${BOLD}╔══════════════════════════════════════╗${NC}"
