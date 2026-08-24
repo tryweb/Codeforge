@@ -3,12 +3,22 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, cpSync, rmSync, sta
 import { join } from "node:path";
 import { readEnvFile, writeEnvFile, type EnvVars } from "./env";
 import { KEYS_PATH } from "./provider-keys";
+import { resolveImageRef } from "./image-ref";
 
 const BACKUP_DIR = "/opt/ai-engkit/backups";
 const COMPOSE_FILE = "/opt/ai-engkit/compose.yml";
 const ENV_FILE = "/opt/ai-engkit/.env";
-const IMAGE = "ghcr.io/tryweb/ai-engkit:latest";
-const UPSTREAM_BASE = "https://raw.githubusercontent.com/tryweb/ai-engkit/main";
+const UPSTREAM_REPO = "https://raw.githubusercontent.com/tryweb/ai-engkit";
+
+/**
+ * Upstream raw-content base for upgrade assets (compose file,
+ * .env.example). Pinned installs (AI_ENGKIT_VERSION in .env) fetch assets
+ * matching their running version instead of whatever main currently has.
+ */
+function upstreamBase(): string {
+  const version = readEnvFile().AI_ENGKIT_VERSION?.trim();
+  return version ? `${UPSTREAM_REPO}/${version}` : `${UPSTREAM_REPO}/main`;
+}
 
 /** BACKUP_RETENTION from .env: positive integer, default 5 (mirrors upgrade.sh). */
 export function resolveBackupRetention(env: EnvVars): number {
@@ -131,7 +141,7 @@ async function fetchLatestCompose(): Promise<string | null> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 30_000);
   try {
-    const res = await fetch(`${UPSTREAM_BASE}/docker-compose.yml`, { signal: controller.signal });
+    const res = await fetch(`${upstreamBase()}/docker-compose.yml`, { signal: controller.signal });
     if (!res.ok) return null;
     return await res.text();
   } catch {
@@ -152,11 +162,11 @@ export async function runUpgrade(): Promise<boolean> {
     if (st.isDirectory()) {
       rmSync(COMPOSE_FILE, { recursive: true });
       const siblingName = await (await import("./docker")).getSiblingDevContainerName().catch(() => "ai-engkit-dev");
-      writeFileSync(COMPOSE_FILE, `services:\n  ai-dev:\n    image: ${IMAGE}\n    container_name: ${siblingName}\n    restart: unless-stopped\n`);
+      writeFileSync(COMPOSE_FILE, `services:\n  ai-dev:\n    image: ${resolveImageRef()}\n    container_name: ${siblingName}\n    restart: unless-stopped\n`);
     }
   } catch {
     const siblingName = await (await import("./docker")).getSiblingDevContainerName().catch(() => "ai-engkit-dev");
-    writeFileSync(COMPOSE_FILE, `services:\n  ai-dev:\n    image: ${IMAGE}\n    container_name: ${siblingName}\n    restart: unless-stopped\n`);
+    writeFileSync(COMPOSE_FILE, `services:\n  ai-dev:\n    image: ${resolveImageRef()}\n    container_name: ${siblingName}\n    restart: unless-stopped\n`);
   }
 
   // Dev build guard: version=dev indicates a locally-built image, skip upgrade
@@ -174,7 +184,7 @@ export async function runUpgrade(): Promise<boolean> {
   try {
     // Step 1: Digest compare
     emit("digest_compare", "running", "Fetching latest image digest...");
-    const pullResult = await dockerCommand(`pull ${IMAGE}`, 180_000);
+    const pullResult = await dockerCommand(`pull ${resolveImageRef()}`, 180_000);
     if (pullResult.exitCode !== 0) {
       throw new Error(`Failed to pull image: ${pullResult.stderr}`);
     }
@@ -294,7 +304,7 @@ async function mergeEnvFromUpstream(): Promise<void> {
   const currentEnv = readEnvFile();
   // Fetch .env.example from upstream
   const result = await execInAiDev(
-    `curl -sS ${UPSTREAM_BASE}/.env.example 2>/dev/null || true`,
+    `curl -sS ${upstreamBase()}/.env.example 2>/dev/null || true`,
     30_000,
   );
   if (result.exitCode !== 0 || !result.stdout) return;

@@ -9,6 +9,7 @@ import {
   runCommand,
 } from "../lib/docker";
 import { PASSWORD_KEYS } from "../lib/env-schema";
+import { resolveImageRef } from "../lib/image-ref";
 import { readEnvFile, upsertEnvVar as upsertRealEnvVar } from "../lib/env";
 import { KEY_MATERIAL_PATTERN, readSanitizedGlobalConfig, setGlobalConfig as realSetGlobalConfig } from "../lib/git-config";
 import { logoutGh as realLogoutGh, startDeviceFlow as realStartDeviceFlow, type DeviceFlowInfo } from "../lib/gh-auth";
@@ -91,8 +92,8 @@ const SECRET_MASK = "••••••";
 const COMPOSE_FILE = "/opt/ai-engkit/compose.yml";
 const ENV_FILE = "/opt/ai-engkit/.env";
 // ai-admin has no upgrade flow (runUpgrade only recreates ai-dev), so its
-// restart is its only path to a newly published image.
-const IMAGE = "ghcr.io/tryweb/ai-engkit:latest";
+// restart is its only path to a newly published image. The ref follows the
+// AI_ENGKIT_VERSION pin when set, else the stable latest tag.
 
 /** Runtime operations used to execute commands and serve read-only queries. */
 export interface CommandDeps {
@@ -1709,7 +1710,7 @@ export function createRealCommandDeps(
             // ai-admin has no upgrade flow; fetch the latest tag so the
             // recreate below applies the newest published image. Best-effort:
             // a registry outage must not block the restart itself.
-            await dockerCommand(`pull ${IMAGE} 2>&1`, 120_000);
+            await dockerCommand(`pull ${resolveImageRef()} 2>&1`, 120_000);
             // Recreate ai-admin from a helper container (mirroring
             // POST /api/admin/restart): compose run in-place stops the very
             // container executing it, killing the agent mid-recreate.
@@ -1725,7 +1726,7 @@ export function createRealCommandDeps(
                 "-v", `${envSource}:${envSource}:ro`,
                 "-v", `${composeSource}:${composeSource}:ro`,
                 "-v", "/var/run/docker.sock:/var/run/docker.sock",
-                IMAGE,
+                resolveImageRef(),
                 "compose", "-p", project,
                 "--env-file", envSource,
                 "-f", composeSource,

@@ -2,8 +2,7 @@ import { readFileSync } from "fs";
 import { Hono } from "hono";
 import { execInAiDev, dockerCommand, getAiDevContainerRef, getSelfContainerRef } from "../lib/docker";
 import { VersionsPage } from "../views/versions";
-
-const IMAGE = "ghcr.io/tryweb/ai-engkit:latest";
+import { resolveImageRef } from "../lib/image-ref";
 
 export interface UpdateCheckResult {
   current: string;
@@ -19,7 +18,7 @@ let inFlightCheck: Promise<UpdateCheckResult> | null = null;
 
 async function getRemoteDigest(): Promise<string | null> {
   const result = await dockerCommand(
-    `manifest inspect ${IMAGE} | jq -r '.config.digest'`,
+    `manifest inspect ${resolveImageRef()} | jq -r '.config.digest'`,
     15_000,
   );
   if (result.exitCode !== 0 || !result.stdout) return null;
