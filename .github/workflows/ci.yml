@@ -6,12 +6,24 @@ permissions:
 env:
   REGISTRY: ghcr.io
 
+# Supersede stale runs: rapid successive pushes cancel the queued one
+# instead of running every full pipeline back-to-back.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
     tags: ['v*']
   pull_request:
     branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
   workflow_dispatch:
     inputs:
       head_sha:
@@ -62,6 +74,7 @@ jobs:
   test:
     name: Integration Tests
     needs: build
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -257,7 +270,6 @@ jobs:
           IMAGE="${{ env.REGISTRY }}/${GITHUB_REPOSITORY,,}"
           docker tag ai-engkit:ci "${IMAGE}:${{ github.ref_name }}"
           docker tag ai-engkit:ci "${IMAGE}:sha-${{ github.sha }}"
-          docker tag ai-engkit:ci "${IMAGE}:latest"
           docker push --all-tags "${IMAGE}"
 
   release:
@@ -379,7 +391,6 @@ jobs:
           NEXT_VERSION="${{ steps.version.outputs.next-version }}"
           docker tag ai-engkit:ci "${IMAGE}:${NEXT_VERSION}"
           docker tag ai-engkit:ci "${IMAGE}:sha-${{ github.sha }}"
-          docker tag ai-engkit:ci "${IMAGE}:latest"
           docker push --all-tags "${IMAGE}"
           echo "::notice::Pushed image: ${IMAGE}:${NEXT_VERSION}"
 
