@@ -7,6 +7,7 @@ import {
   type AgentModelsDeps,
   type AgentModelsLib,
 } from "../lib/agent-models";
+import { parseModelReference, probeModel, type ProbeResult } from "../lib/model-probe";
 import { AgentModelsPage } from "../views/agent-models";
 
 const AGENT_KEY_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
@@ -56,8 +57,32 @@ export function createAgentModelsRoutes(deps: AgentModelsDeps): Hono {
     if (entries.some((entry) => !catalog.has(entry.model))) {
       return c.json({ error: "model is not available in the current environment catalog" }, 400);
     }
+
+    for (const entry of entries) {
+      const ref = parseModelReference(entry.model);
+      if (ref === null) continue;
+      const probe: ProbeResult = await probeModel(deps, ref.providerID, ref.modelID);
+      if (probe.status === "retired") {
+        return c.json({ error: `model ${entry.model} has been retired (end of life): ${probe.reason ?? ""}` }, 400);
+      }
+      if (probe.status === "unavailable") {
+        return c.json({ error: `model ${entry.model} is unavailable: ${probe.reason ?? ""}` }, 400);
+      }
+    }
+
     const result = await lib.applyAndVerify(agent, entries);
     return c.json(result);
+  });
+
+  agentModels.get("/api/agent-models/verify-model", async (c) => {
+    const modelRef = c.req.query("model");
+    if (!modelRef) return c.json({ error: "model parameter required" }, 400);
+
+    const ref = parseModelReference(modelRef);
+    if (ref === null) return c.json({ error: "invalid model format — expected provider/model" }, 400);
+
+    const probe = await probeModel(deps, ref.providerID, ref.modelID);
+    return c.json({ model: modelRef, ...probe });
   });
 
   agentModels.get("/agent-models", async (c) => {
