@@ -13,6 +13,15 @@ When the user asks to release, follow these steps in order:
 
 ### 1. Ensure Dev Container Is Running
 
+Clear any inherited admin password before Compose resolves `docker-compose.dev.yml`.
+This prevents a production/staging shell export from overriding the dev test
+password; Compose will then read the repository `.env` when present, otherwise
+use its documented `testadmin123` fallback.
+
+```bash
+unset ADMIN_PASSWORD
+```
+
 The tests require the `ai-engkit-dev` container (from `docker-compose.dev.yml`) to be running. Check if it's up:
 
 ```bash
@@ -76,7 +85,7 @@ There are three test suites that cover both the main dev container and the admin
 # === 1. Main dev container — basic functionality ===
 # Tests: OpenChamber, OpenCode, Web UI, Health API, dev tools, CodeGraph, LeanCTX
 echo "[release] Running main dev container tests against $DEV_CONTAINER..."
-./test/run-tests.sh "$DEV_CONTAINER"
+./test/run-tests.sh ai-engkit-dev
 if [ $? -ne 0 ]; then
   echo "[release] ERROR: Main dev container tests failed."
   exit 1
@@ -85,7 +94,7 @@ fi
 # === 2. Admin container — dashboard integration ===
 # Tests: container status, healthcheck, auth, OpenAPI spec
 echo "[release] Running admin container tests against $ADMIN_CONTAINER..."
-./test/test-admin.sh "$ADMIN_CONTAINER"
+./test/test-admin.sh ai-engkit-admin-dev
 if [ $? -ne 0 ]; then
   echo "[release] ERROR: Admin container tests failed."
   exit 1
