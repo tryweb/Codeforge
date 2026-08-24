@@ -1,6 +1,17 @@
 ## [Unreleased]
 
 
+## [1.15.7] - 2026-08-24
+
+### Added
+- Add probe spinner and cancel handling
+- Auto-import auth-store keys into empty registry
+- Add real model availability probe via opencode session API
+- Restart ai-dev and verify lean-ctx daemon in LeanCTX apply flow
+
+### Changed
+- Remove obsolete OMO model defaults setting
+
 ## [1.15.6] - 2026-08-24
 
 - Fix release test container and password setup
@@ -1565,7 +1576,7 @@
 
 ## Format
 
-[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.15.6...HEAD
+[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.15.7...HEAD
 [0.3.0]: https://github.com/tryweb/ai-engkit/releases/tag/v0.3.0
 [0.3.3]: https://github.com/tryweb/ai-engkit/compare/v0.3.0...v0.3.3
 [0.5.0]: https://github.com/tryweb/ai-engkit/compare/v0.3.3...v0.5.0
@@ -1715,3 +1726,4 @@
 [1.15.4]: https://github.com/tryweb/ai-engkit/compare/v1.15.3...v1.15.4
 [1.15.5]: https://github.com/tryweb/ai-engkit/compare/v1.15.4...v1.15.5
 [1.15.6]: https://github.com/tryweb/ai-engkit/compare/v1.15.5...v1.15.6
+[1.15.7]: https://github.com/tryweb/ai-engkit/compare/v1.15.6...v1.15.7
