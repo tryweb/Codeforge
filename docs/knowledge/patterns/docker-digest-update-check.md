@@ -39,11 +39,11 @@ flowchart LR
 ### Key code (`src/admin/routes/versions.ts`)
 
 ```typescript
-const IMAGE = "ghcr.io/tryweb/ai-engkit:latest";
+import { resolveImageRef } from "../lib/image-ref";
 
 async function getRemoteDigest(): Promise<string | null> {
   const result = await dockerCommand(
-    `manifest inspect ${IMAGE} | jq -r '.config.digest'`,
+    `manifest inspect ${resolveImageRef()} | jq -r '.config.digest'`,
     15_000,
   );
   if (result.exitCode !== 0 || !result.stdout) return null;
@@ -83,6 +83,11 @@ down), the check returns `up-to-date` — no failure badge shown.
 
 ## Side Effects / Tradeoffs
 
+- **`latest` moves only on explicit promotion (2026-08):** the check compares
+  against whatever the stable channel points at, so it stays quiet until a release
+  is promoted via `.github/workflows/promote.yml`. The ref resolves through
+  `resolveImageRef()` (`src/admin/lib/image-ref.ts`), which honors the
+  `AI_ENGKIT_VERSION` pin in `/opt/ai-engkit/.env` instead of a hardcoded tag.
 - **Version string lost**: The old code could report the exact new version (e.g.
   `v1.5.0 available`). The digest approach only says `New image available` since the new
   version label lives inside the image and can't be read without pulling.
