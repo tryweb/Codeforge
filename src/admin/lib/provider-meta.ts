@@ -29,6 +29,7 @@ export interface ProviderMeta {
 const KEY_MANAGED_LABELS: Record<string, string> = {
   "opencode-go": "Opencode Go",
   openai: "OpenAI API",
+  nvidia: "Nvidia API",
 };
 
 /** Providers that also offer the ChatGPT Pro/Plus headless OAuth connection. */
