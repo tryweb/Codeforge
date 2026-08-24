@@ -68,6 +68,9 @@ export function maskKey(value: string): string {
 export function addProviderKey(provider: string, value: string, note = ""): ProviderKey {
   const file = readProviderKeys();
   const entry: ProviderKeyEntry = file.providers[provider] ?? { keys: [], activeKeyId: null };
+  const trimmed = value.trim();
+  const existing = entry.keys.find((k) => k.value.trim() === trimmed);
+  if (existing) return existing;
   const key: ProviderKey = {
     id: `k-${Date.now().toString(36)}`,
     value,

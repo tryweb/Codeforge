@@ -2,8 +2,15 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { collectProvidersMeta } from "./provider-meta";
+import { collectProvidersMeta, type ProvidersMetaDeps } from "./provider-meta";
 import { maskKey } from "./provider-keys";
+
+const authStoreKeys = new Map<string, string | null>();
+const authStoreOAuth = new Map<string, boolean>();
+const stubDeps: ProvidersMetaDeps = {
+  readAuthKey: (provider) => Promise.resolve(authStoreKeys.get(provider) ?? null),
+  readOAuthPresence: (provider) => Promise.resolve(authStoreOAuth.get(provider) ?? false),
+};
 
 interface RegistryFixture {
   registryPath: string;
@@ -33,7 +40,7 @@ describe("collectProvidersMeta", () => {
     // virtual cards, so the assertion pins: nothing configured, nothing from
     // a registry that does not exist.
     await withRegistry(null, async () => {
-      const meta = await collectProvidersMeta();
+      const meta = await collectProvidersMeta(stubDeps);
       expect(meta.invalid).toBe(false);
       expect(meta.error).toBeNull();
       expect(meta.providers.filter((p) => !p.virtual)).toEqual([]);
@@ -55,7 +62,7 @@ describe("collectProvidersMeta", () => {
       },
     });
     await withRegistry(seed, async () => {
-      const meta = await collectProvidersMeta();
+      const meta = await collectProvidersMeta(stubDeps);
       const provider = meta.providers.find((p) => p.name === "opencode-go");
       expect(provider).toBeDefined();
       expect(provider?.registry.keyCount).toBe(1);
@@ -77,7 +84,7 @@ describe("collectProvidersMeta", () => {
       },
     });
     await withRegistry(seed, async () => {
-      const meta = await collectProvidersMeta();
+      const meta = await collectProvidersMeta(stubDeps);
       const openai = meta.providers.find((p) => p.name === "openai");
       expect(openai).toBeDefined();
       expect(openai?.label).toBe("OpenAI API");
@@ -88,5 +95,42 @@ describe("collectProvidersMeta", () => {
       expect(openai?.registry.keyCount).toBe(1);
       expect(openai?.registry.activeKeyId).toBe("k1");
     });
+  });
+
+  test("auto-imports an auth-store key into an empty registry and masks it", async () => {
+    const rawKey = "nvapi-sk-autoimport-1234567890";
+    authStoreKeys.set("nvidia", rawKey);
+    try {
+      await withRegistry(null, async (fixture) => {
+        const meta = await collectProvidersMeta(stubDeps);
+        const nvidia = meta.providers.find((p) => p.name === "nvidia");
+        expect(nvidia).toBeDefined();
+        expect(nvidia?.registry.keyCount).toBe(1);
+        expect(nvidia?.registry.keys[0]?.masked).toBe(maskKey(rawKey));
+        expect(nvidia?.registry.keys[0]?.note).toBe("imported from auth store");
+        expect(nvidia?.registry.keys[0]?.active).toBe(true);
+        expect(JSON.stringify(meta)).not.toContain(rawKey);
+        const persisted = JSON.parse(await Bun.file(fixture.registryPath).text());
+        expect(persisted.providers.nvidia.keys).toHaveLength(1);
+        expect(persisted.providers.nvidia.keys[0].value).toBe(rawKey);
+      });
+    } finally {
+      authStoreKeys.delete("nvidia");
+    }
+  });
+
+  test("re-collecting does not duplicate the imported key", async () => {
+    const rawKey = "nvapi-sk-idempotent-1234567890";
+    authStoreKeys.set("nvidia", rawKey);
+    try {
+      await withRegistry(null, async () => {
+        await collectProvidersMeta(stubDeps);
+        const second = await collectProvidersMeta(stubDeps);
+        const nvidia = second.providers.find((p) => p.name === "nvidia");
+        expect(nvidia?.registry.keyCount).toBe(1);
+      });
+    } finally {
+      authStoreKeys.delete("nvidia");
+    }
   });
 });

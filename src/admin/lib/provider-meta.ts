@@ -1,6 +1,6 @@
 import { readEnvFile } from "./env";
 import { PROVIDER_ENV_KEY, parseProviders, getProviderApiKey } from "./providers";
-import { readProviderKeys, maskKey } from "./provider-keys";
+import { readProviderKeys, maskKey, addProviderKey } from "./provider-keys";
 import {
   KEY_MANAGED_PROVIDERS,
   isKeyProviderSupported,
@@ -35,7 +35,17 @@ const KEY_MANAGED_LABELS: Record<string, string> = {
 /** Providers that also offer the ChatGPT Pro/Plus headless OAuth connection. */
 export const OAUTH_MANAGED_PROVIDERS = ["openai"] as const;
 
-export async function collectProvidersMeta(): Promise<{
+export interface ProvidersMetaDeps {
+  readonly readAuthKey: (provider: string) => Promise<string | null>;
+  readonly readOAuthPresence: (provider: string) => Promise<boolean>;
+}
+
+const REAL_META_DEPS: ProvidersMetaDeps = {
+  readAuthKey: readProviderAuthKey,
+  readOAuthPresence: readProviderOAuthPresence,
+};
+
+export async function collectProvidersMeta(deps: ProvidersMetaDeps = REAL_META_DEPS): Promise<{
   invalid: boolean;
   error: string | null;
   providers: ProviderMeta[];
@@ -58,8 +68,8 @@ export async function collectProvidersMeta(): Promise<{
   const authStoreOAuth = new Map<string, boolean>();
   await Promise.all(
     keyManagedNames.map(async (name) => {
-      authStoreKeys.set(name, await readProviderAuthKey(name));
-      authStoreOAuth.set(name, await readProviderOAuthPresence(name));
+      authStoreKeys.set(name, await deps.readAuthKey(name));
+      authStoreOAuth.set(name, await deps.readOAuthPresence(name));
     }),
   );
 
@@ -124,6 +134,34 @@ export async function collectProvidersMeta(): Promise<{
       virtual: true,
       registry,
     });
+  }
+
+  // A credential that exists only in the opencode auth store is invisible on
+  // the card (registry empty), so mirror it into the registry here — the
+  // write-on-read is idempotent: addProviderKey dedupes by value and the
+  // keyCount>0 guard skips cards that already surface keys.
+  for (const meta of out) {
+    if (!meta.keyManagement || meta.registry.keyCount > 0) continue;
+    const authKey = authStoreKeys.get(meta.name);
+    if (!authKey) continue;
+    try {
+      addProviderKey(meta.name, authKey, "imported from auth store");
+    } catch {
+      continue;
+    }
+    const fresh = readProviderKeys().providers[meta.name];
+    if (fresh) {
+      meta.registry = {
+        keyCount: fresh.keys.length,
+        activeKeyId: fresh.activeKeyId,
+        keys: fresh.keys.map((k) => ({
+          id: k.id,
+          masked: maskKey(k.value),
+          note: k.note ?? "",
+          active: k.id === fresh.activeKeyId,
+        })),
+      };
+    }
   }
 
   return { invalid: false, error: null, providers: out };
