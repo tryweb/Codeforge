@@ -36,7 +36,7 @@ function buildRequestVerificationScript(auth: string, agent: string): string {
   AGENT=\$(printf '%s' '${agentBase64}' | base64 -d)
   SESSION=\$(jq -nc --arg agent "\$AGENT" '{agent:\$agent,title:"agent model verification"}' | curl -fsS -m 5 -H "Authorization: Basic ${auth}" -H 'Content-Type: application/json' -X POST "\$BASE/session" -d @- 2>/dev/null | jq -r '.id // empty')
   [ -n "\$SESSION" ] || exit 2
-  OUT=\$(curl -fsS -m 45 -H "Authorization: Basic ${auth}" -H 'Content-Type: application/json' -X POST "\$BASE/session/\${SESSION}/message" -d '{"parts":[{"type":"text","text":"Reply with exactly OK."}]}' 2>/dev/null || true)
+  OUT=\$(curl -fsS -m 45 -H "Authorization: Basic ${auth}" -H 'Content-Type: application/json' -X POST "\$BASE/session/\${SESSION}/message" -d "\$(jq -nc --arg agent \"\$AGENT\" '{agent:\$agent,parts:[{type:\"text\",text:\"Reply with exactly OK.\"}]}')" 2>/dev/null || true)
   curl -fsS -m 5 -H "Authorization: Basic ${auth}" -X DELETE "\$BASE/session/\${SESSION}" >/dev/null 2>&1 || true
   printf '%s' "\$OUT"
   exit 0
@@ -210,6 +210,9 @@ export function createAgentModelLiveClient(deps: Pick<AgentModelsDeps, "exec">) 
   async function fetchSuccessfulRequestModel(password: string, agent: string): Promise<ResolvedModel | null> {
     const auth = Buffer.from(`opencode:${password}`).toString("base64");
     const result = await deps.exec(buildRequestVerificationScript(auth, agent), 90_000);
+    if (process.env.AGENT_MODELS_DEBUG === "1") {
+      console.error(`[agent-model-live] response body for ${agent}:`, result.stdout);
+    }
     return result.exitCode === 0 ? parseSuccessfulRequestModel(result.stdout) : null;
   }
 

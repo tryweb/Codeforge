@@ -211,6 +211,36 @@ describe("fetchConnectedCatalog", () => {
 });
 
 describe("applyAndVerify", () => {
+  test("logs the raw request response body when Agent Models debugging is enabled", async () => {
+    const previousDebug = process.env.AGENT_MODELS_DEBUG;
+    const originalError = console.error;
+    const messages: string[] = [];
+    console.error = (...args: unknown[]) => messages.push(args.map(String).join(" "));
+    process.env.AGENT_MODELS_DEBUG = "1";
+
+    try {
+      const { deps } = stubDeps([
+        {
+          stdout: JSON.stringify({ info: { role: "assistant", modelID: "kimi-k3", providerID: "opencode-go" } }),
+        },
+      ]);
+      const lib = createAgentModelsLib(deps);
+
+      await lib.fetchSuccessfulRequestModel("testpass", "librarian");
+
+      expect(messages).toEqual([
+        `[agent-model-live] response body for librarian: ${JSON.stringify({ info: { role: "assistant", modelID: "kimi-k3", providerID: "opencode-go" } })}`,
+      ]);
+    } finally {
+      console.error = originalError;
+      if (previousDebug === undefined) {
+        delete process.env.AGENT_MODELS_DEBUG;
+      } else {
+        process.env.AGENT_MODELS_DEBUG = previousDebug;
+      }
+    }
+  });
+
   test("refuses to apply when the config snapshot cannot be created", async () => {
     const ctx = stubDeps([{ stdout: "", exitCode: 1 }]);
     const result = await createAgentModelsLib(ctx.deps).applyAndVerify("librarian", []);
