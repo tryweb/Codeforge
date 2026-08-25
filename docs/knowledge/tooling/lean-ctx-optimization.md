@@ -206,8 +206,8 @@ CONTAINER=$(docker compose -f docker-compose.dev.yml ps --format '{{.Name}}' | h
 
 1. `lean-ctx --version` 回報 Dockerfile pin 的版本。
 2. baked `config.toml` 通過 `lean-ctx config validate`,且明確包含預期的 `cognitive_mode`。
-3. `opencode mcp list` 顯示 lean-ctx connected,核心工具 `ctx_read`、`ctx_shell`、`ctx_compose` 存在;不要斷言固定工具總數,因為工具可見性受 profile 影響。
-4. `lean-ctx doctor` 不新增 failure,並以 execution agent / read-only agent 各跑一個代表性 workflow,確認沒有可重現的 permission regression 或 hang。
+3. `opencode mcp list` 顯示 lean-ctx connected,核心工具 `ctx_read`、`ctx_shell`、`ctx_compose` 存在;不要斷言固定工具總數,因為工具可見性受 profile 影響。這只驗證 MCP 可用性,不取代 CodeGraph/native correctness authority。
+4. `lean-ctx doctor` 不新增 failure,並以 execution agent / read-only agent 各跑一個代表性 workflow,確認沒有可重現的 permission regression 或 hang;診斷、測試、git、build 與寫入的 correctness claims 須以 native/LSP/direct surfaces 驗證。
 5. CPU、RAM、latency 與 volume 使用量只以前後固定 workload 的實測值評估;upstream release notes 未提供可直接套用的資源增幅。
 
 生產部署前先備份 `lean-ctx-data`、`lean-ctx-state` volumes。若 MCP 斷線、核心工具缺失、persisted state 無法讀取或發生可重現的 permission regression,恢復舊 image 與升級前 volume snapshot。`cognitive_mode = "off"` 僅用於隔離 cognitive 功能問題,不視為完整 rollback。

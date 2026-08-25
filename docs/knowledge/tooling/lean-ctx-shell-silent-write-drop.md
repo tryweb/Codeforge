@@ -34,6 +34,13 @@ commands (`ls`, `cat`, `find`) kept working throughout.
 
 ## Solution
 
+This incident is why lean-ctx is not the correctness authority for writes or
+their verification. Use native anchored reads/edits and direct test or git
+commands for correctness-sensitive claims. `interactive_bash`/tmux is an
+available execution surface for a state-mutating command when the real shell
+must be exercised; it does not change the MCP registration, permission
+inheritance, path jail, or memory/knowledge persistence contract.
+
 Route state-mutating or output-writing commands through `interactive_bash`
 (tmux) instead of `ctx_shell`, and land outputs inside the project tree:
 

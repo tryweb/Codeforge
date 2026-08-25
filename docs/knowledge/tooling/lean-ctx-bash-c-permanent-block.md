@@ -27,6 +27,13 @@ via `lean-ctx allow bash` does **not** unblock `bash -c` (verified empirically
 globally for every command.
 
 ## Solution
+This shell restriction is operational knowledge, not a correctness guarantee:
+CodeGraph and native anchored reads/edits remain authoritative for indexed
+source and direct LSP diagnostics, tests, builds, git, and writes. lean-ctx
+memory/knowledge tools remain available, while `ctx_shell` is suitable only
+for non-authoritative exploration here. Raw hatches are not guaranteed under
+daemon or configuration drift.
+
 Per lean-ctx's own error message: **write the script to a file and execute
 the file** (any of these pass; no `-c` flag):
 

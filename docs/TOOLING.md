@@ -27,6 +27,36 @@ Related files:
 - `entrypoint.d/02-init-config.sh`
 - `docs/knowledge/tooling/lean-ctx-xdg-layout.md`
 
+## Authority and Routing
+
+CodeGraph is authoritative for indexed source, symbols, dependencies, and source/flow tracing. For correctness-sensitive source work, use native anchored reads and edits, direct LSP diagnostics, direct tests/builds, and direct git commands. These native surfaces are the authority for claims about diagnostics, tests, git, and writes.
+
+lean-ctx remains available for memory and knowledge persistence (`ctx_knowledge`, `ctx_session`) and for non-authoritative exploration (`ctx_read`, `ctx_shell`). Raw hatches such as `LEAN_CTX_RAW=1` and `LEAN_CTX_DISABLED=1` are not guaranteed under daemon or configuration drift and do not establish correctness. MCP registration, permission inheritance, path jail, and memory/knowledge persistence remain unchanged.
+
+The task-7 G0 verdict is immutably `disable-routing` because the required campaign stopped before execution (`campaignExecuted=false`, `campaignCommandCount=0`). This repository therefore has no runtime routing toggle: generated guidance is the routing state, and automatic Read, Search, and Shell routing is absent/disabled. Re-enable requires a new isolated passing G0-G4 evaluation followed by an explicit repository guidance decision; drift reports remain report-only and never re-enable routing.
+
+The one-time migration changes only an eligible `lite`, `standard`, or `max` runtime compression value. It first writes `${LEANCTX_RUNTIME_CONFIG}.pre-migration-v1`, then writes `off` and `${LEANCTX_RUNTIME_CONFIG}.migration-v1`. To roll back in a disposable environment, restore that versioned backup and keep the marker so startup does not silently migrate it again; Apply and restart remain explicit administrator actions. Removing the marker is an intentional migration re-run, not a routing re-enable.
+
+Use only a disposable runtime configuration when rehearsing rollback:
+
+```bash
+CONFIG=/tmp/opencode/lean-ctx-rollback/config.toml
+cp -- "${CONFIG}.pre-migration-v1" "$CONFIG"
+test -f "${CONFIG}.migration-v1"
+```
+
+Re-enable has no direct toggle. A candidate must first pass the checked-in live gates and isolated campaign, then receive an explicit repository-guidance decision:
+
+```bash
+OUT="$PWD/.omo/evidence/lean-ctx-reliability-gate/re-enable-candidate"
+./test/leanctx-reliability-gate.sh --gates
+./test/leanctx-reliability-gate.sh --campaign --execute-campaign --out-dir "$OUT"
+```
+
+These commands do not themselves re-enable routing. Review `$OUT/verdict.json`; routing remains disabled unless the deterministic verdict is `retain` and repository guidance is deliberately updated.
+
+See `.opencode/AGENTS.md.default` for the generated user guidance and `docs/knowledge/tooling/lean-ctx-shell-silent-write-drop.md` for the verified silent-write failure boundary.
+
 ## Built-in Developer CLI Tools
 
 ### Source control and repo workflows
@@ -101,6 +131,8 @@ Several tools keep their own persistent data:
 - git / SSH / `gh` / `glab` auth volumes
 
 This keeps the workspace disposable while preserving the parts that should survive restarts.
+
+The reliability decision does not remove or bypass the lean-ctx MCP registration, Admin editor/drift API, `ctx_knowledge`, `ctx_session`, permission inheritance, path jail, or shell-write policy. `lean-ctx-data` and `lean-ctx-state` remain persistent boundaries; no production volume is deleted. Configuration drift is report-only, and configuration Apply or service restart is never implicit after migration or evaluation.
 
 ## Where to Look Next
 

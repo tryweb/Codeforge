@@ -1,5 +1,17 @@
 <!-- @ai-engkit -->
 
+<!-- ai-engkit-authority -->
+## Tool Authority
+
+- CodeGraph is the first authority for indexed source, symbols, dependencies, and source and flow tracing.
+- For correctness-sensitive source operations, use native anchored read/edit tools; use direct LSP diagnostics, direct tests/builds, and direct git commands for correctness claims about diagnostics, tests, git, and writes.
+- Repository routing state is fail-closed: automatic Read, Search, and Shell routing is disabled after the task-7 G0 verdict `disable-routing`; no runtime routing toggle exists.
+- Re-enable requires a new isolated passing G0-G4 evaluation and an explicit repository guidance decision; it is never an automatic toggle.
+- lean-ctx remains available for memory and knowledge tools such as `ctx_knowledge` and `ctx_session`, and for non-authoritative exploration with `ctx_read` or `ctx_shell`.
+- Raw hatches such as `LEAN_CTX_RAW=1` and `LEAN_CTX_DISABLED=1` are not guaranteed under daemon or configuration drift and do not establish correctness.
+- Keep MCP registration, permission inheritance, path jail, and memory/knowledge persistence unchanged; do not infer authoritative success from lean-ctx output alone.
+<!-- /ai-engkit-authority -->
+
 ## ai-engkit DooD Network Awareness
 
 ai-engkit uses **Docker-out-of-Docker (DooD)** mode: the `/var/run/docker.sock`

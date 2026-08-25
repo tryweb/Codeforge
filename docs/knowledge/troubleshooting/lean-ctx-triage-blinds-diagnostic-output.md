@@ -42,11 +42,16 @@ Concrete failure mode (observed in an OpenChamber session titled
 5. Agent loops: can't edit (mismatch), can't diagnose (output hidden), can't edit.
 
 ## Solution
-Change the baked `compression_level` from `"standard"` to `"lite"` (lean-ctx's
-upstream default). `lite` restores visibility for routine diagnostics while
-still compressing large routine output.
+The current repository baseline is explicit `compression_level = "off"`. The
+2026-08-25 reliability gate classified the fleet as `disable-routing`, so
+automatic Read, Search, and Shell routing remains disabled. CodeGraph and
+native tools are authoritative; lean-ctx remains available for memory,
+knowledge, and non-authoritative opt-in exploration. Escape hatches are not a
+reliable correctness boundary under daemon or configuration drift.
 
-Canonical runtime change (no image rebuild needed):
+The following 2026-08-24 runtime command is retained only as historical
+reproduction evidence for the intermediate `lite` mitigation. It is not the
+current repository policy, and Apply remains an explicit administrator action:
 
 ```bash
 docker exec -u devuser ai-engkit-dev bash -c \
@@ -66,7 +71,8 @@ docker exec -u devuser ai-engkit-dev bash -c \
    restarting OpenChamber / `opencode serve` — brand-new dispatched sessions
    stay broken too until then.
 
-Permanent image change (`Dockerfile` ~line 148):
+Historical intermediate image change (`Dockerfile` ~line 148); the current
+baseline uses `off` instead:
 
 ```diff
 - compression_level = "standard"
@@ -103,8 +109,8 @@ lean-ctx raw "od -c file.tsx"              # CLI form
   output via `ctx_shell` is still suppressed. What works reliably: commands
   prefixed with `LEAN_CTX_RAW=1` or `LEAN_CTX_DISABLED=1`, and narrow
   `lines:N-M` windows (small outputs only; `lines:1-41` of a 41-line file was
-  filtered). For guaranteed raw output, use the hatches above or
-  `compression_level = "off"`.
+  filtered). For correctness-sensitive raw output, use native tools; the
+  hatches are only best-effort when daemon and configuration health is known.
 - `off` defeats lean-ctx's token-savings purpose for routine commands; use
   only when actively debugging.
 - Raising `compression_level` to `standard`/`max` to "see more" makes the blind
