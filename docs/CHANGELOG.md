@@ -1,6 +1,45 @@
 ## [Unreleased]
 
 
+## [1.15.8] - 2026-08-25
+
+### Added
+- Warn about lean-ctx drift
+- Expose lean-ctx drift status
+- Detect lean-ctx runtime drift
+
+### Fixed
+- Migrate lean-ctx compression safely
+- Default compression to off
+- Accept multi-segment model ids; stabilize unit-test JSX transform (#62)
+
+### Documentation
+- Record fail-closed authority verdict
+- Specify lean-ctx admin reliability
+- Propose lean-ctx reliability gate
+- Add troubleshooting entry for OpenChamber 1.20.0 default project regression
+- Note root tsconfig fixes repo-root bun test JSX transform
+- Record lean-ctx shell silent write-drop workaround
+
+### Changed
+- Update OpenCode to 1.18.23
+- Exclude entrypoint test helpers
+- Add disposable reliability harness
+- Run live reliability profiles
+- Verify frozen gate criteria
+- Add reliability evaluator CLI
+- Implement reliability gate checks
+- Render reliability verdicts
+- Evaluate reliability captures
+- Capture deterministic command output
+- Parse evaluation manifests and records
+- Add evaluator foundations
+- Add reliability evaluation fixtures
+- Cover lean-ctx drift recovery
+
+### Changed
+- Upgrade OpenCode from 1.18.21 to 1.18.23.
+
 ## [1.15.7] - 2026-08-24
 
 ### Added
@@ -1576,7 +1615,7 @@
 
 ## Format
 
-[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.15.7...HEAD
+[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.15.8...HEAD
 [0.3.0]: https://github.com/tryweb/ai-engkit/releases/tag/v0.3.0
 [0.3.3]: https://github.com/tryweb/ai-engkit/compare/v0.3.0...v0.3.3
 [0.5.0]: https://github.com/tryweb/ai-engkit/compare/v0.3.3...v0.5.0
@@ -1727,3 +1766,4 @@
 [1.15.5]: https://github.com/tryweb/ai-engkit/compare/v1.15.4...v1.15.5
 [1.15.6]: https://github.com/tryweb/ai-engkit/compare/v1.15.5...v1.15.6
 [1.15.7]: https://github.com/tryweb/ai-engkit/compare/v1.15.6...v1.15.7
+[1.15.8]: https://github.com/tryweb/ai-engkit/compare/v1.15.7...v1.15.8
