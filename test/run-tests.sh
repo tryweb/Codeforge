@@ -29,6 +29,37 @@ pass() { PASS=$((PASS + 1)); echo -e "  ${GREEN}PASS${NC} $1"; }
 fail() { FAIL=$((FAIL + 1)); echo -e "  ${RED}FAIL${NC} $1"; }
 skip() { SKIP=$((SKIP + 1)); echo -e "  ${YELLOW}SKIP${NC} $1"; }
 
+AUTHORITY_GUIDANCE_TEST="$(dirname "${BASH_SOURCE[0]}")/authority-guidance.test.sh"
+if [ -x "$AUTHORITY_GUIDANCE_TEST" ] && "$AUTHORITY_GUIDANCE_TEST" >/dev/null 2>&1; then
+  pass "repository and generated AGENTS authority guidance agree"
+else
+  fail "repository and generated AGENTS authority guidance disagree"
+fi
+
+ENTRYPOINT_SYNC_TEST="$(dirname "${BASH_SOURCE[0]}")/../entrypoint.d/02-init-config.test.sh"
+if [ -x "$ENTRYPOINT_SYNC_TEST" ] && "$ENTRYPOINT_SYNC_TEST" >/dev/null 2>&1; then
+  pass "AGENTS synchronization marker tests pass"
+else
+  fail "AGENTS synchronization marker tests failed"
+fi
+
+if docker exec "$CONTAINER" test ! -e /entrypoint.d/02-init-config.test.sh 2>/dev/null; then
+  pass "runtime image excludes entrypoint test helpers"
+else
+  fail "runtime image executes host-only entrypoint test helpers"
+fi
+
+if [ "${RUN_AGENTS_TESTS_ONLY:-0}" = "1" ]; then
+  exit "$FAIL"
+fi
+
+RELIABILITY_GATE_TEST="$(dirname "${BASH_SOURCE[0]}")/leanctx-reliability-gate.sh"
+if [ -x "$RELIABILITY_GATE_TEST" ] && "$RELIABILITY_GATE_TEST" --selfcheck >/dev/null 2>&1; then
+  pass "lean-ctx reliability selfcheck passes"
+else
+  fail "lean-ctx reliability selfcheck failed"
+fi
+
 assert_eq() {
   local label="$1" expected="$2" actual="$3"
   if [ "$expected" = "$actual" ]; then
@@ -437,7 +468,7 @@ fi
 
 LEAN_CTX_CONFIG=$(docker exec "$CONTAINER" sh -c 'cat /home/devuser/.config/lean-ctx/config.toml' 2>/dev/null || echo "")
 assert_contains "lean-ctx config enables permission inheritance" 'permission_inheritance = "on"' "$LEAN_CTX_CONFIG"
-assert_contains "lean-ctx config sets lite compression" 'compression_level = "lite"' "$LEAN_CTX_CONFIG"
+assert_contains "lean-ctx config sets off compression" 'compression_level = "off"' "$LEAN_CTX_CONFIG"
 assert_contains "lean-ctx config pins full cognitive mode" 'cognitive_mode = "full"' "$LEAN_CTX_CONFIG"
 assert_contains "lean-ctx config caps graph index" 'graph_index_max_files = 5000' "$LEAN_CTX_CONFIG"
 
