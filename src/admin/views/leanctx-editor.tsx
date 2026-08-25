@@ -2,6 +2,7 @@ import { html, raw } from "hono/html";
 import type { FC } from "hono/jsx";
 import { Layout } from "./layout";
 import { getSchemaBySection, type LeanCtxSchemaEntry } from "../lib/leanctx-schema";
+import type { DoneClaim } from "../lib/leanctx-drift";
 
 interface LeanCtxEditorProps {
   config: Record<string, unknown>;
@@ -16,6 +17,50 @@ interface LeanCtxEditorProps {
     baselineParseError?: string;
   };
   schema: LeanCtxSchemaEntry[];
+  drift?: DoneClaim;
+}
+
+type DriftWarningCopy = {
+  readonly title: string;
+  readonly remediation: string;
+};
+
+function assertNever(value: never): never {
+  throw new Error(`Unexpected lean-ctx drift status: ${String(value)}`);
+}
+
+function getDriftWarningCopy(status: DoneClaim["status"]): DriftWarningCopy | null {
+  switch (status) {
+    case "healthy":
+      return null;
+    case "config_drift":
+      return {
+        title: "Configuration drift detected.",
+        remediation: "Review the baseline and global compression settings before applying a change.",
+      };
+    case "project_override":
+      return {
+        title: "Project override detected.",
+        remediation: "Review or remove the reported project override before relying on global settings.",
+      };
+    case "daemon_unavailable":
+      return {
+        title: "LeanCTX daemon unavailable.",
+        remediation: "Check the ai-dev LeanCTX daemon and retry the drift check when it is available.",
+      };
+    case "behavioral_mismatch":
+      return {
+        title: "LeanCTX behavior mismatch detected.",
+        remediation: "Inspect the sentinel behavior and restore the daemon's expected lossless output.",
+      };
+    case "indeterminate":
+      return {
+        title: "LeanCTX drift status is indeterminate.",
+        remediation: "Review the reported configuration or availability problem before relying on this result.",
+      };
+    default:
+      return assertNever(status);
+  }
 }
 
 function formatValue(value: unknown): string {
@@ -57,8 +102,9 @@ function renderInput(entry: LeanCtxSchemaEntry, value: unknown, disabled: boolea
   }
 }
 
-const LeanCtxEditorContent: FC<LeanCtxEditorProps> = ({ config, meta, schema }) => {
+const LeanCtxEditorContent: FC<LeanCtxEditorProps> = ({ config, meta, schema, drift }) => {
   const sections = getSchemaBySection(schema);
+  const driftWarning = drift ? getDriftWarningCopy(drift.status) : null;
 
   return html`
     <div class="leanctx-editor">
@@ -83,6 +129,37 @@ const LeanCtxEditorContent: FC<LeanCtxEditorProps> = ({ config, meta, schema }) 
           <span>Use Reset to Defaults, then Save Changes before applying.</span>
         </div>
       `}
+      ${drift && driftWarning && html`
+        <div
+          class="config-error leanctx-drift-warning"
+          data-drift-status="${drift.status}"
+          role="alert"
+          tabindex="-1"
+          aria-labelledby="leanctx-drift-title"
+          aria-describedby="leanctx-drift-remediation"
+        >
+          <strong id="leanctx-drift-title">${driftWarning.title}</strong>
+          <p id="leanctx-drift-remediation">${driftWarning.remediation}</p>
+          ${drift.details.length > 0 && html`
+            <ul>
+              ${drift.details.map((detail) => html`<li>${detail}</li>`)}
+            </ul>
+          `}
+          <p>Detection does not apply or restart configuration.</p>
+          <span class="text-xs text-muted">Checked at <code>${drift.checkedAt}</code></span>
+        </div>
+      `}
+      <div id="leanctx-drift-client-warning" class="config-error" tabindex="-1" hidden></div>
+      ${(["config_drift", "project_override", "daemon_unavailable", "behavioral_mismatch", "indeterminate"] as const).map((status) => {
+        const copy = getDriftWarningCopy(status);
+        return copy && html`
+          <template data-drift-status="${status}">
+            <strong id="leanctx-drift-client-title">${copy.title}</strong>
+            <p id="leanctx-drift-client-remediation">${copy.remediation}</p>
+            <p>Detection does not apply or restart configuration.</p>
+          </template>
+        `;
+      })}
 
       <div class="editor-actions">
         <button class="btn-primary" onclick="saveConfig()">Save Changes</button>
@@ -169,6 +246,55 @@ const LeanCtxEditorContent: FC<LeanCtxEditorProps> = ({ config, meta, schema }) 
     </div>
 
     <script>${html`
+      async function refreshDriftWarning() {
+        const warning = document.getElementById("leanctx-drift-client-warning");
+        if (!warning) return;
+        try {
+          const response = await fetch("/api/leanctx/drift");
+          if (!response.ok) return;
+          const drift = await response.json();
+          const serverWarning = document.querySelector(".leanctx-drift-warning");
+          if (drift.status === "healthy") {
+            serverWarning?.remove();
+            warning.hidden = true;
+            warning.replaceChildren();
+            return;
+          }
+          if (serverWarning?.dataset.driftStatus === drift.status) {
+            warning.hidden = true;
+            return;
+          }
+          serverWarning?.remove();
+          const template = Array.from(document.querySelectorAll("template[data-drift-status]"))
+            .find((candidate) => candidate.dataset.driftStatus === drift.status);
+          if (!template) return;
+          warning.replaceChildren(template.content.cloneNode(true));
+          if (Array.isArray(drift.details) && drift.details.length > 0) {
+            const details = document.createElement("ul");
+            for (const detail of drift.details) {
+              const item = document.createElement("li");
+              item.textContent = detail;
+              details.append(item);
+            }
+            warning.append(details);
+          }
+          const checked = document.createElement("span");
+          checked.className = "text-xs text-muted";
+          checked.textContent = "Checked at " + drift.checkedAt;
+          warning.append(checked);
+          warning.dataset.driftStatus = drift.status;
+          warning.setAttribute("role", "alert");
+          warning.setAttribute("tabindex", "-1");
+          warning.setAttribute("aria-labelledby", "leanctx-drift-client-title");
+          warning.setAttribute("aria-describedby", "leanctx-drift-client-remediation");
+          warning.hidden = false;
+        } catch {
+          return;
+        }
+      }
+
+      refreshDriftWarning();
+
       let hasSavedChanges = false;
 
       function getFormData() {
@@ -383,11 +509,12 @@ const LeanCtxEditorContent: FC<LeanCtxEditorProps> = ({ config, meta, schema }) 
 export function LeanCtxEditorPage(
   config: Record<string, unknown>,
   meta: LeanCtxEditorProps["meta"],
-  schema: LeanCtxSchemaEntry[]
+  schema: LeanCtxSchemaEntry[],
+  drift?: DoneClaim,
 ) {
   return (
     <Layout title="LeanCTX Config" currentPath="/leanctx">
-      <LeanCtxEditorContent config={config} meta={meta} schema={schema} />
+      <LeanCtxEditorContent config={config} meta={meta} schema={schema} drift={drift} />
     </Layout>
   );
 }
