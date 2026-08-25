@@ -24,7 +24,7 @@ export const LEANCTX_SCHEMA: LeanCtxSchemaEntry[] = [
     key: "compression_level",
     type: "select",
     description: "Master compression dial controlling agent prompt density, output density, CRP mode, and token-model tuning",
-    default: "lite",
+    default: "off",
     options: ["off", "lite", "standard", "max"],
     section: "Core",
   },
