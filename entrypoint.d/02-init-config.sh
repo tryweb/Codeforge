@@ -6,7 +6,107 @@ OPENCHAMBER_DATA_DIR="${OPENCHAMBER_DATA_DIR:-$HOME/.config/openchamber}"
 WORKSPACE_DIR="${WORKSPACE_DIR:-$HOME/workspace}"
 LEANCTX_BASELINE_CONFIG="${LEANCTX_BASELINE_CONFIG:-/etc/lean-ctx/config.default.toml}"
 LEANCTX_RUNTIME_CONFIG="${LEANCTX_RUNTIME_CONFIG:-$HOME/.config/lean-ctx/config.toml}"
+migrate_leanctx_compression_level() {
+    local marker_path="${LEANCTX_RUNTIME_CONFIG}.migration-v1"
+    local backup_path="${LEANCTX_RUNTIME_CONFIG}.pre-migration-v1"
+    local current_level
+    local temporary_path
 
+    [ -f "$LEANCTX_RUNTIME_CONFIG" ] || return 0
+    if grep -qE '^[[:space:]]*compression_level[[:space:]]*=[[:space:]]*"off"[[:space:]]*(#.*)?$' "$LEANCTX_RUNTIME_CONFIG"; then
+        if [ -f "$backup_path" ] && [ ! -e "$marker_path" ]; then
+            temporary_path="${marker_path}.tmp.$$"
+            printf '%s\n' 'lean-ctx compression migration v1' > "$temporary_path" || return 1
+            chmod 600 "$temporary_path" || { rm -f "$temporary_path"; return 1; }
+            mv "$temporary_path" "$marker_path" || { rm -f "$temporary_path"; return 1; }
+        fi
+        return 0
+    fi
+    [ -e "$marker_path" ] && return 0
+    if grep -qE '^[[:space:]]*compression_level[[:space:]]*=[^"#]*"[^"#]*$' "$LEANCTX_RUNTIME_CONFIG"; then
+        return 0
+    fi
+
+    current_level="$(sed -nE 's/^[[:space:]]*compression_level[[:space:]]*=[[:space:]]*"([^"]*)".*$/\1/p' "$LEANCTX_RUNTIME_CONFIG" | head -n 1)"
+    case "$current_level" in
+        off)
+            if [ -f "$backup_path" ] && [ ! -e "$marker_path" ]; then
+                temporary_path="${marker_path}.tmp.$$"
+                printf '%s\n' 'lean-ctx compression migration v1' > "$temporary_path" || return 1
+                chmod 600 "$temporary_path" || { rm -f "$temporary_path"; return 1; }
+                mv "$temporary_path" "$marker_path" || { rm -f "$temporary_path"; return 1; }
+            fi
+            return 0
+            ;;
+        lite|standard|max)
+            ;;
+        *)
+            return 0
+            ;;
+    esac
+
+    if ! cp -p "$LEANCTX_RUNTIME_CONFIG" "$backup_path"; then
+        return 0
+    fi
+    chmod 600 "$backup_path" || return 0
+    temporary_path="${LEANCTX_RUNTIME_CONFIG}.tmp.$$"
+    if ! awk '
+        BEGIN { replaced = 0 }
+        !replaced && $0 ~ /^[[:space:]]*compression_level[[:space:]]*=/ {
+            match($0, /^[[:space:]]*/)
+            print substr($0, 1, RLENGTH) "compression_level = \"off\""
+            replaced = 1
+            next
+        }
+        { print }
+    ' "$LEANCTX_RUNTIME_CONFIG" > "$temporary_path"; then
+        rm -f "$temporary_path"
+        return 0
+    fi
+    chmod 600 "$temporary_path" || { rm -f "$temporary_path"; return 0; }
+    if ! mv "$temporary_path" "$LEANCTX_RUNTIME_CONFIG"; then
+        rm -f "$temporary_path"
+        return 0
+    fi
+    printf '%s\n' 'lean-ctx compression migration v1' > "$marker_path"
+    chmod 600 "$marker_path"
+}
+migrate_leanctx_compression_level
+
+leanctx_runtime_config_is_malformed() {
+    local validation_output
+    local compression_level
+    command -v lean-ctx >/dev/null 2>&1 || return 2
+    if [ -d /opt/admin/node_modules/smol-toml ]; then
+        if ! (cd /opt/admin && LEANCTX_PARSE_PATH="$LEANCTX_RUNTIME_CONFIG" bun -e 'import { parse } from "smol-toml"; parse(await Bun.file(process.env.LEANCTX_PARSE_PATH).text())' >/dev/null 2>&1); then
+            return 0
+        fi
+    fi
+    compression_level="$(sed -nE 's/^[[:space:]]*compression_level[[:space:]]*=[[:space:]]*"([^"]*)"[[:space:]]*(#.*)?$/\1/p' "$LEANCTX_RUNTIME_CONFIG" | head -n 1)"
+    case "$compression_level" in
+        off|lite|standard|max) ;;
+        "")
+            grep -qE '^[[:space:]]*compression_level[[:space:]]*=' "$LEANCTX_RUNTIME_CONFIG" && return 0
+            ;;
+        *) return 0 ;;
+    esac
+    validation_output="$(lean-ctx config validate 2>&1)" && return 1
+    validation_output="${validation_output,,}"
+    case "$validation_output" in
+        *not\ found*|*unavailable*) return 2 ;;
+    esac
+    case "$validation_output" in
+        *unknown*)
+            case "$validation_output" in
+                *invalid*|*error*) return 0 ;;
+                *) return 1 ;;
+            esac
+            ;;
+        *)
+            return 0
+            ;;
+    esac
+}
 ensure_leanctx_config() {
   mkdir -p "$(dirname "$LEANCTX_RUNTIME_CONFIG")"
 
@@ -24,7 +124,9 @@ ensure_leanctx_config() {
     -e '/^budget\.information_gate\.(enabled|max_overlap_ratio|min_novel_lines|track_granularity)[[:space:]]*=/d' \
     "$LEANCTX_RUNTIME_CONFIG"
 
-  if ! lean-ctx config validate >/dev/null 2>&1; then
+  command -v lean-ctx >/dev/null 2>&1 || return 1
+
+  if leanctx_runtime_config_is_malformed; then
     local backup_path
     backup_path="${LEANCTX_RUNTIME_CONFIG}.malformed.$(date -u +%Y%m%dT%H%M%SZ)"
     mv "$LEANCTX_RUNTIME_CONFIG" "$backup_path"
@@ -35,6 +137,10 @@ ensure_leanctx_config() {
     else
       printf 'lean-ctx: malformed config backed up to %s; baseline is missing\n' "$backup_path" >&2
     fi
+    return
+  fi
+
+  if grep -qE '^[[:space:]]*compression_level[[:space:]]*=[[:space:]]*"off"[[:space:]]*(#.*)?$' "$LEANCTX_RUNTIME_CONFIG"; then
     return
   fi
 
@@ -396,11 +502,11 @@ fi
 # --- ai-engkit environment knowledge (AGENTS.md) ---
 # Sync ai-engkit-specific sections into the user's AGENTS.md.
 # The template is delimited by <!-- @ai-engkit --> ... <!-- /@ai-engkit -->
-# sentinels. First install appends it; afterwards the block between the
-# sentinels is compared by content hash against the baked default and
-# replaced in place on mismatch, so template updates propagate across image
-# rebuilds while anything outside the markers (user notes, generated blocks)
-# is preserved.
+# sentinels. First install appends it; afterwards the reconstructed complete
+# file is compared by content hash against the current user file and replaced
+# in place on mismatch, so template updates propagate across image rebuilds
+# while anything outside the markers (user notes, generated blocks) is
+# preserved.
 AI_ENGKIT_AGENTS_DEFAULT="/etc/opencode/AGENTS.md.default"
 USER_AGENTS_MD="$OPCODE_CONFIG_DIR/AGENTS.md"
 
@@ -416,15 +522,33 @@ sync_ai_engkit_agents_md() {
     return 0
   fi
 
-  if ! grep -q '<!-- @ai-engkit -->' "$user_file" 2>/dev/null; then
-    echo "" >> "$user_file"
-    cat "$default_file" >> "$user_file"
-    echo "Appended AI-EngKit environment knowledge to AGENTS.md"
+  local marker_state
+  marker_state="$(awk '
+    /<!-- @ai-engkit -->/ {
+      openings++
+      if (closings > 0 || openings > 1) malformed = 1
+    }
+    /<!-- \/@ai-engkit -->/ {
+      closings++
+      if (openings == 0 || closings > 1) malformed = 1
+    }
+    END {
+      if (malformed || openings > 1 || closings > 1 || (openings == 1 && closings != 1)) exit 1
+      if (openings == 1 && closings == 1) print "ordered"
+      else if (openings == 0 && closings == 0) print "none"
+      else exit 1
+    }
+  ' "$user_file" 2>/dev/null || printf '%s\n' malformed)"
+
+  if [ "$marker_state" = "malformed" ]; then
+    echo "Warning: malformed @ai-engkit marker order in AGENTS.md; skipping auto-update" >&2
     return 0
   fi
 
-  if ! grep -q '<!-- /@ai-engkit -->' "$user_file" 2>/dev/null; then
-    echo "Warning: unterminated @ai-engkit block in AGENTS.md; skipping auto-update" >&2
+  if [ "$marker_state" = "none" ]; then
+    echo "" >> "$user_file"
+    cat "$default_file" >> "$user_file"
+    echo "Appended AI-EngKit environment knowledge to AGENTS.md"
     return 0
   fi
 
