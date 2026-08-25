@@ -5,7 +5,9 @@ import {
   type FallbackModelEntry,
 } from "./agent-model-types";
 
-const MODEL_REFERENCE_PATTERN = /^[^/\s]+\/[^/\s]+$/;
+// Provider segment must be slash-free; the model segment may itself contain
+// slashes (e.g. nvidia/<org>/<model> ids served by the live catalog).
+const MODEL_REFERENCE_PATTERN = /^[^/\s]+\/\S+$/;
 const VALID_AGENT_KEYS = new Set([
   "description",
   "prompt",

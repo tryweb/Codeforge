@@ -37,6 +37,18 @@ describe("validateFallbackModels", () => {
   test("rejects model ids without a provider", () => {
     expect(validateFallbackModels({ entries: [{ model: "big-pickle" }] })).toContain("provider/model");
   });
+
+  test("accepts multi-segment catalog ids such as nvidia/<org>/<model>", () => {
+    expect(validateFallbackModels({ entries: [{ model: "nvidia/google/gemma-3-12b-it" }] })).toBeNull();
+    expect(validateFallbackModels({ entries: [{ model: "nvidia/meta/llama-guard-4-12b", variant: "high" }] })).toBeNull();
+  });
+
+  test("still rejects malformed references under the relaxed pattern", () => {
+    expect(validateFallbackModels({ entries: [{ model: "/leading-slash/model" }] })).toContain("provider/model");
+    expect(validateFallbackModels({ entries: [{ model: "provider/" }] })).toContain("provider/model");
+    expect(validateFallbackModels({ entries: [{ model: "pro vider/model" }] })).toContain("provider/model");
+    expect(validateFallbackModels({ entries: [{ model: "provider/mod el" }] })).toContain("provider/model");
+  });
 });
 
 describe("buildJqWriteCommand", () => {
