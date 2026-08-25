@@ -38,7 +38,10 @@ elif ! [ -x "$AUTHORITY_GUIDANCE_TEST" ]; then
 elif "$AUTHORITY_GUIDANCE_TEST" >"$AUTHORITY_DEBUG_LOG" 2>&1; then
   pass "repository and generated AGENTS authority guidance agree"
 else
-  fail "repository and generated AGENTS authority guidance disagree (exit=$?, log=$AUTHORITY_DEBUG_LOG)"
+  echo "--- authority-guidance debug log ---"
+  cat "$AUTHORITY_DEBUG_LOG" 2>/dev/null || echo "(debug log not readable)"
+  echo "--- end debug log ---"
+  fail "repository and generated AGENTS authority guidance disagree (exit=$?)"
 fi
 
 ENTRYPOINT_SYNC_TEST="$(dirname "${BASH_SOURCE[0]}")/../entrypoint.d/02-init-config.test.sh"
