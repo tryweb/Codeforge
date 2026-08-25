@@ -93,7 +93,11 @@ assert_normal_sync_is_atomic_and_idempotent() {
 
 assert_normal_sync_is_atomic_and_idempotent
 assert_migration_backup_and_marker_boundary
-assert_off_config_still_recovers_malformed_toml
+if command -v lean-ctx >/dev/null 2>&1; then
+  assert_off_config_still_recovers_malformed_toml
+else
+  printf 'lean-ctx not on host; skipping malformed recovery assertion\n' >&2
+fi
 assert_malformed closing-before-opening $'prefix\n<!-- /@ai-engkit -->\nbody\n<!-- @ai-engkit -->\nmanaged\n<!-- /@ai-engkit -->\nsuffix'
 assert_malformed duplicate-opening $'prefix\n<!-- @ai-engkit -->\nfirst\n<!-- @ai-engkit -->\nsecond\n<!-- /@ai-engkit -->\nsuffix'
 assert_malformed opening-without-close $'prefix\n<!-- @ai-engkit -->\nmanaged\nsuffix'
