@@ -30,18 +30,10 @@ fail() { FAIL=$((FAIL + 1)); echo -e "  ${RED}FAIL${NC} $1"; }
 skip() { SKIP=$((SKIP + 1)); echo -e "  ${YELLOW}SKIP${NC} $1"; }
 
 AUTHORITY_GUIDANCE_TEST="$(dirname "${BASH_SOURCE[0]}")/authority-guidance.test.sh"
-AUTHORITY_DEBUG_LOG="/tmp/authority-guidance-debug.log"
-if ! [ -f "$AUTHORITY_GUIDANCE_TEST" ]; then
-  fail "repository and generated AGENTS authority guidance disagree (test missing)"
-elif ! [ -x "$AUTHORITY_GUIDANCE_TEST" ]; then
-  fail "repository and generated AGENTS authority guidance disagree (not executable)"
-elif "$AUTHORITY_GUIDANCE_TEST" >"$AUTHORITY_DEBUG_LOG" 2>&1; then
+if [ -x "$AUTHORITY_GUIDANCE_TEST" ] && "$AUTHORITY_GUIDANCE_TEST" >/dev/null 2>&1; then
   pass "repository and generated AGENTS authority guidance agree"
 else
-  echo "--- authority-guidance debug log ---"
-  cat "$AUTHORITY_DEBUG_LOG" 2>/dev/null || echo "(debug log not readable)"
-  echo "--- end debug log ---"
-  fail "repository and generated AGENTS authority guidance disagree (exit=$?)"
+  fail "repository and generated AGENTS authority guidance disagree"
 fi
 
 ENTRYPOINT_SYNC_TEST="$(dirname "${BASH_SOURCE[0]}")/../entrypoint.d/02-init-config.test.sh"
