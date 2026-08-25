@@ -76,6 +76,10 @@ export interface ExecResult {
   exitCode: number;
 }
 
+export interface ExecOptions {
+  readonly preserveOutput?: boolean;
+}
+
 /**
  * Find the ai-dev container via its compose service label, scoped to the
  * same compose project as this admin container. Labels survive container_name
@@ -117,10 +121,11 @@ export async function getAiDevContainerRef(): Promise<string> {
 export async function execInAiDev(
   command: string,
   timeoutMs: number = DEFAULT_TIMEOUT_MS,
+  options: ExecOptions = {},
 ): Promise<ExecResult> {
   const ref = await getAiDevContainerRef();
   const args = ["docker", "exec", ref, "sh", "-c", command];
-  return runCommand(args, timeoutMs);
+  return runCommand(args, timeoutMs, options.preserveOutput === true);
 }
 
 /**
@@ -194,6 +199,7 @@ export async function getAiDevUptime(): Promise<number | null> {
 async function runCommand(
   args: string[],
   timeoutMs: number,
+  preserveOutput = false,
 ): Promise<ExecResult> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -208,7 +214,7 @@ async function runCommand(
     const stderr = await new Response(process.stderr).text();
     const exitCode = await process.exited;
 
-    return { stdout: stdout.trim(), stderr: stderr.trim(), exitCode };
+    return { stdout: preserveOutput ? stdout : stdout.trim(), stderr: stderr.trim(), exitCode };
   } catch (err: unknown) {
     if (err instanceof Error && err.name === "AbortError") {
       return { stdout: "", stderr: `Command timed out after ${timeoutMs}ms`, exitCode: -1 };
