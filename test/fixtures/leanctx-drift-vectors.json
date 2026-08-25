@@ -1,0 +1,48 @@
+{
+  "contractVersion": "r3",
+  "expectedStatuses": ["healthy", "config_drift", "project_override", "daemon_unavailable", "behavioral_mismatch", "indeterminate"],
+  "inputs": [
+    {
+      "name": "healthy",
+      "baseline": {"present": true, "compressionLevel": "off"},
+      "global": {"present": true, "compressionLevel": "off"},
+      "project": {"present": false, "compressionLevel": null},
+      "sentinel": {"stdout": "lean-ctx-reliability-sentinel-v1\n", "stderr": "", "exitCode": 0, "timedOut": false, "expectedBytes": 33, "expectedSha256": "266b4f79b67bef0b8d79d1683b016f4b4c42dc40aca415c7086316f754203b64"}
+    },
+    {
+      "name": "config_drift",
+      "baseline": {"present": true, "compressionLevel": "lite"},
+      "global": {"present": true, "compressionLevel": "off"},
+      "project": {"present": false, "compressionLevel": null},
+      "sentinel": {"stdout": "lean-ctx-reliability-sentinel-v1\n", "stderr": "", "exitCode": 0, "timedOut": false, "expectedBytes": 33, "expectedSha256": "266b4f79b67bef0b8d79d1683b016f4b4c42dc40aca415c7086316f754203b64"}
+    },
+    {
+      "name": "project_override",
+      "baseline": {"present": true, "compressionLevel": "off"},
+      "global": {"present": true, "compressionLevel": "off"},
+      "project": {"present": true, "compressionLevel": "max"},
+      "sentinel": {"stdout": "lean-ctx-reliability-sentinel-v1\n", "stderr": "", "exitCode": 0, "timedOut": false, "expectedBytes": 33, "expectedSha256": "266b4f79b67bef0b8d79d1683b016f4b4c42dc40aca415c7086316f754203b64"}
+    },
+    {
+      "name": "daemon_unavailable",
+      "baseline": {"present": true, "compressionLevel": "off"},
+      "global": {"present": true, "compressionLevel": "off"},
+      "project": {"present": false, "compressionLevel": null},
+      "sentinel": {"stdout": "", "stderr": "unavailable", "exitCode": 1, "timedOut": false, "expectedBytes": 33, "expectedSha256": "266b4f79b67bef0b8d79d1683b016f4b4c42dc40aca415c7086316f754203b64"}
+    },
+    {
+      "name": "behavioral_mismatch",
+      "baseline": {"present": true, "compressionLevel": "off"},
+      "global": {"present": true, "compressionLevel": "off"},
+      "project": {"present": false, "compressionLevel": null},
+      "sentinel": {"stdout": "[lean-ctx: marker]\n", "stderr": "", "exitCode": 0, "timedOut": false, "expectedBytes": 33, "expectedSha256": "266b4f79b67bef0b8d79d1683b016f4b4c42dc40aca415c7086316f754203b64"}
+    },
+    {
+      "name": "indeterminate",
+      "baseline": {"present": true, "compressionLevel": null},
+      "global": {"present": true, "compressionLevel": "off"},
+      "project": {"present": false, "compressionLevel": null},
+      "sentinel": {"stdout": "lean-ctx-reliability-sentinel-v1\n", "stderr": "", "exitCode": 0, "timedOut": false, "expectedBytes": 33, "expectedSha256": "266b4f79b67bef0b8d79d1683b016f4b4c42dc40aca415c7086316f754203b64"}
+    }
+  ]
+}

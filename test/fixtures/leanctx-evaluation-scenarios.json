@@ -1,0 +1,28 @@
+{
+  "$schema": "./leanctx-evaluation.schema.json",
+  "contractVersion": "r2",
+  "profiles": ["lossless", "comparison"],
+  "gates": ["G0", "G1", "G2", "G3", "G4"],
+  "scenarios": [
+    {"id":"src-read-small","category":"source-read","command":"sed -n '1,40p' src/admin/package.json","cwd":"/repo","readOnly":true,"expectation":"exact-equal","expectedExit":0,"repeatCount":1},
+    {"id":"src-read-medium","category":"source-read","command":"awk 'NF' src/admin/routes/leanctx.ts | head -200","cwd":"/repo","readOnly":true,"expectation":"exact-equal","expectedExit":0,"repeatCount":1},
+    {"id":"narrow-window","category":"narrow-range","command":"sed -n '29,40p' docs/knowledge/tooling/lean-ctx-optimization.md","cwd":"/repo","readOnly":true,"expectation":"exact-equal","expectedExit":0,"repeatCount":1},
+    {"id":"large-read","category":"large-read","command":"cat docs/CHANGELOG.md","cwd":"/repo","readOnly":true,"expectation":"exact-equal","expectedExit":0,"repeatCount":1},
+    {"id":"large-diagnostics","category":"diagnostics","command":"grep -rn TODO src/admin/lib | head -400","cwd":"/repo","readOnly":true,"expectation":"exact-equal","expectedExit":0,"repeatCount":1},
+    {"id":"chained-pipeline","category":"pipeline","command":"cat Dockerfile | wc -l && printf 'chained-ok\\n'","cwd":"/repo","readOnly":true,"expectation":"exact-equal","expectedExit":0,"repeatCount":1},
+    {"id":"git-log","category":"git-output","command":"git -C /repo log --oneline -50","cwd":"/repo","readOnly":true,"expectation":"exact-equal","expectedExit":0,"repeatCount":1},
+    {"id":"git-show-stat","category":"git-output","command":"git -C /repo show --stat --format=%H HEAD","cwd":"/repo","readOnly":true,"expectation":"exact-equal","expectedExit":0,"repeatCount":1},
+    {"id":"json-contract","category":"json-output","command":"jq -S '.required' test/fixtures/leanctx-evaluation.schema.json","cwd":"/repo","readOnly":true,"expectation":"exact-equal","expectedExit":0,"repeatCount":1},
+    {"id":"json-package","category":"json-output","command":"jq -S '{name,type,scripts}' src/admin/package.json","cwd":"/repo","readOnly":true,"expectation":"exact-equal","expectedExit":0,"repeatCount":1},
+    {"id":"path-reject","category":"path-jail","command":"cat /etc/hostname","cwd":"/repo","readOnly":true,"expectation":"reject-allowed","expectedExit":0,"allowedComparisonExitCodes":[1,2],"repeatCount":1},
+    {"id":"tree-listing","category":"path-jail","command":"find src/admin/lib -maxdepth 1 -name '*.ts' | sort","cwd":"/repo","readOnly":true,"expectation":"exact-equal","expectedExit":0,"repeatCount":1},
+    {"id":"stderr-error","category":"error-output","command":"ls /nonexistent-lc-eval-path","cwd":"/repo","readOnly":true,"expectation":"both-nonzero","expectedExit":2,"allowedComparisonExitCodes":[1,2],"repeatCount":1},
+    {"id":"od-bytes","category":"byte-output","command":"od -c docker/lean-ctx/config.default.toml | head -20","cwd":"/repo","readOnly":true,"expectation":"exact-equal","expectedExit":0,"repeatCount":1},
+    {"id":"stat-file","category":"metadata-output","command":"stat docker/lean-ctx/config.default.toml","cwd":"/repo","readOnly":true,"expectation":"exact-equal","expectedExit":0,"repeatCount":1},
+    {"id":"head-whole-file","category":"large-read","command":"head -100 docs/TOOLING.md","cwd":"/repo","readOnly":true,"expectation":"exact-equal","expectedExit":0,"repeatCount":1},
+    {"id":"cjk-content","category":"triage-shape","command":"grep -c '設定' docs/knowledge/tooling/lean-ctx-optimization.md","cwd":"/repo","readOnly":true,"expectation":"exact-equal","expectedExit":0,"repeatCount":1},
+    {"id":"longest-line","category":"triage-shape","command":"awk 'length($0)>n{n=length($0)} END{print n}' docs/CHANGELOG.md","cwd":"/repo","readOnly":true,"expectation":"exact-equal","expectedExit":0,"repeatCount":1},
+    {"id":"repeat-stability","category":"repeatability","command":"sed -n '1,40p' src/admin/package.json","cwd":"/repo","readOnly":true,"expectation":"exact-equal","expectedExit":0,"repeatCount":2},
+    {"id":"wc-lc","category":"byte-output","command":"wc -lc docs/ARCHITECTURE.md","cwd":"/repo","readOnly":true,"expectation":"exact-equal","expectedExit":0,"repeatCount":1}
+  ]
+}

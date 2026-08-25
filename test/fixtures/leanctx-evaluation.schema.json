@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ai-engkit.local/schemas/leanctx-evaluation-r2.json",
+  "title": "Lean Context reliability evaluation R2 contract",
+  "type": "object",
+  "required": ["contractVersion", "profiles", "gates", "scenarios"],
+  "properties": {
+    "contractVersion": {"const": "r2"},
+    "profiles": {"type": "array", "prefixItems": [{"const": "lossless"}, {"const": "comparison"}], "items": false, "minItems": 2, "maxItems": 2},
+    "gates": {"type": "array", "const": ["G0", "G1", "G2", "G3", "G4"]},
+    "scenarios": {"type": "array", "minItems": 20, "maxItems": 20, "items": {"$ref": "#/$defs/scenario"}},
+    "records": {"type": "array", "minItems": 40, "maxItems": 40, "items": {"$ref": "#/$defs/record"}},
+    "incidents": {"type": "array", "items": {"$ref": "#/$defs/incident"}},
+    "gateResults": {"type": "array", "items": {"$ref": "#/$defs/gateResult"}},
+    "verdict": {"$ref": "#/$defs/verdict"}
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "scenario": {"type": "object", "required": ["id", "category", "command", "cwd", "readOnly", "expectation", "expectedExit", "repeatCount"], "properties": {"id": {"type": "string", "pattern": "^[a-z0-9-]+$"}, "category": {"type": "string"}, "command": {"type": "string", "minLength": 1}, "cwd": {"const": "/repo"}, "readOnly": {"const": true}, "expectation": {"enum": ["exact-equal", "reject-allowed", "both-nonzero"]}, "expectedExit": {"type": "integer", "minimum": 0, "maximum": 255}, "allowedComparisonExitCodes": {"type": "array", "items": {"type": "integer", "minimum": 0, "maximum": 255}}, "repeatCount": {"type": "integer", "minimum": 1, "maximum": 2}}, "additionalProperties": false},
+    "capture": {"type": "object", "required": ["stdoutBytes", "stderrBytes", "stdoutSha256", "stderrSha256", "exitCode", "durationMs", "timedOut", "markerDetected", "appendedContentDetected"], "properties": {"stdout": {"type": "string"}, "stderr": {"type": "string"}, "stdoutBytes": {"type": "integer", "minimum": 0}, "stderrBytes": {"type": "integer", "minimum": 0}, "stdoutSha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "stderrSha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "exitCode": {"type": "integer", "minimum": 0, "maximum": 255}, "durationMs": {"type": "integer", "minimum": 0}, "timedOut": {"type": "boolean"}, "markerDetected": {"type": "boolean"}, "appendedContentDetected": {"type": "boolean"}}, "additionalProperties": false},
+    "tokenMetrics": {"type": ["object", "null"], "required": ["source", "scope", "tokensOut"], "properties": {"source": {"const": "runtime"}, "scope": {"enum": ["call", "session"]}, "tokensOut": {"type": "integer", "minimum": 0}, "tokensIn": {"type": "integer", "minimum": 0}}, "additionalProperties": false},
+    "record": {"type": "object", "required": ["scenarioId", "profile", "direct", "leanctx", "outputEqual", "exitContractSatisfied", "tokenMetrics", "incidents"], "properties": {"scenarioId": {"type": "string"}, "profile": {"enum": ["lossless", "comparison"]}, "direct": {"$ref": "#/$defs/capture"}, "leanctx": {"$ref": "#/$defs/capture"}, "outputEqual": {"type": "boolean"}, "exitContractSatisfied": {"type": "boolean"}, "tokenMetrics": {"$ref": "#/$defs/tokenMetrics"}, "incidents": {"type": "array", "items": {"enum": ["timeout", "marker", "appended-content", "output-mismatch", "unexpected-exit", "duplicate-record", "missing-record", "unknown-record"]}}}, "additionalProperties": false},
+    "incident": {"type": "object", "required": ["scenarioId", "profile", "kind", "detail"], "properties": {"scenarioId": {"type": ["string", "null"]}, "profile": {"enum": ["lossless", "comparison", null]}, "kind": {"enum": ["timeout", "marker", "appended-content", "output-mismatch", "unexpected-exit", "duplicate-record", "missing-record", "unknown-record"]}, "detail": {"type": "string"}}, "additionalProperties": false},
+    "gateResult": {"type": "object", "required": ["gate", "passed", "details"], "properties": {"gate": {"enum": ["G0", "G1", "G2", "G3", "G4"]}, "passed": {"type": "boolean"}, "details": {"type": "array", "items": {"type": "string"}}}, "additionalProperties": false},
+    "verdict": {"type": "object", "required": ["verdict", "incidents", "metricsComplete", "netBenefitPercent", "recordCount", "scenarioCount"], "properties": {"verdict": {"enum": ["retain", "disable-routing"]}, "incidents": {"type": "integer", "minimum": 0}, "metricsComplete": {"type": "boolean"}, "netBenefitPercent": {"type": ["number", "null"]}, "recordCount": {"type": "integer", "minimum": 0}, "scenarioCount": {"const": 20}}, "additionalProperties": false}
+  },
+  "x-contract": {"recordRequired": ["scenarioId", "profile", "direct", "leanctx", "outputEqual", "exitContractSatisfied", "tokenMetrics", "incidents"], "captureRequired": ["stdoutBytes", "stderrBytes", "stdoutSha256", "stderrSha256", "exitCode", "durationMs", "timedOut", "markerDetected", "appendedContentDetected"], "tokenAccounting": "trusted runtime fields are record-scoped and contain that record's tokensOut; missing values set metricsComplete=false", "benefitFormula": "100 * sum(lossless.tokensOut - comparison.tokensOut) / sum(lossless.tokensOut)", "verdict": "retain iff incidents=0, metricsComplete=true, all 40 records complete, and netBenefitPercent>=20; otherwise disable-routing", "verdictVolatileFields": []}
+}
