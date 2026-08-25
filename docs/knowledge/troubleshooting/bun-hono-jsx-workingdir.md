@@ -108,3 +108,15 @@ Or in the browser: open any admin page. If the entire page is literally `[object
 ## Tags
 
 `bun` `hono` `jsx` `tsconfig` `working-directory` `docker-compose` `admin` `[object Object]`
+
+## Update 2026-08-25: root tsconfig.json now fixes repo-root test runs
+
+PR #62 (branch `fix/issue-61-nvidia-model-id`) adds a minimal root
+`tsconfig.json` mirroring `src/admin/compilerOptions` (`jsx: react-jsx`,
+`jsxImportSource: hono/jsx`). With it, `bun test` from the repo root compiles
+admin `.tsx` with hono/jsx and the page-render/view suites pass from any cwd
+(453/455; both remaining failures are pre-existing provider OAuth/API-key
+status-code tests that only fail in full-suite runs and pass in isolation).
+The CWD rule above still explains the mechanism; running from `src/admin`
+remains valid. Full-suite attribution method that proved all failures
+pre-existing: stash changes + move tsconfig aside + rerun, then compare.
