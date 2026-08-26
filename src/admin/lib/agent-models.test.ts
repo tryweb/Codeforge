@@ -211,33 +211,23 @@ describe("fetchConnectedCatalog", () => {
 });
 
 describe("applyAndVerify", () => {
-  test("logs the raw request response body when Agent Models debugging is enabled", async () => {
-    const previousDebug = process.env.AGENT_MODELS_DEBUG;
+  test("does not log successful request response bodies", async () => {
+    const { deps } = stubDeps([
+      {
+        stdout: JSON.stringify({ info: { role: "assistant", modelID: "kimi-k3", providerID: "opencode-go" } }),
+      },
+    ]);
     const originalError = console.error;
-    const messages: string[] = [];
-    console.error = (...args: unknown[]) => messages.push(args.map(String).join(" "));
-    process.env.AGENT_MODELS_DEBUG = "1";
-
+    const calls: unknown[][] = [];
+    console.error = (...args: unknown[]) => {
+      calls.push(args);
+    };
     try {
-      const { deps } = stubDeps([
-        {
-          stdout: JSON.stringify({ info: { role: "assistant", modelID: "kimi-k3", providerID: "opencode-go" } }),
-        },
-      ]);
-      const lib = createAgentModelsLib(deps);
-
-      await lib.fetchSuccessfulRequestModel("testpass", "librarian");
-
-      expect(messages).toEqual([
-        `[agent-model-live] response body for librarian: ${JSON.stringify({ info: { role: "assistant", modelID: "kimi-k3", providerID: "opencode-go" } })}`,
-      ]);
+      const result = await createAgentModelsLib(deps).fetchSuccessfulRequestModel("testpass", "librarian");
+      expect(result).toEqual({ modelID: "kimi-k3", providerID: "opencode-go" });
+      expect(calls).toEqual([]);
     } finally {
       console.error = originalError;
-      if (previousDebug === undefined) {
-        delete process.env.AGENT_MODELS_DEBUG;
-      } else {
-        process.env.AGENT_MODELS_DEBUG = previousDebug;
-      }
     }
   });
 
