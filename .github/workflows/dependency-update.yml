@@ -1063,6 +1063,17 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Load updated image
+        if: steps.decision.outputs.action == 'auto-release'
+        uses: actions/download-artifact@v8
+        with:
+          name: updated-image
+          path: /tmp
+
+      - name: Import updated image into Docker
+        if: steps.decision.outputs.action == 'auto-release'
+        run: docker load -i /tmp/updated-image.tar
+
       - name: Inject version into image
         if: steps.decision.outputs.action == 'auto-release'
         run: |
