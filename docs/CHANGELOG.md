@@ -1,6 +1,30 @@
 ## [Unreleased]
 
 
+## [1.16.0] - 2026-08-26
+
+### Added
+- Harden agent model reconciliation (#66)
+
+### Fixed
+- Improve UX during model restart process
+
+### Documentation
+- Document -p dev dev/prod isolation for users
+- Document dev/prod isolation in knowledge base troubleshooting notes
+- Document dev/prod isolation in knowledge base tooling notes
+- Document dev/prod isolation in knowledge base patterns
+
+### Changed
+- Remove unused .release directory
+- Use -p dev project namespace in docker compose commands
+- Use -p dev project namespace in dev container helper
+- Use -p dev project namespace in docker compose commands
+
+### Changed
+- Upgrade GitLab CLI from 1.114.0 to 1.115.0.
+- Upgrade lean-ctx from 3.9.19 to 3.9.20.
+
 ## [1.15.8] - 2026-08-25
 
 ### Added
@@ -1615,7 +1639,7 @@
 
 ## Format
 
-[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.15.8...HEAD
+[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.16.0...HEAD
 [0.3.0]: https://github.com/tryweb/ai-engkit/releases/tag/v0.3.0
 [0.3.3]: https://github.com/tryweb/ai-engkit/compare/v0.3.0...v0.3.3
 [0.5.0]: https://github.com/tryweb/ai-engkit/compare/v0.3.3...v0.5.0
@@ -1767,3 +1791,4 @@
 [1.15.6]: https://github.com/tryweb/ai-engkit/compare/v1.15.5...v1.15.6
 [1.15.7]: https://github.com/tryweb/ai-engkit/compare/v1.15.6...v1.15.7
 [1.15.8]: https://github.com/tryweb/ai-engkit/compare/v1.15.7...v1.15.8
+[1.16.0]: https://github.com/tryweb/ai-engkit/compare/v1.15.8...v1.16.0
