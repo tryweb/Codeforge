@@ -52,7 +52,7 @@ Note: `explore` gets `bash=allow` to support `ctx_shell` for lean-ctx codebase s
 
 ## Evidence
 
-- Build: `docker compose -f docker-compose.dev.yml build` — COPY step completed
+- Build: `docker compose -p dev -f docker-compose.dev.yml build` — COPY step completed
 - Runtime: `Creating omo.jsonc with default agent permissions` logged in entrypoint
 - Test: 142/143 tests pass (1 pre-existing Web UI HTML check failure unrelated)
 - OMO tests: all 53 assertions pass across 8 sub-sections

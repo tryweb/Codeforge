@@ -68,8 +68,8 @@ Multiple providers can be sibling keys under the same JSON object.
 
 ## Evidence
 
-- Image build: `docker compose -f docker-compose.dev.yml build ai-dev` — success
-- Container start: `docker compose -f docker-compose.dev.yml up -d` — success
+- Image build: `docker compose -p dev -f docker-compose.dev.yml build ai-dev` — success
+- Container start: `docker compose -p dev -f docker-compose.dev.yml up -d` — success
 - Config merge verified: `docker exec ai-engkit-dev jq '.provider | keys' /home/devuser/.config/opencode/opencode.json` → `["ollama"]`
 - Provider functional: `opencode run -m ollama/gemma4:e2b "Say hello"` → `Hello!`
 

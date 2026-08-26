@@ -105,7 +105,7 @@ New skill (`.opencode/skills/check-updates/SKILL.md`) that:
 2. Shows the user what's outdated, asks which to update
 3. Applies `sed -i` to Dockerfile ARGs (using JSON output from
    `check-versions.sh json` to get the correct latest version)
-4. Builds the dev image (`docker compose -f docker-compose.dev.yml build`)
+4. Builds the dev image (`docker compose -p dev -f docker-compose.dev.yml build`)
 5. Runs integration tests (`test/run-tests.sh` in the dev container)
 6. Commits the changes (user confirmation required)
 

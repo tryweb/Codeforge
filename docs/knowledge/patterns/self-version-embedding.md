@@ -111,9 +111,9 @@ builds always show `dev` as the version.
 
 ```bash
 # Build with dev version
-$ docker compose -f docker-compose.dev.yml build ai-admin
+$ docker compose -p dev -f docker-compose.dev.yml build ai-admin
 # Start container
-$ docker compose -f docker-compose.dev.yml up -d ai-admin
+$ docker compose -p dev -f docker-compose.dev.yml up -d ai-admin
 # Verify VERSION file
 $ docker exec ai-engkit-admin-dev cat /opt/ai-engkit/VERSION
 dev
