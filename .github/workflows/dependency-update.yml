@@ -511,7 +511,7 @@ jobs:
             ai-admin:
               image: ai-engkit:updated
           EOF
-          docker compose -f docker-compose.dev.yml -f docker-compose.override.yml up -d
+          docker compose -p dev -f docker-compose.dev.yml -f docker-compose.override.yml up -d
           echo "Waiting for services to start..."
           sleep 60
 
@@ -533,7 +533,7 @@ jobs:
 
       - name: Cleanup
         if: always()
-        run: docker compose -f docker-compose.dev.yml down -v --remove-orphans || true
+        run: docker compose -p dev -f docker-compose.dev.yml down -v --remove-orphans || true
 
   # ---------------------------------------------------------------------------
   # Job 3: Scan updated image
