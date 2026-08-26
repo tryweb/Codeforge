@@ -48,6 +48,7 @@ export type ApplyResult =
   | { readonly ok: false; readonly status: "write_failed"; readonly error: string }
   | { readonly ok: false; readonly status: "restart_failed"; readonly error: string }
   | { readonly ok: false; readonly status: "rollback_failed"; readonly error: string }
+  | { readonly ok: false; readonly status: "probe_failed"; readonly error: string }
   | { readonly ok: false; readonly status: "unverified"; readonly error: string };
 
 export interface AgentModelsDeps {

@@ -10,6 +10,15 @@ describe("validateFallbackModels", () => {
   test("accepts valid entries with and without variant", () => {
     expect(validateFallbackModels({ entries: [{ model: "opencode/big-pickle" }] })).toBeNull();
     expect(validateFallbackModels({ entries: [{ model: "openai/gpt-5.6-sol", variant: "max" }] })).toBeNull();
+    expect(validateFallbackModels({ entries: [] })).toBeNull();
+  });
+
+  test("rejects multiple entries because only one primary model is supported", () => {
+    expect(
+      validateFallbackModels({
+        entries: [{ model: "openai/gpt-5.6-sol" }, { model: "opencode/big-pickle" }],
+      }),
+    ).toContain("at most one");
   });
 
   test("rejects non-object bodies", () => {
@@ -70,19 +79,18 @@ describe("buildJqWriteCommand", () => {
     expect(command).toContain(`.agents[$agent].variant = "medium"`);
     expect(command).toContain(`del(.agents[$agent].models, .agents[$agent].fallback_models)`);
     expect(command).not.toContain(".agents[$agent].permission");
+    expect(command).not.toContain("$schema");
+    expect(command).not.toContain(".agents[$agent].other");
   });
 
-  test("chain case writes only the primary model", () => {
-    const command = buildJqWriteCommand("explore", [
-      { model: "gpt-5.6-sol", variant: "high" },
-      { model: "kimi-k3" },
-    ]);
-    expect(command).toContain(`--arg model 'gpt-5.6-sol'`);
-    expect(command).toContain(`.agents[$agent].model = $model`);
-    expect(command).toContain(`.agents[$agent].variant = "high"`);
-    expect(command).toContain(`del(.agents[$agent].models, .agents[$agent].fallback_models)`);
+  test("clear case removes all model keys without changing sibling settings", () => {
+    const command = buildJqWriteCommand("explore", []);
+    expect(command).toContain(
+      `del(.agents[$agent].model, .agents[$agent].variant, .agents[$agent].models, .agents[$agent].fallback_models)`,
+    );
     expect(command).not.toContain(".agents[$agent].permission");
-    expect(command).not.toContain("kimi-k3");
+    expect(command).not.toContain("$schema");
+    expect(command).not.toContain(".agents[$agent].other");
   });
 });
 

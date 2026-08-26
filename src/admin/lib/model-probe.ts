@@ -7,6 +7,7 @@
  * redundant probes for models that were already confirmed dead/alive.
  */
 
+import { createHash } from "node:crypto";
 import type { AgentModelsDeps } from "./agent-model-types";
 
 export type ProbeStatus = "healthy" | "retired" | "unavailable" | "retryable" | "unreachable" | "mismatch";
@@ -30,6 +31,8 @@ const CONFIRMED_TTL_SECONDS = 86_400;
 const RETRYABLE_TTL_SECONDS = 300;
 
 interface HealthRecord {
+  providerID: string;
+  fingerprint: string;
   status: ProbeStatus;
   reason: string;
   observedAt: string;
@@ -41,7 +44,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 async function readHealthCache(deps: Pick<AgentModelsDeps, "exec">): Promise<Record<string, HealthRecord>> {
-  const result = await deps.exec(`cat '${HEALTH_CACHE_PATH}' 2>/dev/null || echo '{}'`, 5_000);
+  const result = await deps.exec(`cat "${HEALTH_CACHE_PATH}" 2>/dev/null || echo '{}'`, 5_000);
   if (result.exitCode !== 0) return {};
   try {
     const parsed: unknown = JSON.parse(result.stdout);
@@ -56,11 +59,54 @@ async function writeHealthCache(
   deps: Pick<AgentModelsDeps, "exec">,
   cache: Record<string, HealthRecord>,
 ): Promise<void> {
-  const encoded = Buffer.from(JSON.stringify(cache)).toString("base64");
+  const scopedCache = Object.fromEntries(
+    Object.entries(cache).filter(([key]) => isScopedCacheKey(key)),
+  );
+  const encoded = Buffer.from(JSON.stringify(scopedCache)).toString("base64");
   await deps.exec(
-    `mkdir -p '${HEALTH_CACHE_DIR}' && printf '%s' '${encoded}' | base64 -d > '${HEALTH_CACHE_PATH}.tmp' && mv '${HEALTH_CACHE_PATH}.tmp' '${HEALTH_CACHE_PATH}'`,
+    `mkdir -p "${HEALTH_CACHE_DIR}" && printf '%s' '${encoded}' | base64 -d > "${HEALTH_CACHE_PATH}.tmp" && mv "${HEALTH_CACHE_PATH}.tmp" "${HEALTH_CACHE_PATH}"`,
     10_000,
   );
+}
+
+function isScopedCacheKey(key: string): boolean {
+  const [providerID, fingerprint, ...modelParts] = key.split("|");
+  return providerID !== undefined
+    && providerID !== ""
+    && fingerprint !== undefined
+    && /^[a-f0-9]{64}$/.test(fingerprint)
+    && modelParts.length > 0
+    && modelParts.join("|") !== "";
+}
+
+function canonicalize(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (!isRecord(value)) return value;
+  return Object.fromEntries(
+    Object.keys(value).sort().map((key) => [key, canonicalize(value[key])]),
+  );
+}
+
+function emptyCredentialFingerprint(): string {
+  return createHash("sha256").update("").digest("hex");
+}
+
+export async function computeProviderCredentialFingerprint(
+  deps: Pick<AgentModelsDeps, "exec">,
+  providerID: string,
+): Promise<string> {
+  const providerLiteral = JSON.stringify(providerID);
+  const result = await deps.exec(
+    `jq -c '.[${providerLiteral}] // empty' "$HOME/.local/share/opencode/auth.json" 2>/dev/null`,
+    5_000,
+  );
+  if (result.exitCode !== 0 || result.stdout.trim() === "") return emptyCredentialFingerprint();
+  try {
+    const entry: unknown = JSON.parse(result.stdout);
+    return createHash("sha256").update(JSON.stringify(canonicalize(entry))).digest("hex");
+  } catch {
+    return emptyCredentialFingerprint();
+  }
 }
 
 function buildProbeScript(auth: string, providerID: string, modelID: string): string {
@@ -145,9 +191,25 @@ export async function probeModel(
   const modelRef = `${providerID}/${modelID}`;
 
   const cache = await readHealthCache(deps);
-  const cached = cache[modelRef];
+  const fingerprint = await computeProviderCredentialFingerprint(deps, providerID);
+  const cacheKey = `${providerID}|${fingerprint}|${modelRef}`;
+  let stalePruned = false;
+  for (const key of Object.keys(cache)) {
+    if (key !== cacheKey && key.startsWith(`${providerID}|`) && key.endsWith(`|${modelRef}`)) {
+      delete cache[key];
+      stalePruned = true;
+    }
+  }
+  if (stalePruned) await writeHealthCache(deps, cache);
+  const cached = cache[cacheKey];
   const now = Math.floor(Date.now() / 1000);
-  if (cached && typeof cached.retryAfter === "number" && cached.retryAfter > now) {
+  if (
+    cached
+    && cached.providerID === providerID
+    && cached.fingerprint === fingerprint
+    && typeof cached.retryAfter === "number"
+    && cached.retryAfter > now
+  ) {
     return { status: cached.status, reason: cached.reason };
   }
 
@@ -165,7 +227,9 @@ export async function probeModel(
   const probe = classifyProbeResponse(result.stdout, modelID);
   if (probe.status !== "unreachable") {
     const ttl = probe.status === "retryable" ? RETRYABLE_TTL_SECONDS : CONFIRMED_TTL_SECONDS;
-    cache[modelRef] = {
+    cache[cacheKey] = {
+      providerID,
+      fingerprint,
       status: probe.status,
       reason: probe.reason ?? "",
       observedAt: new Date().toISOString(),
@@ -174,4 +238,32 @@ export async function probeModel(
     await writeHealthCache(deps, cache);
   }
   return probe;
+}
+
+export async function invalidateProbeCacheForProvider(
+  deps: Pick<AgentModelsDeps, "exec">,
+  providerID: string,
+): Promise<void> {
+  const cache = await readHealthCache(deps);
+  for (const key of Object.keys(cache)) {
+    if (key.startsWith(`${providerID}|`)) delete cache[key];
+  }
+  await writeHealthCache(deps, cache);
+}
+
+export async function pruneStaleProbeCacheForProvider(
+  deps: Pick<AgentModelsDeps, "exec">,
+  providerID: string,
+): Promise<void> {
+  const cache = await readHealthCache(deps);
+  const fingerprint = await computeProviderCredentialFingerprint(deps, providerID);
+  let changed = false;
+  for (const key of Object.keys(cache)) {
+    const [keyProvider, keyFingerprint] = key.split("|", 3);
+    if (keyProvider === providerID && keyFingerprint !== fingerprint) {
+      delete cache[key];
+      changed = true;
+    }
+  }
+  if (changed) await writeHealthCache(deps, cache);
 }
