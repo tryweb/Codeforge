@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+## [1.16.1] - 2026-08-26
+
+### Changed
+- Update the Ubuntu 24.04 APT package snapshot (3 packages have updates: libssl3t64 (3.0.13-0ubuntu3.12),libproc2-0 (2:4.0.4-4ubuntu3.2),procps (2:4.0.4-4ubuntu3.2)).
 
 ## [1.16.0] - 2026-08-26
 
@@ -1635,11 +1639,13 @@
 
 ### Changed
 - Improve the `README.md` document structure.
+
+
 ---
 
 ## Format
 
-[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.16.0...HEAD
+[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.16.1...HEAD
 [0.3.0]: https://github.com/tryweb/ai-engkit/releases/tag/v0.3.0
 [0.3.3]: https://github.com/tryweb/ai-engkit/compare/v0.3.0...v0.3.3
 [0.5.0]: https://github.com/tryweb/ai-engkit/compare/v0.3.3...v0.5.0
@@ -1792,3 +1798,4 @@
 [1.15.7]: https://github.com/tryweb/ai-engkit/compare/v1.15.6...v1.15.7
 [1.15.8]: https://github.com/tryweb/ai-engkit/compare/v1.15.7...v1.15.8
 [1.16.0]: https://github.com/tryweb/ai-engkit/compare/v1.15.8...v1.16.0
+[1.16.1]: https://github.com/tryweb/ai-engkit/compare/v1.16.0...v1.16.1
