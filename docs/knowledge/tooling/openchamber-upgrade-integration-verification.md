@@ -33,8 +33,8 @@ Run this procedure for every OpenChamber upgrade:
 3. **Build and recreate both services.**
 
    ```bash
-   docker compose -f docker-compose.dev.yml build ai-dev
-   docker compose -f docker-compose.dev.yml up -d ai-dev ai-admin
+   docker compose -p dev -f docker-compose.dev.yml build ai-dev
+   docker compose -p dev -f docker-compose.dev.yml up -d ai-dev ai-admin
    ```
 
 4. **Run runtime smoke tests.**

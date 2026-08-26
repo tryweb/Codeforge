@@ -196,9 +196,9 @@ lean-ctx status --json | jq '.mcp'   # 確認 MCP 註冊成功
 升級 lean-ctx pin 後依序執行:
 
 ```bash
-docker compose -f docker-compose.dev.yml build ai-dev
-docker compose -f docker-compose.dev.yml up -d
-CONTAINER=$(docker compose -f docker-compose.dev.yml ps --format '{{.Name}}' | head -1)
+docker compose -p dev -f docker-compose.dev.yml build ai-dev
+docker compose -p dev -f docker-compose.dev.yml up -d
+CONTAINER=$(docker compose -p dev -f docker-compose.dev.yml ps --format '{{.Name}}' | head -1)
 ./test/run-tests.sh "$CONTAINER"
 ```
 

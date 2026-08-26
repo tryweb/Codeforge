@@ -12,7 +12,7 @@
 OCI runtime exec failed: exec failed: unable to start container process: exec: "./test/run-tests.sh": stat ./test/run-tests.sh: no such file or directory
 ```
 
-**路徑 2 — 自動偵測抓錯 container：** `.opencode/skills/check-updates/SKILL.md` 第 115 行用 `docker compose -f docker-compose.dev.yml ps --format '{{.Name}}' | head -1` 自動偵測 container name。`docker compose ps` 依 compose 定義順序列出，第一個是 `ai-engkit-admin-dev`（admin service）。測試在 admin container 上執行**不會**報 OCI error，而是 OpenChamber 測試大量失敗（假失敗），容易被誤判為真實回歸。
+**路徑 2 — 自動偵測抓錯 container：** `.opencode/skills/check-updates/SKILL.md` 第 115 行用 `docker compose -p dev -f docker-compose.dev.yml ps --format '{{.Name}}' | head -1` 自動偵測 container name。`docker compose ps` 依 compose 定義順序列出，第一個是 `ai-engkit-admin-dev`（admin service）。測試在 admin container 上執行**不會**報 OCI error，而是 OpenChamber 測試大量失敗（假失敗），容易被誤判為真實回歸。
 
 ## Solution
 
