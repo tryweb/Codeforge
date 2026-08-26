@@ -211,33 +211,23 @@ describe("fetchConnectedCatalog", () => {
 });
 
 describe("applyAndVerify", () => {
-  test("logs the raw request response body when Agent Models debugging is enabled", async () => {
-    const previousDebug = process.env.AGENT_MODELS_DEBUG;
+  test("does not log successful request response bodies", async () => {
+    const { deps } = stubDeps([
+      {
+        stdout: JSON.stringify({ info: { role: "assistant", modelID: "kimi-k3", providerID: "opencode-go" } }),
+      },
+    ]);
     const originalError = console.error;
-    const messages: string[] = [];
-    console.error = (...args: unknown[]) => messages.push(args.map(String).join(" "));
-    process.env.AGENT_MODELS_DEBUG = "1";
-
+    const calls: unknown[][] = [];
+    console.error = (...args: unknown[]) => {
+      calls.push(args);
+    };
     try {
-      const { deps } = stubDeps([
-        {
-          stdout: JSON.stringify({ info: { role: "assistant", modelID: "kimi-k3", providerID: "opencode-go" } }),
-        },
-      ]);
-      const lib = createAgentModelsLib(deps);
-
-      await lib.fetchSuccessfulRequestModel("testpass", "librarian");
-
-      expect(messages).toEqual([
-        `[agent-model-live] response body for librarian: ${JSON.stringify({ info: { role: "assistant", modelID: "kimi-k3", providerID: "opencode-go" } })}`,
-      ]);
+      const result = await createAgentModelsLib(deps).fetchSuccessfulRequestModel("testpass", "librarian");
+      expect(result).toEqual({ modelID: "kimi-k3", providerID: "opencode-go" });
+      expect(calls).toEqual([]);
     } finally {
       console.error = originalError;
-      if (previousDebug === undefined) {
-        delete process.env.AGENT_MODELS_DEBUG;
-      } else {
-        process.env.AGENT_MODELS_DEBUG = previousDebug;
-      }
     }
   });
 
@@ -274,6 +264,7 @@ describe("applyAndVerify", () => {
       requestVerified: null,
     });
     expect(ctx.calls[1]).toContain("del(.agents[$agent].model");
+    expect(ctx.calls.some((command) => command.includes("model availability probe"))).toBe(false);
     ctx.cleanup();
   });
 
@@ -305,7 +296,7 @@ describe("applyAndVerify", () => {
     const agentsJson = JSON.stringify([
       { name: "explore", model: { modelID: "gpt-5.6-luna-fast", providerID: "openai" } },
     ]);
-    const { deps, cleanup } = stubDeps([
+    const { deps, calls, cleanup } = stubDeps([
       { stdout: '{"agents":{}}' }, // snapshot: cat
       { stdout: "" }, // write: jq ok
       { stdout: agentsJson }, // fetch
@@ -317,6 +308,10 @@ describe("applyAndVerify", () => {
         match: /\/session/,
         stdout: JSON.stringify({ info: { role: "assistant", modelID: "gpt-5.6-luna-fast", providerID: "openai" } }),
       },
+      {
+        match: /title:\"model availability probe\"/,
+        stdout: JSON.stringify({ info: { role: "assistant", modelID: "gpt-5.6-luna-fast", providerID: "openai" } }),
+      },
     ]);
     const lib = createAgentModelsLib(deps);
     const result = await lib.applyAndVerify("explore", [{ model: "openai/gpt-5.6-luna-fast" }]);
@@ -325,7 +320,107 @@ describe("applyAndVerify", () => {
       status: "verified",
       resolved: { modelID: "gpt-5.6-luna-fast", providerID: "openai" },
     });
+    expect(calls.some((command) => command.includes("docker") || command.includes("compose"))).toBe(false);
     cleanup();
+  });
+
+  test("probe unavailable restores the snapshot and performs a recovery restart", async () => {
+    const ctx = stubDeps([
+      { stdout: '{"agents":{}}' },
+      { stdout: "" },
+      { stdout: JSON.stringify([{ name: "explore", model: { modelID: "gpt-5.6-luna-fast", providerID: "openai" } }]) },
+      { match: /\/provider\b/, stdout: JSON.stringify({ connected: ["openai"], all: [] }) },
+      { match: /\/session\b/, stdout: JSON.stringify({ info: { role: "assistant", modelID: "gpt-5.6-luna-fast", providerID: "openai" } }) },
+      { match: /title:\"model availability probe\"/, stdout: JSON.stringify({ info: { role: "assistant", error: "404 unavailable" } }) },
+    ]);
+    const result = await createAgentModelsLib(ctx.deps).applyAndVerify("explore", [{ model: "openai/gpt-5.6-luna-fast" }]);
+    expect(result).toMatchObject({ ok: false, status: "probe_failed" });
+    expect(ctx.restartCount).toBe(2);
+    expect(ctx.calls.some((command) => command.includes("base64 -d > ~/.omo/omo.jsonc"))).toBe(true);
+    ctx.cleanup();
+  });
+
+  test("probe retryable keeps the applied config and reports unverified", async () => {
+    const ctx = stubDeps([
+      { stdout: '{"agents":{}}' },
+      { stdout: "" },
+      { stdout: JSON.stringify([{ name: "explore", model: { modelID: "gpt-5.6-luna-fast", providerID: "openai" } }]) },
+      { match: /\/provider\b/, stdout: JSON.stringify({ connected: ["openai"], all: [] }) },
+      { match: /\/session\b/, stdout: JSON.stringify({ info: { role: "assistant", modelID: "gpt-5.6-luna-fast", providerID: "openai" } }) },
+      { match: /title:\"model availability probe\"/, stdout: JSON.stringify({ info: { role: "assistant", error: "temporary" } }) },
+    ]);
+    const result = await createAgentModelsLib(ctx.deps).applyAndVerify("explore", [{ model: "openai/gpt-5.6-luna-fast" }]);
+    expect(result).toMatchObject({ ok: false, status: "unverified" });
+    expect(ctx.restartCount).toBe(1);
+    expect(ctx.calls.some((command) => command.includes("base64 -d > ~/.omo/omo.jsonc"))).toBe(false);
+    ctx.cleanup();
+  });
+
+  test("probe retired restores the snapshot and reports probe_failed", async () => {
+    const ctx = stubDeps([
+      { stdout: '{"agents":{}}' },
+      { stdout: "" },
+      { stdout: JSON.stringify([{ name: "explore", model: { modelID: "gpt-5.6-luna-fast", providerID: "openai" } }]) },
+      { match: /\/provider\b/, stdout: JSON.stringify({ connected: ["openai"], all: [] }) },
+      { match: /\/session\b/, stdout: JSON.stringify({ info: { role: "assistant", modelID: "gpt-5.6-luna-fast", providerID: "openai" } }) },
+      { match: /title:\"model availability probe\"/, stdout: JSON.stringify({ info: { role: "assistant", error: "410 retired" } }) },
+    ]);
+    const result = await createAgentModelsLib(ctx.deps).applyAndVerify("explore", [{ model: "openai/gpt-5.6-luna-fast" }]);
+    expect(result).toMatchObject({ ok: false, status: "probe_failed" });
+    expect(ctx.restartCount).toBe(2);
+    expect(ctx.calls.some((command) => command.includes("base64 -d > ~/.omo/omo.jsonc"))).toBe(true);
+    ctx.cleanup();
+  });
+
+  test("probe mismatch keeps the applied config and reports runtime_mismatch", async () => {
+    const ctx = stubDeps([
+      { stdout: '{"agents":{}}' },
+      { stdout: "" },
+      { stdout: JSON.stringify([{ name: "explore", model: { modelID: "gpt-5.6-luna-fast", providerID: "openai" } }]) },
+      { match: /\/provider\b/, stdout: JSON.stringify({ connected: ["openai"], all: [] }) },
+      { match: /\/session\b/, stdout: JSON.stringify({ info: { role: "assistant", modelID: "gpt-5.6-luna-fast", providerID: "openai" } }) },
+      { match: /title:\"model availability probe\"/, stdout: JSON.stringify({ info: { role: "assistant", modelID: "other", providerID: "openai" } }) },
+    ]);
+    const result = await createAgentModelsLib(ctx.deps).applyAndVerify("explore", [{ model: "openai/gpt-5.6-luna-fast" }]);
+    expect(result).toMatchObject({ ok: false, status: "runtime_mismatch" });
+    expect(ctx.restartCount).toBe(1);
+    expect(ctx.calls.some((command) => command.includes("base64 -d > ~/.omo/omo.jsonc"))).toBe(false);
+    ctx.cleanup();
+  });
+
+  test("probe rollback reports rollback_failed when recovery restart fails", async () => {
+    let restartCount = 0;
+    const ctx = stubDeps([
+      { stdout: '{"agents":{}}' },
+      { stdout: "" },
+      { stdout: JSON.stringify([{ name: "explore", model: { modelID: "gpt-5.6-luna-fast", providerID: "openai" } }]) },
+      { match: /\/provider\b/, stdout: JSON.stringify({ connected: ["openai"], all: [] }) },
+      { match: /\/session\b/, stdout: JSON.stringify({ info: { role: "assistant", modelID: "gpt-5.6-luna-fast", providerID: "openai" } }) },
+      { match: /title:\"model availability probe\"/, stdout: JSON.stringify({ info: { role: "assistant", error: "410 retired" } }) },
+    ], { restart: async () => {
+      restartCount += 1;
+      return restartCount === 1 ? { ok: true } : { ok: false, error: "recovery failed" };
+    } });
+    const result = await createAgentModelsLib(ctx.deps).applyAndVerify("explore", [{ model: "openai/gpt-5.6-luna-fast" }]);
+    expect(result).toMatchObject({ ok: false, status: "rollback_failed" });
+    expect(ctx.calls.some((command) => command.includes("base64 -d > ~/.omo/omo.jsonc"))).toBe(true);
+    ctx.cleanup();
+  });
+
+  test("probe rollback reports rollback_failed when snapshot restore fails", async () => {
+    const ctx = stubDeps([
+      { stdout: '{"agents":{}}' },
+      { stdout: "" },
+      { stdout: JSON.stringify([{ name: "explore", model: { modelID: "gpt-5.6-luna-fast", providerID: "openai" } }]) },
+      { match: /\/provider\b/, stdout: JSON.stringify({ connected: ["openai"], all: [] }) },
+      { match: /\/session\b/, stdout: JSON.stringify({ info: { role: "assistant", modelID: "gpt-5.6-luna-fast", providerID: "openai" } }) },
+      { match: /title:\"model availability probe\"/, stdout: JSON.stringify({ info: { role: "assistant", error: "404 unavailable" } }) },
+      { match: /base64 -d.*omo\.jsonc/, stdout: "", stderr: "restore failed", exitCode: 1 },
+    ]);
+    const result = await createAgentModelsLib(ctx.deps).applyAndVerify("explore", [{ model: "openai/gpt-5.6-luna-fast" }]);
+    expect(result).toMatchObject({ ok: false, status: "rollback_failed" });
+    expect(ctx.restartCount).toBe(1);
+    ctx.cleanup();
   });
 
   test("write failure reports write_failed without restarting", async () => {

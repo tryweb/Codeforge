@@ -35,6 +35,7 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
 export function validateFallbackModels(input: unknown): string | null {
   if (!isRecord(input)) return "Request body must be a JSON object";
   if (!Array.isArray(input.entries)) return "entries must be an array of { model, variant? }";
+  if (input.entries.length > 1) return "at most one model entry is supported (entries[0] is the primary)";
 
   for (const entry of input.entries) {
     if (!isRecord(entry)) return "each entry must be an object";

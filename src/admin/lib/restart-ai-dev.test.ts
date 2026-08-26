@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import type { ExecResult } from "./docker";
-import { restartAiDev, type AiDevRestartDeps } from "./restart-ai-dev";
+import {
+  restartAiDev,
+  restartManagedOpenCode,
+  type AiDevRestartDeps,
+  type ManagedRestartDeps,
+} from "./restart-ai-dev";
 
 const OK: ExecResult = { stdout: "", stderr: "", exitCode: 0 };
 
@@ -52,5 +57,64 @@ describe("restartAiDev", () => {
       command: "restart ai-dev-ref",
       timeoutMs: 30_000,
     }]);
+  });
+});
+
+describe("restartManagedOpenCode", () => {
+  function createManagedDeps(result: ExecResult): {
+    readonly deps: ManagedRestartDeps;
+    readonly commands: Array<{ readonly command: string; readonly timeoutMs: number }>;
+  } {
+    const commands: Array<{ readonly command: string; readonly timeoutMs: number }> = [];
+    return {
+      deps: {
+        exec: async (command, timeoutMs) => {
+          commands.push({ command, timeoutMs });
+          return result;
+        },
+        readEnv: () => ({ OPENCODE_SERVER_PASSWORD: "test-password" }),
+      },
+      commands,
+    };
+  }
+
+  test("issues a managed pid kill and health wait without docker commands", async () => {
+    // Given
+    const fixture = createManagedDeps(OK);
+
+    // When
+    const result = await restartManagedOpenCode(fixture.deps);
+
+    // Then
+    expect(result).toEqual({ ok: true });
+    expect(fixture.commands).toHaveLength(1);
+    const command = fixture.commands[0]?.command ?? "";
+    expect(command).toContain("kill");
+    expect(command).toContain("/global/health");
+    expect(command).toContain("$HOME/.config/openchamber/managed-opencode");
+    expect(command).not.toContain("docker");
+    expect(command).not.toContain("compose");
+  });
+
+  test("returns success when the managed restart script exits successfully", async () => {
+    // Given
+    const fixture = createManagedDeps(OK);
+
+    // When
+    const result = await restartManagedOpenCode(fixture.deps);
+
+    // Then
+    expect(result).toEqual({ ok: true });
+  });
+
+  test("returns the script failure when managed restart exits unsuccessfully", async () => {
+    // Given
+    const fixture = createManagedDeps({ stdout: "", stderr: "managed-opencode health timeout", exitCode: 12 });
+
+    // When
+    const result = await restartManagedOpenCode(fixture.deps);
+
+    // Then
+    expect(result).toEqual({ ok: false, error: "managed OpenCode health timeout" });
   });
 });

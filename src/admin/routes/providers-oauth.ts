@@ -17,11 +17,28 @@ import {
   startPendingFlow,
 } from "../lib/openai-oauth";
 import { restartAiDev } from "../lib/restart-ai-dev";
+import { invalidateProbeCacheForProvider } from "../lib/model-probe";
+import { createAgentModelReconciler } from "../lib/agent-model-reconciler";
+import { REAL_DEPS } from "../lib/agent-models";
+import { execInAiDev } from "../lib/docker";
 
 /** Only the OpenAI provider offers the ChatGPT Pro/Plus OAuth connection today. */
 const OAUTH_PROVIDER = "openai";
 
 const providersOAuth = new Hono();
+
+async function triggerAgentModelReconciliation(providerID: string): Promise<void> {
+  try {
+    await invalidateProbeCacheForProvider({ exec: execInAiDev }, providerID);
+  } catch {
+    return;
+  }
+  try {
+    void createAgentModelReconciler(REAL_DEPS).reconcileAll().catch(() => {});
+  } catch {
+    return;
+  }
+}
 
 function parseFlowId(body: unknown): string {
   if (typeof body !== "object" || body === null) return "";
@@ -145,6 +162,7 @@ providersOAuth.post("/apply", async (c) => {
     );
   }
 
+  await triggerAgentModelReconciliation(OAUTH_PROVIDER);
   clearPendingFlow(flowId);
   return c.json({ ok: true, connected: true });
 });
@@ -164,6 +182,7 @@ providersOAuth.post("/disconnect", async (c) => {
       500,
     );
   }
+  await triggerAgentModelReconciliation(OAUTH_PROVIDER);
   return c.json({ ok: true });
 });
 

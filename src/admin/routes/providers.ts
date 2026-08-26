@@ -27,11 +27,28 @@ import {
   clearProviderCache,
 } from "../lib/opencode-auth";
 import { restartAiDev } from "../lib/restart-ai-dev";
+import { invalidateProbeCacheForProvider } from "../lib/model-probe";
+import { createAgentModelReconciler } from "../lib/agent-model-reconciler";
+import { REAL_DEPS } from "../lib/agent-models";
+import { execInAiDev } from "../lib/docker";
 import { ProvidersPage } from "../views/providers";
 import providersOAuth from "./providers-oauth";
 
 const providers = new Hono();
 providers.route("/api/providers/openai/oauth", providersOAuth);
+
+async function triggerAgentModelReconciliation(providerID: string): Promise<void> {
+  try {
+    await invalidateProbeCacheForProvider({ exec: execInAiDev }, providerID);
+  } catch {
+    return;
+  }
+  try {
+    void createAgentModelReconciler(REAL_DEPS).reconcileAll().catch(() => {});
+  } catch {
+    return;
+  }
+}
 
 async function restoreProviderAuth(name: string, previousAuthKey: string | null): Promise<string[]> {
   const failures: string[] = [];
@@ -170,6 +187,7 @@ providers.post("/api/providers/:name/keys", async (c) => {
     }
   }
 
+  await triggerAgentModelReconciliation(name);
   return c.json({ ok: true, key: { id: key.id, masked: maskKey(key.value) } });
 });
 
@@ -216,6 +234,7 @@ providers.delete("/api/providers/:name/keys/:keyId", async (c) => {
     }
   }
 
+  await triggerAgentModelReconciliation(name);
   return c.json({ ok: true });
 });
 
@@ -257,6 +276,7 @@ providers.put("/api/providers/:name/keys/:keyId/active", async (c) => {
     }
   }
 
+  await triggerAgentModelReconciliation(name);
   return c.json({ ok: true, activationStatus: "restart_required" });
 });
 

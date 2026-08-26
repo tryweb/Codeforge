@@ -1,30 +1,48 @@
-import { describe, expect, test } from "bun:test";
-import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { beforeEach, describe, expect, test } from "bun:test";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import providersOAuth from "./providers-oauth";
+
+const { default: providersOAuth } = await import("./providers-oauth");
 
 interface OAuthFixture {
   binPath: string;
+  execCallsPath: string;
   cleanup: () => Promise<void>;
 }
 
 async function fixture(restartFails: boolean): Promise<OAuthFixture> {
   const directory = await mkdtemp(join(tmpdir(), "providers-oauth-"));
   const binPath = join(directory, "bin");
+  const execCallsPath = join(directory, "exec-calls");
   await mkdir(binPath);
   const dockerPath = join(binPath, "docker");
   const restartExit = restartFails ? 1 : 0;
   await writeFile(dockerPath, `#!/bin/sh
 case "$1" in
-  exec) printf '%s\n' "$FAKE_AUTH_JSON"; exit 0 ;;
+  exec) printf '%s\n' "$FAKE_AUTH_JSON"; [ -z "$FAKE_EXEC_CALLS" ] || printf '%s\n' "$*" >> "$FAKE_EXEC_CALLS"; exit 0 ;;
   restart|compose) echo 'restart failed' >&2; exit ${restartExit} ;;
   inspect|ps) exit 0 ;;
   *) exit 1 ;;
 esac
 `);
   await chmod(dockerPath, 0o755);
-  return { binPath, cleanup: () => rm(directory, { recursive: true, force: true }) };
+  return { binPath, execCallsPath, cleanup: () => rm(directory, { recursive: true, force: true }) };
+}
+
+async function readExecCommands(path: string): Promise<string[]> {
+  const content = await readFile(path, "utf8").catch(() => "");
+  return content.split("\n").filter(Boolean);
+}
+
+async function waitForExecCommand(path: string, pattern: string): Promise<string[]> {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const commands = await readExecCommands(path);
+    if (commands.some((command) => command.includes(pattern))) return commands;
+    await Bun.sleep(0);
+  }
+  return readExecCommands(path);
 }
 
 const USERCODE_BODY = {
@@ -67,6 +85,10 @@ async function startFlow(): Promise<string> {
 }
 
 describe("providers OAuth routes", () => {
+  beforeEach(() => {
+    rmSync(join(process.env.HOME ?? "", ".cache/openchamber/agent-model-reconcile.lock"), { recursive: true, force: true });
+  });
+
   test("POST /start returns a non-sensitive flow payload", async () => {
     const f = await fixture(false);
     const previousPath = Bun.env.PATH;
@@ -137,9 +159,11 @@ describe("providers OAuth routes", () => {
     const f = await fixture(false);
     const previousPath = Bun.env.PATH;
     const previousAuth = Bun.env.FAKE_AUTH_JSON;
+    const previousExecCalls = Bun.env.FAKE_EXEC_CALLS;
     const originalFetch = globalThis.fetch;
     Bun.env.PATH = `${f.binPath}:${previousPath ?? ""}`;
     Bun.env.FAKE_AUTH_JSON = "{}";
+    Bun.env.FAKE_EXEC_CALLS = f.execCallsPath;
     globalThis.fetch = oauthFetchStub();
     try {
       const flowId = await startFlow();
@@ -155,12 +179,17 @@ describe("providers OAuth routes", () => {
       });
       expect(apply.status).toBe(200);
       expect(await apply.json()).toEqual({ ok: true, connected: true });
+      const commands = await waitForExecCommand(f.execCallsPath, "agent-model-health.json");
+      expect(commands.some((command) => command.includes("agent-model-health.json"))).toBe(true);
+      expect(commands.some((command) => command.includes("/provider"))).toBe(true);
     } finally {
       globalThis.fetch = originalFetch;
       if (previousPath === undefined) delete Bun.env.PATH;
       else Bun.env.PATH = previousPath;
       if (previousAuth === undefined) delete Bun.env.FAKE_AUTH_JSON;
       else Bun.env.FAKE_AUTH_JSON = previousAuth;
+      if (previousExecCalls === undefined) delete Bun.env.FAKE_EXEC_CALLS;
+      else Bun.env.FAKE_EXEC_CALLS = previousExecCalls;
       await f.cleanup();
     }
   });
@@ -169,9 +198,11 @@ describe("providers OAuth routes", () => {
     const f = await fixture(true);
     const previousPath = Bun.env.PATH;
     const previousAuth = Bun.env.FAKE_AUTH_JSON;
+    const previousExecCalls = Bun.env.FAKE_EXEC_CALLS;
     const originalFetch = globalThis.fetch;
     Bun.env.PATH = `${f.binPath}:${previousPath ?? ""}`;
     Bun.env.FAKE_AUTH_JSON = "{}";
+    Bun.env.FAKE_EXEC_CALLS = f.execCallsPath;
     globalThis.fetch = oauthFetchStub();
     try {
       const flowId = await startFlow();
@@ -190,12 +221,41 @@ describe("providers OAuth routes", () => {
       expect(body.error).toContain("ai-dev restart failed");
       expect(body.error).toContain("connection reverted");
       expect(body.error).toContain("rollback incomplete");
+      const commands = await readExecCommands(f.execCallsPath);
+      expect(commands.some((command) => command.includes("agent-model-health.json"))).toBe(false);
     } finally {
       globalThis.fetch = originalFetch;
       if (previousPath === undefined) delete Bun.env.PATH;
       else Bun.env.PATH = previousPath;
       if (previousAuth === undefined) delete Bun.env.FAKE_AUTH_JSON;
       else Bun.env.FAKE_AUTH_JSON = previousAuth;
+      if (previousExecCalls === undefined) delete Bun.env.FAKE_EXEC_CALLS;
+      else Bun.env.FAKE_EXEC_CALLS = previousExecCalls;
+      await f.cleanup();
+    }
+  });
+
+  test("POST /disconnect triggers reconciliation after restart succeeds", async () => {
+    const f = await fixture(false);
+    const previousPath = Bun.env.PATH;
+    const previousExecCalls = Bun.env.FAKE_EXEC_CALLS;
+    const originalFetch = globalThis.fetch;
+    Bun.env.PATH = `${f.binPath}:${previousPath ?? ""}`;
+    Bun.env.FAKE_EXEC_CALLS = f.execCallsPath;
+    globalThis.fetch = oauthFetchStub();
+    try {
+      const response = await providersOAuth.request("http://localhost/disconnect", { method: "POST" });
+
+      expect(response.status).toBe(200);
+      const commands = await waitForExecCommand(f.execCallsPath, "agent-model-health.json");
+      expect(commands.some((command) => command.includes("agent-model-health.json"))).toBe(true);
+      expect(commands.some((command) => command.includes("/provider"))).toBe(true);
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (previousPath === undefined) delete Bun.env.PATH;
+      else Bun.env.PATH = previousPath;
+      if (previousExecCalls === undefined) delete Bun.env.FAKE_EXEC_CALLS;
+      else Bun.env.FAKE_EXEC_CALLS = previousExecCalls;
       await f.cleanup();
     }
   });

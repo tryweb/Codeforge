@@ -7,6 +7,7 @@ import {
   type AgentModelsDeps,
   type AgentModelsLib,
 } from "../lib/agent-models";
+import { createAgentModelReconciler } from "../lib/agent-model-reconciler";
 import { parseModelReference, probeModel, type ProbeResult } from "../lib/model-probe";
 import { AgentModelsPage } from "../views/agent-models";
 
@@ -14,6 +15,7 @@ const AGENT_KEY_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
 
 export function createAgentModelsRoutes(deps: AgentModelsDeps): Hono {
   const lib = createAgentModelsLib(deps);
+  const reconciler = createAgentModelReconciler(deps);
   const agentModels = new Hono();
 
   agentModels.get("/api/agent-models", async (c) => {
@@ -70,7 +72,7 @@ export function createAgentModelsRoutes(deps: AgentModelsDeps): Hono {
       }
     }
 
-    const result = await lib.applyAndVerify(agent, entries);
+    const result = await reconciler.applyAgent(agent, entries);
     return c.json(result);
   });
 

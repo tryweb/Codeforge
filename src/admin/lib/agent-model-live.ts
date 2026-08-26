@@ -210,9 +210,6 @@ export function createAgentModelLiveClient(deps: Pick<AgentModelsDeps, "exec">) 
   async function fetchSuccessfulRequestModel(password: string, agent: string): Promise<ResolvedModel | null> {
     const auth = Buffer.from(`opencode:${password}`).toString("base64");
     const result = await deps.exec(buildRequestVerificationScript(auth, agent), 90_000);
-    if (process.env.AGENT_MODELS_DEBUG === "1") {
-      console.error(`[agent-model-live] response body for ${agent}:`, result.stdout);
-    }
     return result.exitCode === 0 ? parseSuccessfulRequestModel(result.stdout) : null;
   }
 

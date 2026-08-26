@@ -20,7 +20,8 @@ import {
 } from "./agent-model-types";
 import { execInAiDev } from "./docker";
 import { readEnvFile } from "./env";
-import { restartAiDev } from "./restart-ai-dev";
+import { restartManagedOpenCode } from "./restart-ai-dev";
+import { parseModelReference, probeModel } from "./model-probe";
 
 export {
   buildJqWriteCommand,
@@ -41,7 +42,7 @@ export type {
 
 export const REAL_DEPS: AgentModelsDeps = {
   exec: execInAiDev,
-  restart: restartAiDev,
+  restart: restartManagedOpenCode,
   readEnv: readEnvFile,
   snapshotDir: "/opt/ai-engkit/admin-data",
 };
@@ -156,7 +157,45 @@ export function createAgentModelsLib(deps: AgentModelsDeps = REAL_DEPS) {
         error: `Configured model ${configured} did not match assigned ${configuredActual} and request-verified ${requestActual}`,
       };
     }
-    return { ok: true, status: "verified", resolved, requestVerified };
+
+    const parsedConfigured = parseModelReference(configured);
+    if (parsedConfigured === null) {
+      return {
+        ok: false,
+        status: "runtime_mismatch",
+        configured,
+        resolved,
+        requestVerified,
+        error: `Configured model ${configured} is not a valid provider/model reference`,
+      };
+    }
+    const probe = await probeModel(deps, parsedConfigured.providerID, parsedConfigured.modelID);
+    if (probe.status === "healthy") {
+      return { ok: true, status: "verified", resolved, requestVerified };
+    }
+    if (probe.status === "mismatch") {
+      return {
+        ok: false,
+        status: "runtime_mismatch",
+        configured,
+        resolved,
+        requestVerified,
+        error: probe.reason ?? `Probe resolved a different model than ${configured}`,
+      };
+    }
+    if (probe.status === "retryable" || probe.status === "unreachable") {
+      return { ok: false, status: "unverified", error: probe.reason ?? "model probe could not be completed" };
+    }
+
+    const rollback = await restoreAgentModelsConfig(snapshot);
+    if (!rollback.ok) {
+      return { ok: false, status: "rollback_failed", error: `${probe.reason ?? "model probe failed"}; ${rollback.error ?? "rollback failed"}` };
+    }
+    const recovery = await deps.restart();
+    if (!recovery.ok) {
+      return { ok: false, status: "rollback_failed", error: `${probe.reason ?? "model probe failed"}; ${recovery.error ?? "recovery restart failed"}` };
+    }
+    return { ok: false, status: "probe_failed", error: probe.reason ?? `model ${configured} is unavailable` };
   }
 
   return {

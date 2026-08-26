@@ -1,6 +1,13 @@
-import { describe, expect, test } from "bun:test";
-import { createAgentModelsRoutes } from "./agent-models";
+import { beforeEach, describe, expect, test } from "bun:test";
+import { rmSync } from "node:fs";
+import { join } from "node:path";
 import { listHandlers, stubDeps } from "./agent-models-test-support";
+
+const { createAgentModelsRoutes } = await import("./agent-models");
+
+beforeEach(() => {
+  rmSync(join(process.env.HOME ?? "", ".cache/openchamber/agent-model-reconcile.lock"), { recursive: true, force: true });
+});
 
 describe("createAgentModelsRoutes — PUT /api/agent-models/:agent", () => {
   test("clears an existing configured model", async () => {
@@ -33,6 +40,21 @@ describe("createAgentModelsRoutes — PUT /api/agent-models/:agent", () => {
       body: JSON.stringify({ entries: [{ model: 42 }] }),
     });
     expect(res.status).toBe(400);
+    expect(calls.length).toBe(0);
+    cleanup();
+  });
+
+  test("rejects multiple model entries with 400 before any write or restart", async () => {
+    const { deps, calls, cleanup } = stubDeps([]);
+    const app = createAgentModelsRoutes(deps);
+    const res = await app.request("http://localhost/api/agent-models/plan", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ entries: [{ model: "opencode/big-pickle" }, { model: "openai/gpt-5.6-sol" }] }),
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toContain("at most one");
+    expect(calls.some((call) => call.includes("jq "))).toBe(false);
     expect(calls.length).toBe(0);
     cleanup();
   });
