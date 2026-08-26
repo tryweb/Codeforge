@@ -519,3 +519,12 @@ pre { background: rgba(0,0,0,0.3); padding: 16px; border-radius: var(--radius); 
 
 .probe-hint { font-size: 12px; opacity: .7; margin-left: 4px; }
 .probe-elapsed { font-size: 13px; font-weight: 600; margin-left: 8px; }
+
+/* Tablet & narrow desktop (768–1024px): the fixed sidebar stays visible in
+   this range, so cap the drawer width to the column right of the sidebar.
+   Prevents the drawer from overlapping/crowding the sidebar while keeping a
+   usable 360px minimum for its content. At ≤767px the sidebar collapses
+   off-canvas and the base drawer rule already fills the viewport. */
+@media (max-width: 1024px) and (min-width: 768px) {
+  .drawer { width: min(360px, calc(100vw - var(--sidebar))); }
+}
