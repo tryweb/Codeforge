@@ -633,28 +633,15 @@ OPCODE_GENERAL_MODEL=$(docker exec "$CONTAINER" jq -r '.agent.general.model // e
 assert_eq "general native model matches persisted OMO override" "$OMO_GENERAL_MODEL" "$OPCODE_GENERAL_MODEL"
 
 # --------------------------------------------------
-# 8.4 Superpowers (Agentic Skills Framework)
+# 8.4 Superpowers (per-project only)
 # --------------------------------------------------
-echo ""
-echo "--- Superpowers (Agentic Skills Framework) ---"
-
-if docker exec "$CONTAINER" sh -c 'jq -r ".plugin | join(\" \")" ~/.config/opencode/opencode.json 2>/dev/null | grep -q "superpowers"'; then
-  pass "superpowers plugin configured in opencode.json"
+# Superpowers is no longer globally enabled; it is a per-project feature
+# managed from the admin Projects drawer.  Only verify the baked image
+# still ships the plugin source so per-project enablement can symlink it.
+if docker exec "$CONTAINER" sh -c 'test -d /opt/opencode/baked-plugins/superpowers/skills' 2>/dev/null; then
+  pass "superpowers baked plugin source present for per-project enablement"
 else
-  fail "superpowers plugin not found in opencode.json"
-fi
-
-SUPERPOWERS_PLUGIN_COUNT=$(docker exec "$CONTAINER" sh -c 'jq -r ".plugin | length" ~/.config/opencode/opencode.json 2>/dev/null' || echo "0")
-if [ "$SUPERPOWERS_PLUGIN_COUNT" -gt 0 ] 2>/dev/null; then
-  pass "superpowers plugin entry exists"
-else
-  fail "superpowers plugin entry missing"
-fi
-
-if docker exec "$CONTAINER" sh -c 'test -f /home/devuser/.config/opencode/skills/using-superpowers/SKILL.md && test -f /home/devuser/.config/opencode/skills/systematic-debugging/SKILL.md' 2>/dev/null; then
-  pass "superpowers skills discoverable in global skills path"
-else
-  fail "superpowers skills not found in global skills path"
+  fail "superpowers baked plugin source missing (per-project enablement broken)"
 fi
 
 # --------------------------------------------------
