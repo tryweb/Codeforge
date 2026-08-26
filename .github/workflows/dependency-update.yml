@@ -1093,7 +1093,6 @@ jobs:
           push: true
           tags: |
             ${{ env.REGISTRY }}/${{ steps.ghcr-image.outputs.name }}:${{ steps.version.outputs.next-version }}
-            ${{ env.REGISTRY }}/${{ steps.ghcr-image.outputs.name }}:latest
 
       - name: Tag and push release
         if: steps.decision.outputs.action == 'auto-release'
