@@ -83,14 +83,14 @@ cp .env.example .env
 ### Start the development environment
 
 ```bash
-docker compose -f docker-compose.dev.yml build --no-cache
-docker compose -f docker-compose.dev.yml up -d
+docker compose -p dev -f docker-compose.dev.yml build --no-cache
+docker compose -p dev -f docker-compose.dev.yml up -d
 ```
 
 ### Verify the environment
 
 ```bash
-docker compose -f docker-compose.dev.yml ps
+docker compose -p dev -f docker-compose.dev.yml ps
 ./test/run-tests.sh
 ```
 

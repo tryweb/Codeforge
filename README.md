@@ -173,8 +173,8 @@ Traditional Chinese guides are available for [contributing](./docs/CONTRIBUTING_
 Build and run the development stack:
 
 ```bash
-docker compose -f docker-compose.dev.yml build --no-cache
-docker compose -f docker-compose.dev.yml up -d
+docker compose -p dev -f docker-compose.dev.yml build --no-cache
+docker compose -p dev -f docker-compose.dev.yml up -d
 ```
 
 Run the available checks:

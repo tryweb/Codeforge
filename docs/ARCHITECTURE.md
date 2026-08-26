@@ -657,11 +657,11 @@ You can specify plugin versions when building the image:
 
 ```bash
 # Use the latest version (default)
-docker compose -f docker-compose.dev.yml build
+docker compose -p dev -f docker-compose.dev.yml build
 
 # Pin a specific version
 OH_MY_OPENAGENT_VERSION=3.15.0 LANCEDB_OPENCODE_PRO_VERSION=0.7.0 \
-  docker compose -f docker-compose.dev.yml build
+  docker compose -p dev -f docker-compose.dev.yml build
 ```
 
 ## Configuration Options

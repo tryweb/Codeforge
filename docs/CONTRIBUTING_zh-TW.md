@@ -102,11 +102,11 @@ cp .env.example .env
 # 編輯 .env 進行必要設定
 
 # 5. 啟動開發環境
-docker compose -f docker-compose.dev.yml build --no-cache
-docker compose -f docker-compose.dev.yml up -d
+docker compose -p dev -f docker-compose.dev.yml build --no-cache
+docker compose -p dev -f docker-compose.dev.yml up -d
 
 # 6. 確認服務運行
-docker compose -f docker-compose.dev.yml ps
+docker compose -p dev -f docker-compose.dev.yml ps
 curl http://localhost:8000/health
 ```
 
@@ -121,10 +121,10 @@ git rebase upstream/main
 ./test/run-tests.sh
 
 # 查看容器日誌
-docker compose -f docker-compose.dev.yml logs -f ai-dev
+docker compose -p dev -f docker-compose.dev.yml logs -f ai-dev
 
 # 進入容器調試
-docker compose -f docker-compose.dev.yml exec ai-dev bash
+docker compose -p dev -f docker-compose.dev.yml exec ai-dev bash
 ```
 
 ## 提交 Issue
