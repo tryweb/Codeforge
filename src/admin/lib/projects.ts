@@ -11,7 +11,7 @@ import { checkFeature, collectProjectOverviews, listProjects, type ProjectComman
 
 export type ProjectCommand = SettingsCommand;
 
-export const PROJECT_FEATURES = ["knowledge", "maintenance", "openspec"] as const;
+export const PROJECT_FEATURES = ["knowledge", "maintenance", "openspec", "superpowers"] as const;
 export type ProjectFeature = (typeof PROJECT_FEATURES)[number];
 
 export interface ProjectLibOptions {
@@ -304,6 +304,9 @@ export async function enableProjectFeature(
     case "openspec":
       cmd = `openspec init --tools opencode --force ${PROJECT_ROOT}`;
       break;
+    case "superpowers":
+      cmd = `mkdir -p ${PROJECT_ROOT}/.opencode/skills && for d in /opt/opencode/baked-plugins/superpowers/skills/*/; do ln -sfn "$d" "${PROJECT_ROOT}/.opencode/skills/$(basename "$d")"; done && mkdir -p ${PROJECT_ROOT}/.opencode/superpowers`;
+      break;
     default:
       return { ok: false, error: `Unknown feature '${feature}'. Valid: ${PROJECT_FEATURES.join(", ")}` };
   }
@@ -311,6 +314,34 @@ export async function enableProjectFeature(
   const result = await command(cmd, 30_000);
   if (result.exitCode !== 0 && result.exitCode !== -1) {
     return { ok: false, error: result.stderr || "Feature enable failed" };
+  }
+  return { ok: true, output: result.stdout };
+}
+
+/** Disable a project feature, removing its scaffolding. */
+export async function disableProjectFeature(
+  name: string,
+  feature: string,
+  options: ProjectLibOptions = {},
+): Promise<ProjectActionResult> {
+  const { command, workspaceRoot } = resolveOptions(options);
+  const PROJECT_ROOT = projectDir(workspaceRoot, name);
+  let cmd = "";
+  switch (feature) {
+    case "superpowers":
+      cmd = `rm -rf ${PROJECT_ROOT}/.opencode/superpowers && find ${PROJECT_ROOT}/.opencode/skills -maxdepth 1 -type l -exec sh -c 'readlink "$1" | grep -q baked-plugins/superpowers && rm "$1"' _ {} \\;`;
+      break;
+    case "knowledge":
+    case "maintenance":
+    case "openspec":
+      return { ok: true };
+    default:
+      return { ok: false, error: `Unknown feature '${feature}'. Valid: ${PROJECT_FEATURES.join(", ")}` };
+  }
+
+  const result = await command(cmd, 30_000);
+  if (result.exitCode !== 0 && result.exitCode !== -1) {
+    return { ok: false, error: result.stderr || "Feature disable failed" };
   }
   return { ok: true, output: result.stdout };
 }

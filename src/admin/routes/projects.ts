@@ -8,6 +8,7 @@ import {
   createProject,
   deleteProject,
   disableProject,
+  disableProjectFeature,
   enableProject,
   enableProjectFeature,
   isValidProjectName,
@@ -57,7 +58,7 @@ export function createProjectRoutes(options: ProjectRoutesOptions = {}) {
   projects.get("/api/projects/overview", async (c) => {
     const overviews = await collectProjectOverviews(command, workspaceRoot, settingsPath, disabledPath, toolStatus);
     const data: Record<string, {
-      features: { knowledge: boolean; maintenance: boolean; openspec: boolean };
+      features: { knowledge: boolean; maintenance: boolean; openspec: boolean; superpowers: boolean };
       remote: string | null;
       disabled: boolean;
       codegraph: ProjectOverview["codegraph"];
@@ -88,12 +89,13 @@ export function createProjectRoutes(options: ProjectRoutesOptions = {}) {
     const exists = await command(`test -d ${projectDir(name)} && echo yes`, 5_000);
     if (exists.stdout.trim() !== "yes") return c.json({ error: "Project not found" }, 404);
 
-    const [knowledge, maintenance, openspec] = await Promise.all([
+    const [knowledge, maintenance, openspec, superpowers] = await Promise.all([
       checkFeature(command, workspaceRoot, name, "docs/knowledge/README.md"),
       checkFeature(command, workspaceRoot, name, "docs/knowledge/maintenance/README.md"),
       checkFeature(command, workspaceRoot, name, "openspec"),
+      checkFeature(command, workspaceRoot, name, ".opencode/superpowers"),
     ]);
-    return c.json({ knowledge, maintenance, openspec });
+    return c.json({ knowledge, maintenance, openspec, superpowers });
   });
 
   projects.post("/api/projects", async (c) => {
@@ -122,6 +124,19 @@ export function createProjectRoutes(options: ProjectRoutesOptions = {}) {
     }
 
     const result = await enableProjectFeature(name, feature, { command, workspaceRoot });
+    if (!result.ok) return c.json({ error: result.error }, 500);
+    return c.json({ ok: true, output: result.output ?? "" });
+  });
+
+  projects.delete("/api/projects/:name/features/:feature", async (c) => {
+    const name = c.req.param("name");
+    const feature = c.req.param("feature") as Feature;
+
+    if (!PROJECT_FEATURES.includes(feature)) {
+      return c.json({ error: `Unknown feature '${feature}'. Valid: ${PROJECT_FEATURES.join(", ")}` }, 400);
+    }
+
+    const result = await disableProjectFeature(name, feature, { command, workspaceRoot });
     if (!result.ok) return c.json({ error: result.error }, 500);
     return c.json({ ok: true, output: result.output ?? "" });
   });
