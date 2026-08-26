@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
 AGENT_MODEL_HEALTH_FILE="${AGENT_MODEL_HEALTH_FILE:-${HOME}/.cache/openchamber/agent-model-health.json}"
+AGENT_MODEL_AUTH_FILE="${AGENT_MODEL_AUTH_FILE:-${HOME}/.local/share/opencode/auth.json}"
 AGENT_MODELS_VERIFY_TIMEOUT="${AGENT_MODELS_VERIFY_TIMEOUT:-20}"
 AGENT_MODELS_VERIFY_RETRIES="${AGENT_MODELS_VERIFY_RETRIES:-2}"
 VERIFY_FAILED=0
@@ -25,10 +26,32 @@ catalog_from_provider_json() {
   ' <<<"$json")
 }
 
+credential_fingerprint() {
+  provider="${1-}"
+  provider_literal="$(jq -cn --arg provider "$provider" '$provider')"
+  canonical_json="$(jq -c ".[$provider_literal] // empty" "$AGENT_MODEL_AUTH_FILE" 2>/dev/null || true)"
+  if [ -z "$canonical_json" ]; then
+    printf '%s' '' | sha256sum | cut -d' ' -f1
+  else
+    printf '%s' "$canonical_json" | sha256sum | cut -d' ' -f1
+  fi
+}
+
+scoped_health_key() {
+  model="${1-}"
+  provider="${model%%/*}"
+  fingerprint="$(credential_fingerprint "$provider")"
+  printf '%s|%s|%s\n' "$provider" "$fingerprint" "$model"
+}
+
 health_record() {
   model="${1-}"
   status="${2-}"
   reason="${3-}"
+  provider="${model%%/*}"
+  model_id="${model#*/}"
+  fingerprint="$(credential_fingerprint "$provider")"
+  cache_key="${provider}|${fingerprint}|${model}"
   retry_after=0
   tmp="${AGENT_MODEL_HEALTH_FILE}.tmp.${BASHPID:-$$}.$RANDOM"
   case "$status" in
@@ -39,17 +62,20 @@ health_record() {
   (
     flock 9
     if [ -s "$AGENT_MODEL_HEALTH_FILE" ]; then
-      jq --arg m "$model" --arg s "$status" --arg r "$reason" \
+      jq --arg k "$cache_key" --arg p "$provider" --arg f "$fingerprint" \
+        --arg s "$status" --arg r "$reason" \
         --argjson ra "$retry_after" --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-        '.[$m] = {status: $s, reason: $r, observedAt: $ts, retryAfter: $ra}' \
+        '.[$k] = {providerID: $p, fingerprint: $f, status: $s, reason: $r, observedAt: $ts, retryAfter: $ra}' \
         "$AGENT_MODEL_HEALTH_FILE" 2>/dev/null >"$tmp" || \
-        jq -n --arg m "$model" --arg s "$status" --arg r "$reason" \
+        jq -n --arg k "$cache_key" --arg p "$provider" --arg f "$fingerprint" \
+          --arg s "$status" --arg r "$reason" \
           --argjson ra "$retry_after" --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-          '{($m): {status: $s, reason: $r, observedAt: $ts, retryAfter: $ra}}' >"$tmp"
+          '{($k): {providerID: $p, fingerprint: $f, status: $s, reason: $r, observedAt: $ts, retryAfter: $ra}}' >"$tmp"
     else
-      jq -n --arg m "$model" --arg s "$status" --arg r "$reason" \
+      jq -n --arg k "$cache_key" --arg p "$provider" --arg f "$fingerprint" \
+        --arg s "$status" --arg r "$reason" \
         --argjson ra "$retry_after" --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-        '{($m): {status: $s, reason: $r, observedAt: $ts, retryAfter: $ra}}' >"$tmp"
+        '{($k): {providerID: $p, fingerprint: $f, status: $s, reason: $r, observedAt: $ts, retryAfter: $ra}}' >"$tmp"
     fi
     mv "$tmp" "$AGENT_MODEL_HEALTH_FILE" 2>/dev/null || rm -f "$tmp"
   ) 9>"${AGENT_MODEL_HEALTH_FILE}.lock"
@@ -57,16 +83,18 @@ health_record() {
 
 health_status() {
   model="${1-}"
+  cache_key="$(scoped_health_key "$model")"
   [ -f "$AGENT_MODEL_HEALTH_FILE" ] || return 1
-  jq -r --arg model "$model" '.[$model].status // empty' "$AGENT_MODEL_HEALTH_FILE" 2>/dev/null
+  jq -r --arg key "$cache_key" '.[$key].status // empty' "$AGENT_MODEL_HEALTH_FILE" 2>/dev/null
 }
 
 health_quarantined() {
   model="${1-}"
+  cache_key="$(scoped_health_key "$model")"
   status="$(health_status "$model")"
   [ "$status" = retired ] && return 0
   [[ "$status" = unavailable || "$status" = mismatch ]] || return 1
-  retry_after="$(jq -r --arg model "$model" '.[$model].retryAfter // 0' "$AGENT_MODEL_HEALTH_FILE" 2>/dev/null)"
+  retry_after="$(jq -r --arg key "$cache_key" '.[$key].retryAfter // 0' "$AGENT_MODEL_HEALTH_FILE" 2>/dev/null)"
   now="$(date +%s)"
   [ "$retry_after" -gt "$now" ]
 }

@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Unit tests for scripts/reconcile-agent-models.sh pure functions.
 # Run: bash test/test-agent-model-reconcile.sh
 set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -33,26 +32,30 @@ assert_eq "connected-only catalog" "$expected_catalog" "$catalog_out"
 
 available="$catalog_out"
 
-# 2. choose_model prefers the policy candidate that exists in the connected set.
-assert_eq "choose_model picks preferred connected model" \
-  "opencode/big-pickle" "$(choose_model explore "$available")"
-
-# 3. choose_model skips candidates absent from the connected set and falls back.
-assert_eq "choose_model skips disconnected candidate" \
-  "opencode/hy3-free" "$(choose_model librarian "opencode/hy3-free")"
-
-# 4. needs_update: unset, empty-resolved ("/"), or disconnected current all need updates.
-assert_eq "needs_update when unset"        "1" "$(needs_update ""       "$available")"
-assert_eq "needs_update when empty slash"  "1" "$(needs_update "/"      "$available")"
-assert_eq "needs_update when disconnected" "1" "$(needs_update 'openai/gpt-5.6-luna-fast' "$available")"
-assert_eq "no update when valid+connected" "0" "$(needs_update 'opencode/big-pickle' "$available")"
-
-# 5. Every managed agent has a non-empty policy candidate list.
-missing=""
-for agent in "${AGENTS[@]}"; do
-  [ -n "$(policy_candidates "$agent")" ] || missing="$missing $agent"
+for function_name in choose_model write_omo_model verify_runtime restart_managed_server; do
+  if grep -q "^${function_name}()" "${SCRIPT_DIR}/scripts/reconcile-agent-models.sh"; then
+    bad "removed ${function_name} definition"
+  else
+    ok "removed ${function_name} definition"
+  fi
 done
-assert_eq "policy candidates defined for all agents" "" "$missing"
+
+unset OPENCODE_SERVER_PASSWORD
+skip_log="$(reconcile 2>&1)"
+assert_eq "unset password skips reconciliation" \
+  "0" "$?"
+if [[ "$skip_log" == *"OPENCODE_SERVER_PASSWORD is not set; skipping startup reconciliation"* ]]; then
+  ok "unset password logs skip"
+else
+  bad "unset password logs skip"
+fi
+
+if grep -q 'bun run /opt/admin/lib/agent-model-reconcile-cli.ts' \
+  "${SCRIPT_DIR}/scripts/reconcile-agent-models.sh"; then
+  ok "adapter references reconciler CLI"
+else
+  bad "adapter references reconciler CLI"
+fi
 
 rm -f "$FIXTURE"
 echo "pass=$PASS fail=$FAIL"

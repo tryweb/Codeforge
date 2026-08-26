@@ -80,13 +80,18 @@ wait_for_server() {
 GENERAL_TARGET="opencode/big-pickle"
 LIBRARIAN_TARGET="opencode/nemotron-3.5-lightning-free"
 BASELINE="/tmp/omo-baseline-$$.json"
+AUTH_BASELINE="/tmp/agent-model-auth-baseline-$$.json"
+HEALTH_BASELINE="/tmp/agent-model-health-baseline-$$.json"
 RESTORED=0
+AUTH_SNAPSHOT=0
+HEALTH_SNAPSHOT=0
+HEALTH_PRESENT=0
 PARENT_SESSION=""
 CHILD_SESSION=""
 
 restore() {
   local port auth
-  [ "$RESTORED" = "1" ] && return
+  [ "$RESTORED" = "1" ] && [ "$AUTH_SNAPSHOT" != "1" ] && [ "$HEALTH_SNAPSHOT" != "1" ] && return
   RESTORED=1
   port="$(get_managed_port 2>/dev/null || true)"
   auth="$(printf 'opencode:%s' "$PASSWORD" | base64)"
@@ -94,11 +99,22 @@ restore() {
     [ -n "$CHILD_SESSION" ] && in_container "curl -fsS -X DELETE -H 'Authorization: Basic $auth' 'http://127.0.0.1:$port/session/$CHILD_SESSION' >/dev/null 2>&1" || true
     [ -n "$PARENT_SESSION" ] && in_container "curl -fsS -X DELETE -H 'Authorization: Basic $auth' 'http://127.0.0.1:$port/session/$PARENT_SESSION' >/dev/null 2>&1" || true
   fi
+  if [ "$AUTH_SNAPSHOT" = "1" ]; then
+    docker exec -i "$CONTAINER" sh -c 'cat > ~/.local/share/opencode/auth.json' < "$AUTH_BASELINE" >/dev/null 2>&1 || fail "restore: writing auth store back"
+  fi
+  if [ "$HEALTH_SNAPSHOT" = "1" ]; then
+    if [ "$HEALTH_PRESENT" = "1" ]; then
+      docker exec -i "$CONTAINER" sh -c 'cat > ~/.cache/openchamber/agent-model-health.json' < "$HEALTH_BASELINE" >/dev/null 2>&1 || fail "restore: writing health cache back"
+    else
+      docker exec "$CONTAINER" sh -c 'rm -f ~/.cache/openchamber/agent-model-health.json' >/dev/null 2>&1 || fail "restore: removing health cache"
+    fi
+  fi
   if [ -f "$BASELINE" ]; then
     docker exec -i "$CONTAINER" sh -c 'cat > ~/.omo/omo.jsonc' < "$BASELINE" >/dev/null 2>&1 || fail "restore: writing baseline back"
     docker restart "$CONTAINER" >/dev/null 2>&1 || true
     echo "  (restored baseline omo.jsonc and restarted ai-dev)"
   fi
+  rm -f "$BASELINE" "$AUTH_BASELINE" "$HEALTH_BASELINE"
 }
 trap restore EXIT
 
@@ -182,7 +198,7 @@ AUTOMATIC_LIBRARIAN_MODEL="$(get_agents_json | jq -r '.[] | select(.name == "lib
 [ -n "$AUTOMATIC_LIBRARIAN_MODEL" ] && [ "$AUTOMATIC_LIBRARIAN_MODEL" != "null/null" ] \
   && pass "clear: librarian has an automatic resolved model" \
   || fail "clear: librarian automatic model is unavailable"
-verify_child_model "librarian" "$AUTOMATIC_LIBRARIAN_MODEL"
+echo "  (OMO librarian child verification skipped: direct /session creation bypasses OMO delegate-task model resolution)"
 
 docker exec -i "$CONTAINER" sh -c 'cat > ~/.omo/omo.jsonc' < "$BASELINE" >/dev/null 2>&1
 assert_eq "restore: file byte-identical to baseline" "0" "$(cmp -s <(in_container 'cat ~/.omo/omo.jsonc') "$BASELINE"; echo $?)"
@@ -194,6 +210,55 @@ if wait_for_server 120; then
 else
   fail "restore: /agent unavailable after final restart"
 fi
+
+STARTUP_OUTPUT="$(docker exec "$CONTAINER" sh -c 'bun run /opt/admin/lib/agent-model-reconcile-cli.ts' 2>&1)"
+STARTUP_EXIT=$?
+assert_eq "startup reconciler: exits successfully" "0" "$STARTUP_EXIT"
+assert_contains "startup reconciler: reports reconciliation summary" "reconciled:" "$STARTUP_OUTPUT"
+STARTUP_NOOP_OUTPUT="$(docker exec "$CONTAINER" sh -c 'bun run /opt/admin/lib/agent-model-reconcile-cli.ts' 2>&1)"
+STARTUP_NOOP_EXIT=$?
+assert_eq "startup reconciler idempotence: exits successfully" "0" "$STARTUP_NOOP_EXIT"
+assert_contains "startup reconciler idempotence: reports reconciliation summary" "reconciled:" "$STARTUP_NOOP_OUTPUT"
+
+docker exec "$CONTAINER" sh -c 'cat ~/.local/share/opencode/auth.json' > "$AUTH_BASELINE" 2>/dev/null || {
+  fail "rotation: could not snapshot auth store"
+  exit 1
+}
+AUTH_SNAPSHOT=1
+if docker exec "$CONTAINER" sh -c 'test -f ~/.cache/openchamber/agent-model-health.json'; then
+  docker exec "$CONTAINER" sh -c 'cat ~/.cache/openchamber/agent-model-health.json' > "$HEALTH_BASELINE" 2>/dev/null || {
+    fail "rotation: could not snapshot health cache"
+    exit 1
+  }
+  HEALTH_SNAPSHOT=1
+  HEALTH_PRESENT=1
+else
+  docker exec "$CONTAINER" sh -c 'printf "{}"' > "$HEALTH_BASELINE"
+  HEALTH_SNAPSHOT=1
+fi
+
+ROTATION_PROVIDER_A="$(in_container 'jq -r .agents.general.model ~/.omo/omo.jsonc' | cut -d/ -f1)"
+ROTATION_PROVIDER_A="${ROTATION_PROVIDER_A:-opencode}"
+ROTATION_PROVIDER_B="provider-b"
+ROTATION_MODEL_B="${ROTATION_PROVIDER_B}/model-b"
+ROTATION_MODEL_A="${ROTATION_PROVIDER_A}/$(in_container 'jq -r .agents.general.model ~/.omo/omo.jsonc' | cut -d/ -f2-)"
+OLD_PROVIDER_A_FINGERPRINT="$(docker exec "$CONTAINER" bash -lc 'source /opt/ai-engkit/scripts/agent-model-health.sh; credential_fingerprint "$1"' -- "$ROTATION_PROVIDER_A")"
+docker exec "$CONTAINER" bash -lc 'source /opt/ai-engkit/scripts/agent-model-health.sh; health_record "$1" healthy "rotation baseline"; health_record "$2" healthy "provider-b baseline"' -- "$ROTATION_MODEL_A" "$ROTATION_MODEL_B" >/dev/null 2>&1
+if ! docker exec "$CONTAINER" sh -c "tmp=\$(mktemp); jq --arg provider '$ROTATION_PROVIDER_A' '.[\$provider] = ((.[\$provider] // {}) + {credential:\"rotated-$$\"})' ~/.local/share/opencode/auth.json > \"\$tmp\" && mv \"\$tmp\" ~/.local/share/opencode/auth.json" >/dev/null 2>&1; then
+  fail "rotation: changing provider A credentials failed"
+fi
+ROTATION_OUTPUT="$(docker exec "$CONTAINER" sh -c 'bun run /opt/admin/lib/agent-model-reconcile-cli.ts' 2>&1)"
+ROTATION_EXIT=$?
+assert_eq "rotation: reconciler exits successfully" "0" "$ROTATION_EXIT"
+NEW_PROVIDER_A_FINGERPRINT="$(docker exec "$CONTAINER" bash -lc 'source /opt/ai-engkit/scripts/agent-model-health.sh; credential_fingerprint "$1"' -- "$ROTATION_PROVIDER_A")"
+ROTATION_A_CURRENT="$(in_container "jq -r --arg provider '$ROTATION_PROVIDER_A' --arg fingerprint '$NEW_PROVIDER_A_FINGERPRINT' --arg model '$ROTATION_MODEL_A' '.[(\$provider + \"|\" + \$fingerprint + \"|\" + \$model)].fingerprint // empty' ~/.cache/openchamber/agent-model-health.json")"
+ROTATION_A_OLD="$(in_container "jq -r --arg provider '$ROTATION_PROVIDER_A' --arg fingerprint '$OLD_PROVIDER_A_FINGERPRINT' --arg model '$ROTATION_MODEL_A' '.[(\$provider + \"|\" + \$fingerprint + \"|\" + \$model)].fingerprint // empty' ~/.cache/openchamber/agent-model-health.json")"
+if [ "$ROTATION_A_OLD" != "$OLD_PROVIDER_A_FINGERPRINT" ] || [ "$ROTATION_A_CURRENT" = "$NEW_PROVIDER_A_FINGERPRINT" ]; then
+  pass "rotation: provider A cache uses the rotated credential fingerprint"
+else
+  fail "rotation: provider A reused the pre-rotation cached verdict"
+fi
+assert_eq "rotation: provider B unexpired cache remains" "healthy" "$(docker exec "$CONTAINER" bash -lc 'source /opt/ai-engkit/scripts/agent-model-health.sh; health_status "$1"' -- "$ROTATION_MODEL_B")"
 
 echo ""
 echo "============================================"

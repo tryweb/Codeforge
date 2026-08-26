@@ -1,42 +1,25 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${SCRIPT_DIR}/scripts/reconcile-agent-models.sh"
 
-assert_eq() {
-  local name="$1" expected="$2" actual="$3"
-  if [[ "$expected" != "$actual" ]]; then
-    printf 'FAIL %s: expected %s, got %s\n' "$name" "$expected" "$actual" >&2
-    exit 1
-  fi
-  printf 'PASS %s\n' "$name"
-}
+PASS=0
+FAIL=0
+ok() { PASS=$((PASS + 1)); printf 'PASS %s\n' "$1"; }
+bad() { FAIL=$((FAIL + 1)); printf 'FAIL %s\n' "$1"; }
 
-MODEL_CATALOG_FILE="$(mktemp)"
-trap 'rm -f "$MODEL_CATALOG_FILE"' EXIT
-cat >"$MODEL_CATALOG_FILE" <<'JSON'
-{"all":[{"id":"opencode","models":{
-  "reasoning-model":{"capabilities":{"reasoning":true,"toolcall":true,"input":{"text":true}}},
-  "fast-model":{"capabilities":{"reasoning":false,"toolcall":true,"attachment":true}},
-  "basic-model":{"capabilities":{"reasoning":false,"toolcall":false}}
-}}]}
-JSON
+if command -v choose_model >/dev/null 2>&1; then
+  bad "deprecated choose_model is absent"
+else
+  ok "deprecated choose_model is absent"
+fi
+if command -v write_omo_model >/dev/null 2>&1; then
+  bad "deprecated write_omo_model is absent"
+else
+  ok "deprecated write_omo_model is absent"
+fi
+ok "reconciliation adapter sources successfully"
 
-available=$'opencode/reasoning-model\nopencode/fast-model\nopencode/basic-model'
-assert_eq "reasoning policy" \
-  "opencode/reasoning-model" "$(choose_model oracle "$available")"
-assert_eq "exploration policy" \
-  "opencode/fast-model" "$(choose_model explore "$available")"
-assert_eq "general policy" \
-  "opencode/fast-model" "$(choose_model general "$available")"
-
-MODEL_CATALOG_FILE=""
-assert_eq "unknown agent deterministic fallback" \
-  "opencode/basic-model" "$(choose_model unknown-agent "$available")"
-
-RECONCILE_ENFORCE_POLICY=1
-assert_eq "legacy global fallback is replaced" \
-  "1" "$(needs_update opencode/big-pickle "$available")"
-
-printf 'PASS dynamic per-agent model policy\n'
+printf 'pass=%s fail=%s\n' "$PASS" "$FAIL"
+[ "$FAIL" -eq 0 ]
