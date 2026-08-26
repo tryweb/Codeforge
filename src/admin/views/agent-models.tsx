@@ -55,6 +55,57 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
       )}
 
       <div class="card">
+        <style>{`
+          .agent-models-table-disabled td {
+            opacity: 0.4;
+            pointer-events: none;
+            cursor: not-allowed;
+            background-color: rgba(0, 0, 0, 0.1);
+          }
+          .agent-models-table-disabled td:last-child .btn-outline {
+            opacity: 0.4 !important;
+            cursor: not-allowed !important;
+          }
+          .modal-overlay.disabled {
+            opacity: 0.6;
+            pointer-events: none;
+          }
+          .modal-overlay.disabled .modal {
+            filter: grayscale(50%);
+          }
+          .restart-banner {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+            color: #000;
+            padding: 12px 20px;
+            text-align: center;
+            font-weight: 600;
+            z-index: 9999;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+            animation: pulse 2s infinite;
+          }
+          @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.8; }
+          }
+          .restart-banner .spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #000;
+            border-top-color: transparent;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 8px;
+            vertical-align: middle;
+          }
+          @keyframes spin {
+            to { transform: rotate(360deg); }
+          }
+        `}</style>
         <table id="agent-models-table">
           <tr>
             <th>Subagent</th>
@@ -208,6 +259,20 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
           document.getElementById('edit-modal').style.display = 'none';
         }
 
+        function disableTableRows() {
+          var table = document.getElementById('agent-models-table');
+          if (table) table.classList.add('agent-models-table-disabled');
+        }
+
+        function enableTableRows() {
+          var table = document.getElementById('agent-models-table');
+          if (table) table.classList.remove('agent-models-table-disabled');
+          var modal = document.getElementById('edit-modal');
+          if (modal) modal.classList.remove('disabled');
+          var banner = document.querySelector('.restart-banner');
+          if (banner) banner.remove();
+        }
+
         function renderResult(r) {
           var el = document.getElementById('save-result');
           if (r.ok && r.status === 'cleared') {
@@ -249,9 +314,21 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
           var clearBtn = document.getElementById('btn-clear');
           var cancelBtn = document.getElementById('btn-cancel');
           var status = document.getElementById('restart-status');
+          var modal = document.getElementById('edit-modal');
           btn.disabled = true;
           clearBtn.disabled = true;
           if (cancelBtn) cancelBtn.disabled = true;
+          disableTableRows();
+          if (modal) {
+            modal.classList.add('disabled');
+            modal.style.display = 'none';
+          }
+          
+          var banner = document.createElement('div');
+          banner.className = 'restart-banner';
+          banner.innerHTML = '<span class="spinner"></span> Applying &amp; restarting… This restarts ai-dev and typically takes 30–60 seconds.';
+          document.body.appendChild(banner);
+          
           var elapsed = 0;
           status.innerHTML = '<span class="spinner"></span> Applying &amp; restarting… <span class="probe-hint">This restarts ai-dev and typically takes 30–60 seconds.</span> <span class="probe-elapsed">0s</span>';
           var timer = setInterval(function () {
@@ -272,17 +349,19 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
               btn.disabled = false;
               clearBtn.disabled = false;
               if (cancelBtn) cancelBtn.disabled = false;
+              enableTableRows();
               status.textContent = '';
               return;
             }
             renderResult(data);
             if (data.ok === true) {
               status.textContent = 'Restarted ✔';
-              setTimeout(function () { status.textContent = ''; btn.disabled = false; clearBtn.disabled = false; if (cancelBtn) cancelBtn.disabled = false; location.reload(); }, 2500);
+              setTimeout(function () { status.textContent = ''; btn.disabled = false; clearBtn.disabled = false; if (cancelBtn) cancelBtn.disabled = false; enableTableRows(); location.reload(); }, 2500);
             } else {
               btn.disabled = false;
               clearBtn.disabled = false;
               if (cancelBtn) cancelBtn.disabled = false;
+              enableTableRows();
               status.textContent = '';
             }
           } catch (e) {
@@ -291,6 +370,7 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
             btn.disabled = false;
             clearBtn.disabled = false;
             if (cancelBtn) cancelBtn.disabled = false;
+            enableTableRows();
             status.textContent = '';
           }
         }
