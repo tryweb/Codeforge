@@ -99,25 +99,7 @@ jobs:
 
       - name: Start services
         run: |
-          cat > docker-compose.override.yml << 'EOF'
-          services:
-            ai-dev:
-              image: ai-engkit:ci
-              container_name: ci-test
-              environment:
-                - OPENCODE_PLUGINS=oh-my-openagent,superpowers@git+https://github.com/obra/superpowers.git
-              volumes:
-                - workspace-dev:/home/devuser/workspace
-                - opencode-data-dev:/home/devuser/.local/share/opencode
-                - opencode-config-dev:/home/devuser/.config/opencode
-                - openchamber-data-dev:/home/devuser/.config/openchamber
-                - ssh-keys-dev:/home/devuser/.ssh
-                - git-config-dev:/home/devuser/.config/git
-                - /var/run/docker.sock:/var/run/docker.sock
-            ai-admin:
-              image: ai-engkit:ci
-          EOF
-          docker compose -f docker-compose.dev.yml -f docker-compose.override.yml up -d
+          docker compose -f docker-compose.dev.yml up -d
           echo "Waiting for services..."
           sleep 60
 
