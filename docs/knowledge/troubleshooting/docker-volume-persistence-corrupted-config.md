@@ -17,13 +17,13 @@ The volume retains its content regardless of container state. The only way to re
 
 ```bash
 # Stop the container
-docker compose -f docker-compose.dev.yml stop ai-dev
+docker compose -p dev -f docker-compose.dev.yml stop ai-dev
 
 # Remove the corrupted volume
 docker volume rm ai-engkit_lean-ctx-config-dev
 
 # Restart — Docker copies image content to the new volume
-docker compose -f docker-compose.dev.yml up -d ai-dev
+docker compose -p dev -f docker-compose.dev.yml up -d ai-dev
 ```
 
 ## Why It Works

@@ -17,7 +17,7 @@ volumes:
 
 ## 問題
 
-執行 `docker compose -f docker-compose.dev.yml up -d ai-admin` 後，容器持續 restart：
+執行 `docker compose -p dev -f docker-compose.dev.yml up -d ai-admin` 後，容器持續 restart：
 
 ```
 ai-engkit-admin-dev  | error: Module not found "/opt/admin/server.ts"
@@ -216,7 +216,7 @@ $ docker exec ai-engkit-admin-dev ls -la /opt/ai-engkit/
 -rw-rw-r-- 1 devuser devuser   17 Aug  1 07:23 provider-keys.json  # {"providers":{}}
 
 # 3) 核心驗證：import → force-recreate → registry 保留
-$ docker compose -f docker-compose.dev.yml up -d --force-recreate ai-admin
+$ docker compose -p dev -f docker-compose.dev.yml up -d --force-recreate ai-admin
 $ docker exec ai-engkit-admin-dev jq -r '.providers["opencode-go"].activeKeyId' /opt/ai-engkit/provider-keys.json
 k-ms9kjmmw   # 保留，未清空
 
