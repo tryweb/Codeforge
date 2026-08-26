@@ -64,7 +64,7 @@ async function writeHealthCache(
   );
   const encoded = Buffer.from(JSON.stringify(scopedCache)).toString("base64");
   await deps.exec(
-    `mkdir -p "${HEALTH_CACHE_DIR}" && printf '%s' '${encoded}' | base64 -d > "${HEALTH_CACHE_PATH}.tmp" && mv "${HEALTH_CACHE_PATH}.tmp" "${HEALTH_CACHE_PATH}"`,
+    `mkdir -p "${HEALTH_CACHE_DIR}" && printf '%s' '${encoded}' | base64 -d > "${HEALTH_CACHE_PATH}.tmp" && chmod 600 "${HEALTH_CACHE_PATH}.tmp" && mv "${HEALTH_CACHE_PATH}.tmp" "${HEALTH_CACHE_PATH}"`,
     10_000,
   );
 }
