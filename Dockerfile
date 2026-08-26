@@ -16,6 +16,7 @@ ARG MARKSMAN_VERSION=2026-02-08
 ARG LEANCTX_VERSION=3.9.20
 ARG OH_MY_OPENAGENT_VERSION=4.19.4
 ARG OPENSPEC_VERSION=1.10.0
+ARG CODEGRAPH_VERSION=1.6.0
 ARG AI_ENGKIT_VERSION=dev
 ARG USERNAME=devuser
 ARG USER_UID=1000
@@ -132,7 +133,7 @@ RUN curl -fsSL https://bun.sh/install | bash -s "bun-v${BUN_VERSION}"
 ENV PATH=/home/${USERNAME}/.bun/bin:${PATH}
 
 # ── CodeGraph 知識圖譜工具 ────────────────────────────
-RUN bun install -g @colbymchenry/codegraph && \
+RUN bun install -g @colbymchenry/codegraph@${CODEGRAPH_VERSION} && \
     rm -rf ~/.bun/install/cache
 
 # ── LeanCTX — AI 代理的認知上下文層 ──────────────────

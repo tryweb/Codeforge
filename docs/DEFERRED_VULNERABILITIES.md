@@ -22,11 +22,7 @@
 
 | Alert | CVE | 套件 | 版本 | 來源 | 嚴重度 | Dismiss 日期 | 解除條件 |
 |---|---|---|---|---|---|---|---|
-| 5694 | CVE-2026-56850 | node (bundled) | 24.16.0 | `@colbymchenry/codegraph-linux-x64` 1.5.0 | medium | 2026-08-05 | codegraph 重新打包（內建 node ≥ 24.18.1）；Dockerfile L134 unpinned，重建自動帶入 |
-| 5651 | CVE-2026-58040 | node (bundled) | 24.16.0 | `@colbymchenry/codegraph-linux-x64` 1.5.0 | medium | 2026-08-05 | 同上 |
-| 5666 | CVE-2026-58043 | node (bundled) | 24.16.0 | `@colbymchenry/codegraph-linux-x64` 1.5.0 | high | 2026-08-05 | 同上 |
-| 5692 | CVE-2026-58039 | node (bundled) | 24.16.0 | `@colbymchenry/codegraph-linux-x64` 1.5.0 | low | 2026-08-05 | 同上 |
-| 5693 | CVE-2026-56847 | node (bundled) | 24.16.0 | `@colbymchenry/codegraph-linux-x64` 1.5.0 | low | 2026-08-05 | 同上 |
+| - | - | - | - | - | - | - | - |
 
 ## Resolved
 

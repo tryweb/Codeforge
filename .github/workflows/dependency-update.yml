@@ -219,15 +219,15 @@ jobs:
           declare -a PINNED_VERSIONS=()
           while IFS='=' read -r name ver; do
             case "$name" in
-              DOCKER_VERSION|COMPOSE_VERSION|BUILDX_VERSION|OPENCODE_VERSION|OPENCHAMBER_VERSION|GLAB_VERSION|PLAYWRIGHT_VERSION|PLAYWRIGHT_MCP_VERSION|BUN_VERSION|GH_VERSION|MARKSMAN_VERSION|LEANCTX_VERSION|OH_MY_OPENAGENT_VERSION|OPENSPEC_VERSION)
+              DOCKER_VERSION|COMPOSE_VERSION|BUILDX_VERSION|OPENCODE_VERSION|OPENCHAMBER_VERSION|GLAB_VERSION|PLAYWRIGHT_VERSION|PLAYWRIGHT_MCP_VERSION|BUN_VERSION|GH_VERSION|MARKSMAN_VERSION|LEANCTX_VERSION|OH_MY_OPENAGENT_VERSION|OPENSPEC_VERSION|CODEGRAPH_VERSION)
                 PINNED_NAMES+=("$name")
                 PINNED_VERSIONS+=("$ver")
                 ;;
             esac
           done < <(awk '/^ARG [A-Z0-9_]+=/{sub(/^ARG /, ""); print}' Dockerfile)
 
-          if [[ "${#PINNED_NAMES[@]}" -ne 14 ]]; then
-            echo "::error::Expected 14 pinned ARG versions in Dockerfile, found ${#PINNED_NAMES[@]}"
+          if [[ "${#PINNED_NAMES[@]}" -ne 15 ]]; then
+            echo "::error::Expected 15 pinned ARG versions in Dockerfile, found ${#PINNED_NAMES[@]}"
             exit 1
           fi
 
@@ -262,6 +262,7 @@ jobs:
               LEANCTX_VERSION)  source='yvgude/lean-ctx';  latest="$(get_github_tag "$source")"; if [[ "$latest" != "unknown" ]]; then _leanctx_latest="$latest"; fi ;;
               OH_MY_OPENAGENT_VERSION) source='oh-my-openagent'; latest="$(get_npm_version "$source")" ;;
               OPENSPEC_VERSION) source='@fission-ai/openspec'; latest="$(get_npm_version "$source")" ;;
+              CODEGRAPH_VERSION) source='@colbymchenry/codegraph'; latest="$(get_npm_version "$source")" ;;
               # LEANCTX_SHA256 removed — SHA integrity check dropped for consistency
             esac
 
@@ -286,37 +287,6 @@ jobs:
               echo "::notice::$name: $current -> $latest (from $source)"
             else
               echo "::notice::$name: $current is current (latest: $latest)"
-            fi
-          done
-
-          # --- Check latest-tracked packages ---
-          for name in CODEGRAPH_VERSION; do
-            current="unknown"
-            previous=""
-            source=""
-
-            case "$name" in
-              CODEGRAPH_VERSION)
-                source='npm'; current="$(get_npm_version '@colbymchenry/codegraph')"
-                previous="$(previous_latest_value "$name")" ;;
-            esac
-
-            # First run (no previous snapshot) → treat as changed
-            if [[ ! -f "version-snapshot.json" ]]; then
-              latest_changes_detected=true
-              latest_updates_lines+=("$(printf '%s\t%s\t%s\t%s\t%s' "$name" "$current" "missing" "$source" "changed")")
-              continue
-            fi
-
-            if [[ "$current" == "unknown" ]]; then
-              warn "Could not resolve latest version for $name"
-              check_failures=$((check_failures + 1))
-              continue
-            fi
-
-            if [[ "$current" != "$previous" ]]; then
-              latest_changes_detected=true
-              latest_updates_lines+=("$(printf '%s\t%s\t%s\t%s\t%s' "$name" "$current" "$previous" "$source" "changed")")
             fi
           done
 

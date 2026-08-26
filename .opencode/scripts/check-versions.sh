@@ -146,6 +146,7 @@ lookup() {
         LEANCTX_VERSION)        get_github_latest "yvgude/lean-ctx" ;;
         OH_MY_OPENAGENT_VERSION) get_npm_latest "oh-my-openagent" ;;
         OPENSPEC_VERSION)        get_npm_latest "@fission-ai/openspec" ;;
+        CODEGRAPH_VERSION)       get_npm_latest "@colbymchenry/codegraph" ;;
         *)                      echo "unknown" ;;
     esac
 }
@@ -166,6 +167,7 @@ source_label() {
         LEANCTX_VERSION)        echo "github:yvgude/lean-ctx" ;;
         OH_MY_OPENAGENT_VERSION) echo "npm:oh-my-openagent" ;;
         OPENSPEC_VERSION)        echo "npm:@fission-ai/openspec" ;;
+        CODEGRAPH_VERSION)       echo "npm:@colbymchenry/codegraph" ;;
         *)                      echo "?" ;;
     esac
 }
@@ -175,7 +177,7 @@ source_label() {
 collect_rows() {
     while IFS=$'\t' read -r name pinned; do
         case "$name" in
-            DOCKER_VERSION|COMPOSE_VERSION|BUILDX_VERSION|GH_VERSION|MARKSMAN_VERSION|OPENCODE_VERSION|OPENCHAMBER_VERSION|BUN_VERSION|PLAYWRIGHT_VERSION|PLAYWRIGHT_MCP_VERSION|GLAB_VERSION|LEANCTX_VERSION|OH_MY_OPENAGENT_VERSION|OPENSPEC_VERSION) ;;
+            DOCKER_VERSION|COMPOSE_VERSION|BUILDX_VERSION|GH_VERSION|MARKSMAN_VERSION|OPENCODE_VERSION|OPENCHAMBER_VERSION|BUN_VERSION|PLAYWRIGHT_VERSION|PLAYWRIGHT_MCP_VERSION|GLAB_VERSION|LEANCTX_VERSION|OH_MY_OPENAGENT_VERSION|OPENSPEC_VERSION|CODEGRAPH_VERSION) ;;
             *) continue ;;
         esac
         [[ -z "${pinned:-}" ]] && continue
@@ -262,37 +264,7 @@ read_snapshot() {
     cat "$SNAPSHOT_FILE" 2>/dev/null || echo "{}"
 }
 
-check_latest_packages() {
-    local snapshot prev status
-    snapshot=$(read_snapshot)
-    for entry in CODEGRAPH_VERSION; do
-        local pkg source_label
-        case "$entry" in
-            CODEGRAPH_VERSION)       pkg="@colbymchenry/codegraph"; source_label="npm" ;;
-        esac
-        local current
-        current=$(get_npm_latest "$pkg")
-        if [[ "$current" == "unknown" ]]; then
-            printf '%s\tunknown\t\t%s\tcheck_failed\n' "$entry" "$source_label"
-            continue
-        fi
-        prev=$(echo "$snapshot" | python3 -c "
-import json,sys
-try:
-    d=json.load(sys.stdin)
-    v=d.get('latest',{}).get('$entry','')
-    print(v if isinstance(v,str) else '')
-except:
-    print('')
-" 2>/dev/null)
-        if [[ -n "$prev" && "$prev" != "-" && "$current" != "$prev" ]]; then
-            status="changed"
-        else
-            status="current"
-        fi
-        printf '%s\t%s\t%s\t%s\t%s\n' "$entry" "$current" "${prev:--}" "$source_label" "$status"
-    done
-}
+
 
 cmd_latest() {
     echo ""
