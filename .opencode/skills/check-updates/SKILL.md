@@ -137,7 +137,7 @@ aligned avoids stale IDE validation after the plugin moves forward.
 ### 4. Build the Dev Image
 
 ```bash
-docker compose -f docker-compose.dev.yml build ai-dev
+docker compose -p dev -f docker-compose.dev.yml build ai-dev
 ```
 
 If the build fails, report the error to the user and stop. Do not proceed.
@@ -147,7 +147,7 @@ If the build fails, report the error to the user and stop. Do not proceed.
 Start the dev container and run tests:
 
 ```bash
-docker compose -f docker-compose.dev.yml up -d
+docker compose -p dev -f docker-compose.dev.yml up -d
 
 # Wait for container to be ready
 for i in $(seq 1 30); do
@@ -159,7 +159,7 @@ done
 sleep 5
 
 # Detect the actual container name
-CONTAINER=$(docker compose -f docker-compose.dev.yml ps --format '{{.Name}}' 2>/dev/null | head -1)
+CONTAINER=$(docker compose -p dev -f docker-compose.dev.yml ps --format '{{.Name}}' 2>/dev/null | head -1)
 
 # Run tests
 ./test/run-tests.sh "$CONTAINER"

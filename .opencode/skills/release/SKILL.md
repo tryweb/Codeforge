@@ -32,7 +32,7 @@ If the container is not running or does not exist, build and start it automatica
 
 ```bash
 echo "[release] Dev container not running. Building and starting..."
-docker compose -f docker-compose.dev.yml up --build -d
+docker compose -p dev -f docker-compose.dev.yml up --build -d
 ```
 
 Then wait for both containers to be healthy and ready:
@@ -50,7 +50,7 @@ for i in $(seq 1 30); do
     echo "[release] ERROR: Containers failed to start after 30s."
     echo "[release] ai-engkit-dev status: ${DEV_STATUS:-not found}"
     echo "[release] ai-engkit-admin-dev status: ${ADMIN_STATUS:-not found}"
-    docker compose -f docker-compose.dev.yml logs --tail=20
+    docker compose -p dev -f docker-compose.dev.yml logs --tail=20
     exit 1
   fi
   sleep 2
@@ -64,7 +64,7 @@ DEV_CONTAINER="ai-engkit-dev"
 ADMIN_CONTAINER="ai-engkit-admin-dev"
 
 # Verify both are actually running (from this compose file)
-RUNNING_CONTAINERS=$(docker compose -f docker-compose.dev.yml ps --format '{{.Name}}' 2>/dev/null || echo "")
+RUNNING_CONTAINERS=$(docker compose -p dev -f docker-compose.dev.yml ps --format '{{.Name}}' 2>/dev/null || echo "")
 
 if ! echo "$RUNNING_CONTAINERS" | grep -q "$DEV_CONTAINER"; then
   echo "[release] ERROR: Main dev container ($DEV_CONTAINER) is not running."

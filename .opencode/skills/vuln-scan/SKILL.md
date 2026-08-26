@@ -287,7 +287,7 @@ use-specific version requirements.
 ### 5. Rebuild (Optional, ask user)
 
 ```bash
-docker compose -f docker-compose.dev.yml build ai-dev
+docker compose -p dev -f docker-compose.dev.yml build ai-dev
 ```
 
 Verify after build:
