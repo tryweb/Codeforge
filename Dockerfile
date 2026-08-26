@@ -228,11 +228,10 @@ RUN <<'EOF'
 mkdir -p /etc/opencode
 jq -n \
   --arg agent_plugin "oh-my-openagent@${OH_MY_OPENAGENT_VERSION}" \
-  --arg superpowers_plugin "superpowers@git+https://github.com/obra/superpowers.git" \
   --arg playwright_mcp_version "${PLAYWRIGHT_MCP_VERSION}" \
   '{
     autoupdate: false,
-    plugin: [$agent_plugin, $superpowers_plugin],
+    plugin: [$agent_plugin],
     lsp: {
       marksman: {
         command: ["marksman", "server"],

@@ -238,46 +238,6 @@ normalize_omo_plugin_versions() {
   (IFS=,; printf '%s\n' "${normalized[*]}")
 }
 
-link_superpowers_skills() {
-  local cache_dir="$1"
-  local skills_root="$2"
-
-  if [ ! -d "$cache_dir" ]; then
-    return 1
-  fi
-
-  local skills_dir=""
-  skills_dir=$(find "$cache_dir" -path "*/node_modules/superpowers/skills" -type d 2>/dev/null | head -1 || true)
-  if [ -z "$skills_dir" ] || [ ! -d "$skills_dir" ]; then
-    return 1
-  fi
-
-  mkdir -p "$skills_root"
-  local linked=0
-  local skill_dir
-  while IFS= read -r skill_dir; do
-    local skill_name="${skill_dir##*/}"
-    local target="$skills_root/$skill_name"
-
-    if [ -L "$target" ]; then
-      if [ "$(readlink "$target")" = "$skill_dir" ] && [ -f "$target/SKILL.md" ]; then
-        linked=$((linked + 1))
-        continue
-      fi
-      rm -f "$target"
-    elif [ -e "$target" ]; then
-      echo "Skipping Superpowers skill '$skill_name'; $target already exists"
-      continue
-    fi
-
-    ln -s "$skill_dir" "$target"
-    echo "Superpowers skill symlinked: $target -> $skill_dir"
-    linked=$((linked + 1))
-  done < <(find "$skills_dir" -mindepth 1 -maxdepth 1 -type d -exec test -f '{}/SKILL.md' ';' -print | sort)
-
-  [ "$linked" -gt 0 ]
-}
-
 # --- lean-ctx XDG migration (v3.8.5+) ---
 # Detect legacy single-dir layout (~/.config/lean-ctx with data files)
 # and migrate to XDG split (config→XDG_CONFIG_HOME, data→XDG_DATA_HOME, …).
@@ -400,91 +360,9 @@ if [ -f "$OPENCODE_CACHE_PKG/package.json" ]; then
   fi
 fi
 
-# Workaround for opencode#20940: plugin config() hook mutations are invisible to skill discovery.
-# Symlinks ensure superpowers skills are found via global scan path in all projects.
-SKILLS_ROOT="$OPCODE_CONFIG_DIR/skills"
-BAKED_SUPERPOWERS="/opt/opencode/baked-plugins/superpowers"
-
-link_superpowers_skills() {
-  local cache_dir="$1"
-  local skills_root="$2"
-
-  if [ ! -d "$cache_dir" ]; then
-    return 1
-  fi
-
-  local skills_dir=""
-  skills_dir=$(find "$cache_dir" -path "*/node_modules/superpowers/skills" -type d 2>/dev/null | head -1 || true)
-  if [ -z "$skills_dir" ] || [ ! -d "$skills_dir" ]; then
-    return 1
-  fi
-
-  mkdir -p "$skills_root"
-  local linked=0
-  local skill_dir
-  while IFS= read -r skill_dir; do
-    local skill_name="${skill_dir##*/}"
-    local target="$skills_root/$skill_name"
-
-    if [ -L "$target" ]; then
-      if [ "$(readlink "$target")" = "$skill_dir" ] && [ -f "$target/SKILL.md" ]; then
-        linked=$((linked + 1))
-        continue
-      fi
-      rm -f "$target"
-    elif [ -e "$target" ]; then
-      echo "Skipping Superpowers skill '$skill_name'; $target already exists"
-      continue
-    fi
-
-    ln -s "$skill_dir" "$target"
-    echo "Superpowers skill symlinked: $target -> $skill_dir"
-    linked=$((linked + 1))
-  done < <(find "$skills_dir" -mindepth 1 -maxdepth 1 -type d -exec test -f '{}/SKILL.md' ';' -print | sort)
-
-  [ "$linked" -gt 0 ]
-}
-
-if echo "$PLUGINS" | tr ',' '\n' | grep -q '^superpowers@\|^superpowers$'; then
-  if ! link_superpowers_skills "$OPENCODE_CACHE_PKG" "$SKILLS_ROOT"; then
-    if [ -d "$BAKED_SUPERPOWERS/skills" ]; then
-      echo "Superpowers skills not in cache; linking from baked image..."
-      mkdir -p "$SKILLS_ROOT"
-      linked=0
-      while IFS= read -r skill_dir; do
-        skill_name="${skill_dir##*/}"
-        target="$SKILLS_ROOT/$skill_name"
-
-        if [ -L "$target" ]; then
-          if [ "$(readlink "$target")" = "$skill_dir" ] && [ -f "$target/SKILL.md" ]; then
-            linked=$((linked + 1))
-            continue
-          fi
-          rm -f "$target"
-        elif [ -e "$target" ]; then
-          echo "Skipping Superpowers skill '$skill_name'; $target already exists"
-          continue
-        fi
-
-        ln -s "$skill_dir" "$target"
-        echo "Superpowers skill symlinked (baked): $target -> $skill_dir"
-        linked=$((linked + 1))
-      done < <(find "$BAKED_SUPERPOWERS/skills" -mindepth 1 -maxdepth 1 -type d -exec test -f '{}/SKILL.md' ';' -print | sort)
-
-      if [ "$linked" -eq 0 ]; then
-        echo "Warning: No Superpowers skills found in baked image"
-      fi
-    else
-      echo "Superpowers skills not found in cache yet; warming OpenCode plugin cache..."
-      timeout 180 opencode >/dev/null 2>&1 || true
-      if ! link_superpowers_skills "$OPENCODE_CACHE_PKG" "$SKILLS_ROOT"; then
-        echo "Warning: Superpowers skills directory not found after OpenCode cache warmup"
-      fi
-    fi
-  fi
-fi
 
 # --- Baked skills (enable-project-knowledge) ---
+SKILLS_ROOT="$OPCODE_CONFIG_DIR/skills"
 BAKED_SKILLS_DIR="/opt/opencode/baked-skills"
 if [ -d "$BAKED_SKILLS_DIR" ]; then
   mkdir -p "$SKILLS_ROOT"

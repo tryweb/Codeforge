@@ -2,6 +2,7 @@ const CAPABILITIES = [
   { key: "knowledge", glyph: "K", label: "Knowledge" },
   { key: "maintenance", glyph: "M", label: "Maintenance" },
   { key: "openspec", glyph: "OS", label: "OpenSpec" },
+  { key: "superpowers", glyph: "SP", label: "SuperPower" },
 ];
 
 let overviewData = {};
@@ -367,6 +368,12 @@ function renderDrawer() {
       enableBtn.textContent = "Enable";
       enableBtn.addEventListener("click", () => enableFeatureFromDrawer(name, cap.key, enableBtn));
       capRow.appendChild(enableBtn);
+    } else {
+      const disableBtn = document.createElement("button");
+      disableBtn.className = "btn-outline drawer-cap__enable";
+      disableBtn.textContent = "Disable";
+      disableBtn.addEventListener("click", () => disableFeatureFromDrawer(name, cap.key, disableBtn));
+      capRow.appendChild(disableBtn);
     }
     capsSec.appendChild(capRow);
   }
@@ -506,6 +513,27 @@ async function enableFeatureFromDrawer(name, feat, btn) {
     alert("Network error enabling " + feat);
     btn.disabled = false;
     btn.textContent = "Enable";
+  }
+}
+
+async function disableFeatureFromDrawer(name, feat, btn) {
+  btn.disabled = true;
+  btn.textContent = "Disabling…";
+  try {
+    const res = await fetch("/api/projects/" + encodeURIComponent(name) + "/features/" + feat, { method: "DELETE" });
+    if (res.ok) {
+      await loadFeatures();
+      if (drawerName === name) renderDrawer();
+    } else {
+      const d = await res.json().catch(() => null);
+      alert((d && d.error) || "Failed to disable " + feat);
+      btn.disabled = false;
+      btn.textContent = "Disable";
+    }
+  } catch (e) {
+    alert("Network error disabling " + feat);
+    btn.disabled = false;
+    btn.textContent = "Disable";
   }
 }
 

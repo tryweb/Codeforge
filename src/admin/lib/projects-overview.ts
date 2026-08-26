@@ -7,6 +7,7 @@ export interface ProjectFeatures {
   knowledge: boolean;
   maintenance: boolean;
   openspec: boolean;
+  superpowers: boolean;
 }
 
 export interface KnowledgeStats {
@@ -189,8 +190,9 @@ export async function collectProjectOverviews(
       checkFeature(command, workspaceRoot, name, "docs/knowledge/README.md"),
       checkFeature(command, workspaceRoot, name, "docs/knowledge/maintenance/README.md"),
       checkFeature(command, workspaceRoot, name, "openspec"),
-    ]).then(([knowledge, maintenance, openspec]) => ({ knowledge, maintenance, openspec }));
-    const anyFeature = feats.knowledge || feats.maintenance || feats.openspec;
+      checkFeature(command, workspaceRoot, name, ".opencode/superpowers"),
+    ]).then(([knowledge, maintenance, openspec, superpowers]) => ({ knowledge, maintenance, openspec, superpowers }));
+    const anyFeature = feats.knowledge || feats.maintenance || feats.openspec || feats.superpowers;
     const [gitRemote, tools, stats] = await Promise.all([
       command(`cd ${projectDir(workspaceRoot, name)} && git remote get-url origin 2>/dev/null || true`, 10_000),
       toolStatus !== undefined ? toolStatus.probe(name).catch(() => undefined) : Promise.resolve(undefined),

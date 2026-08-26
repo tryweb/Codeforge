@@ -349,7 +349,7 @@ describe("GET /api/projects/overview tool status", () => {
       const body = await res.json() as Record<string, unknown>;
       const demo = body["demo"] as Record<string, unknown>;
       expect(demo.codegraph).toEqual({ initialized: true, nodeCount: 42 });
-      expect(demo.features).toEqual({ knowledge: false, maintenance: false, openspec: false });
+      expect(demo.features).toEqual({ knowledge: false, maintenance: false, openspec: false, superpowers: false });
       expect(demo.disabled).toBe(false);
       expect(demo.remote).toBeNull();
     } finally {
@@ -419,7 +419,7 @@ describe("GET /api/projects/overview tool status", () => {
       const body = await res.json() as Record<string, unknown>;
       const demo = body["demo"] as Record<string, unknown>;
       expect(demo.codegraph).toBeNull();
-      expect(demo.features).toEqual({ knowledge: false, maintenance: false, openspec: false });
+      expect(demo.features).toEqual({ knowledge: false, maintenance: false, openspec: false, superpowers: false });
     } finally {
       await f.cleanup();
     }
@@ -577,6 +577,103 @@ describe("POST /api/projects/:name/delete", () => {
 
       const lsResult = await shellCommand(`test -d ${JSON.stringify(f.workspaceRoot + "/other")} && echo exists || echo gone`);
       expect(lsResult.stdout.trim()).toBe("exists");
+    } finally {
+      await f.cleanup();
+    }
+  });
+});
+
+describe("DELETE /api/projects/:name/features/:feature", () => {
+  function realCommand(): ProjectCommand {
+    const cmd = async (source: string) => {
+      if (source.includes("mkdir -p") || source.includes("git init") || source.includes("git add") || source.includes("git commit")) {
+        return { exitCode: 0, stdout: "", stderr: "" };
+      }
+      return shellCommand(source);
+    };
+    return cmd as ProjectCommand;
+  }
+
+  function requestDelete(app: ReturnType<typeof createProjectRoutes>, name: string, feature: string) {
+    return app.request(`http://localhost/api/projects/${encodeURIComponent(name)}/features/${feature}`, { method: "DELETE" });
+  }
+
+  function requestPost(app: ReturnType<typeof createProjectRoutes>, name: string, feature: string) {
+    return app.request(`http://localhost/api/projects/${encodeURIComponent(name)}/features/${feature}`, { method: "POST" });
+  }
+
+  test("returns 400 for unknown feature", async () => {
+    const f = await fixture();
+    try {
+      await mkdir(join(f.workspaceRoot, "demo"), { recursive: true });
+      const app = appFor(f, realCommand());
+      const res = await requestDelete(app, "demo", "unknown-feature");
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toContain("Unknown feature");
+    } finally {
+      await f.cleanup();
+    }
+  });
+
+  test("disable superpowers removes marker dir and symlinks", async () => {
+    const f = await fixture();
+    try {
+      const projectPath = join(f.workspaceRoot, "demo");
+      await mkdir(join(projectPath, ".opencode", "superpowers"), { recursive: true });
+      await mkdir(join(projectPath, ".opencode", "skills"), { recursive: true });
+      const symlinkTarget = "/opt/opencode/baked-plugins/superpowers/skills/test-skill";
+      const otherSymlinkTarget = "/opt/opencode/baked-plugins/other/skills/other-skill";
+      await shellCommand(`ln -sfn "${symlinkTarget}" "${join(projectPath, ".opencode", "skills", "test-skill")}"`);
+      await shellCommand(`ln -sfn "${otherSymlinkTarget}" "${join(projectPath, ".opencode", "skills", "other-skill")}"`);
+
+      const app = appFor(f, realCommand());
+      const res = await requestDelete(app, "demo", "superpowers");
+      expect(res.status).toBe(200);
+      expect(await res.json()).toMatchObject({ ok: true });
+
+      const spDir = await shellCommand(`test -d "${join(projectPath, ".opencode", "superpowers")}" && echo exists || echo gone`);
+      expect(spDir.stdout.trim()).toBe("gone");
+
+      const spLink = await shellCommand(`test -L "${join(projectPath, ".opencode", "skills", "test-skill")}" && echo exists || echo gone`);
+      expect(spLink.stdout.trim()).toBe("gone");
+
+      const otherLink = await shellCommand(`test -L "${join(projectPath, ".opencode", "skills", "other-skill")}" && echo exists || echo gone`);
+      expect(otherLink.stdout.trim()).toBe("exists");
+    } finally {
+      await f.cleanup();
+    }
+  });
+
+  test("disable non-superpowers feature returns ok", async () => {
+    const f = await fixture();
+    try {
+      await mkdir(join(f.workspaceRoot, "demo"), { recursive: true });
+      const app = appFor(f, realCommand());
+      const res = await requestDelete(app, "demo", "knowledge");
+      expect(res.status).toBe(200);
+      expect(await res.json()).toMatchObject({ ok: true });
+    } finally {
+      await f.cleanup();
+    }
+  });
+
+  test("disable then enable superpowers returns ok", async () => {
+    const f = await fixture();
+    try {
+      const projectPath = join(f.workspaceRoot, "demo");
+      await mkdir(join(projectPath, ".opencode", "superpowers"), { recursive: true });
+      await mkdir(join(projectPath, ".opencode", "skills"), { recursive: true });
+
+      const app = appFor(f);
+
+      const delRes = await requestDelete(app, "demo", "superpowers");
+      expect(delRes.status).toBe(200);
+      expect(await delRes.json()).toMatchObject({ ok: true });
+
+      const postRes = await requestPost(app, "demo", "superpowers");
+      expect(postRes.status).toBe(200);
+      expect(await postRes.json()).toMatchObject({ ok: true });
     } finally {
       await f.cleanup();
     }
