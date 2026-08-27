@@ -57,6 +57,12 @@ else
   bad "adapter references reconciler CLI"
 fi
 
+if grep -q 'global/health' "${SCRIPT_DIR}/scripts/reconcile-agent-models.sh"; then
+  ok "adapter waits for explicit lifecycle health"
+else
+  bad "adapter waits for explicit lifecycle health"
+fi
+
 rm -f "$FIXTURE"
 echo "pass=$PASS fail=$FAIL"
 [ "$FAIL" -eq 0 ]

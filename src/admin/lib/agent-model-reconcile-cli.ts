@@ -26,6 +26,7 @@ try {
   console.error(
     `[agent-models] reconciled: changed=${summary.changed} applied=${summary.applied} failed=${summary.failed}`,
   );
+  if (summary.failed > 0) process.exitCode = 1;
 } catch (error) { // no-excuse-ok: catch
   console.error("[agent-models] reconciliation failed", error);
   process.exitCode = 1;

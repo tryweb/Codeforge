@@ -43,6 +43,22 @@ wait_for_provider() {
   return 1
 }
 
+wait_for_lifecycle() {
+  local timeout="${1:-120}" waited=0 endpoint health_json auth
+  auth="$(basic_auth)"
+  while [ "$waited" -le "$timeout" ]; do
+    if endpoint="$(managed_endpoint)"; then
+      health_json="$(curl -fsS -m 3 -H "Authorization: Basic ${auth}" "${endpoint}/global/health" 2>/dev/null || true)"
+      if [ -n "$health_json" ] && printf '%s' "$health_json" | jq -e '.healthy == true' >/dev/null 2>&1; then
+        return 0
+      fi
+    fi
+    sleep 3
+    waited=$((waited + 3))
+  done
+  return 1
+}
+
 reconcile() {
   [ -n "${OPENCODE_SERVER_PASSWORD:-}" ] || {
     log "OPENCODE_SERVER_PASSWORD is not set; skipping startup reconciliation"
@@ -52,6 +68,11 @@ reconcile() {
   # Container restarts kill the lock owner but preserve this volume-backed path.
   rm -rf "${HOME}/.cache/openchamber/agent-model-reconcile.lock"
 
+  wait_for_lifecycle "$PROVIDER_WAIT_SECONDS" || {
+    log "managed OpenCode lifecycle not ready after ${PROVIDER_WAIT_SECONDS}s; skipping startup reconciliation"
+    return 0
+  }
+
   wait_for_provider "$PROVIDER_WAIT_SECONDS" >/dev/null || {
     log "/provider unavailable after ${PROVIDER_WAIT_SECONDS}s; skipping startup reconciliation"
     return 0
@@ -59,10 +80,29 @@ reconcile() {
 
   if command -v bun >/dev/null 2>&1 \
     && [ -f /opt/admin/lib/agent-model-reconcile-cli.ts ]; then
-    bun run /opt/admin/lib/agent-model-reconcile-cli.ts || {
-      log "TypeScript agent-model reconciliation failed; continuing startup"
-      return 0
-    }
+    # Retry loop for transient restart/health failures (lifecycle is ~60s)
+    attempts=0
+    max_attempts=3
+    while [ "$attempts" -lt "$max_attempts" ]; do
+      if RECONCILE_STARTUP_NO_RESTART=1 bun run /opt/admin/lib/agent-model-reconcile-cli.ts; then
+        return 0
+      fi
+      attempts=$((attempts + 1))
+      if [ "$attempts" -lt "$max_attempts" ]; then
+        log "reconciliation attempt $attempts failed, retrying in 30s..."
+        sleep 30
+        wait_for_lifecycle "$PROVIDER_WAIT_SECONDS" || log "lifecycle not ready before retry $((attempts+1))"
+        wait_for_provider "$PROVIDER_WAIT_SECONDS" >/dev/null || log "provider not ready before retry $((attempts+1))"
+      fi
+    done
+    log "reconciliation failed after $max_attempts attempts; scheduling deferred background retry in 60s"
+    (
+      sleep 60
+      wait_for_lifecycle "$PROVIDER_WAIT_SECONDS" 2>/dev/null || true
+      wait_for_provider "$PROVIDER_WAIT_SECONDS" >/dev/null 2>/dev/null || true
+      RECONCILE_STARTUP_NO_RESTART=1 bun run /opt/admin/lib/agent-model-reconcile-cli.ts || log "deferred reconciliation also failed"
+    ) &
+    disown 2>/dev/null || true
   else
     log "reconciler CLI unavailable; skipping startup reconciliation"
   fi

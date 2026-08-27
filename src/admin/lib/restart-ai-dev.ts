@@ -62,6 +62,36 @@ export async function restartAiDev(
 export async function restartManagedOpenCode(
   deps: ManagedRestartDeps = REAL_MANAGED_DEPS,
 ): Promise<{ readonly ok: boolean; readonly error?: string }> {
+  const noRestart = deps.readEnv()["RECONCILE_STARTUP_NO_RESTART"] === "1";
+  if (noRestart) {
+    const passwordNoKill = deps.readEnv()["OPENCODE_SERVER_PASSWORD"] ?? "";
+    const authNoKill = Buffer.from(`opencode:${passwordNoKill}`).toString("base64");
+    const managedDirNoKill = MANAGED_OPENCODE_DIR.replace(/^~/, "$HOME");
+    const waitScript = `set -u
+MANAGED_DIR="${managedDirNoKill}"
+# Startup no-restart mode: wait for existing instance to be healthy, do not kill.
+for waited in 0 3 6 9 12 15 18 21 24 27 30 33 36 39 42 45 48 51 54 57 60 63 66 69 72 75 78 81 84 87 90 93 96 99 102 105 108 111 114 117 120; do
+  latest="$(ls -t "$MANAGED_DIR"/*.json 2>/dev/null | head -n1)"
+  [ -n "$latest" ] || { sleep 3; continue; }
+  port="$(jq -r '.port // empty' "$latest" 2>/dev/null)"
+  [ -n "$port" ] || { sleep 3; continue; }
+  endpoint="http://127.0.0.1:$port"
+  if curl -fsS -m 3 -H 'Authorization: Basic ${authNoKill}' "$endpoint/global/health" >/dev/null 2>&1; then
+    exit 0
+  fi
+  sleep 3
+done
+printf '%s\n' 'managed OpenCode health timeout (no-restart wait)' >&2
+exit 12`;
+    try {
+      const result = await deps.exec(waitScript, 150_000);
+      if (result.exitCode === 0) return { ok: true };
+      if (result.exitCode === 12) return { ok: false, error: "managed OpenCode health timeout" };
+      return { ok: false, error: result.stderr || result.stdout || "managed OpenCode wait failed" };
+    } catch (e: unknown) {
+      return { ok: false, error: e instanceof Error ? e.message : String(e) };
+    }
+  }
   const password = deps.readEnv()["OPENCODE_SERVER_PASSWORD"] ?? "";
   const auth = Buffer.from(`opencode:${password}`).toString("base64");
   const managedDir = MANAGED_OPENCODE_DIR.replace(/^~/, "$HOME");
@@ -93,7 +123,17 @@ kill "$pid" 2>/dev/null || {
   printf '%s\n' 'managed-opencode kill failed' >&2
   exit 11
 }
-for waited in 0 3 6 9 12 15 18 21 24 27 30 33 36 39 42 45 48 51 54 57 60 63 66 69 72 75 78 81 84 87 90 93 96 99 102 105 108 111 114 117 120; do
+for shutdown_wait in 0 1 2 3 4 5 6 7 8 9; do
+  if ! kill -0 "$pid" 2>/dev/null; then break; fi
+  sleep 1
+done
+if kill -0 "$pid" 2>/dev/null; then
+  kill -9 "$pid" 2>/dev/null || {
+    printf '%s\n' 'managed-opencode force kill failed' >&2
+    exit 11
+  }
+fi
+for waited in 0 3 6 9 12 15 18 21 24 27 30 33 36 39 42 45 48 51 54 57 60 63 66 69 72 75 78 81 84 87 90 93 96 99 102 105 108 111 114 117 120 123 126 129 132 135 138 141 144 147 150 153 156 159 162 165 168 171 174 177 180; do
   sleep 3
   # Re-read the managed dir to discover the new process: lifecycle restarts
   # on a different port, so the original pid file is stale.
