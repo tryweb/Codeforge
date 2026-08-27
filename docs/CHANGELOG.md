@@ -1,5 +1,22 @@
 ## [Unreleased]
 
+## [1.16.2] - 2026-08-27
+
+### Added
+- Pin CodeGraph to v1.6.0 and resolve deferred vulnerabilities.
+
+### Fixed
+- Publish the injected dependency image.
+- Defer latest image promotion.
+
+### Changed
+- Upgrade OpenChamber from 1.20.0 to 1.21.0.
+- Upgrade @fission-ai/openspec from 1.10.0 to 1.11.0.
+- Remove original OpenSpec change directories after archiving.
+- Add the Superpowers main specification.
+- Archive the Superpower per-project enablement change.
+- Sync and archive the lean-ctx reliability-gate specifications.
+
 ## [1.16.1] - 2026-08-26
 
 ### Changed
@@ -1798,4 +1815,6 @@
 [1.15.7]: https://github.com/tryweb/ai-engkit/compare/v1.15.6...v1.15.7
 [1.15.8]: https://github.com/tryweb/ai-engkit/compare/v1.15.7...v1.15.8
 [1.16.0]: https://github.com/tryweb/ai-engkit/compare/v1.15.8...v1.16.0
+[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.16.2...HEAD
+[1.16.2]: https://github.com/tryweb/ai-engkit/releases/tag/v1.16.2
 [1.16.1]: https://github.com/tryweb/ai-engkit/compare/v1.16.0...v1.16.1
