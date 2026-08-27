@@ -1055,14 +1055,14 @@ jobs:
           docker rm -f tmp > /dev/null
           echo "::notice::Injected version: ${VERSION}"
 
-      - name: Build and push image to GHCR
+      - name: Tag and push injected image to GHCR
         if: steps.decision.outputs.action == 'auto-release'
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ steps.ghcr-image.outputs.name }}:${{ steps.version.outputs.next-version }}
+        run: |
+          VERSION="${{ steps.version.outputs.next-version }}"
+          IMAGE="${{ env.REGISTRY }}/${{ steps.ghcr-image.outputs.name }}:${VERSION}"
+          docker tag ai-engkit:updated "$IMAGE"
+          docker push "$IMAGE"
+          echo "::notice::Pushed injected image: $IMAGE"
 
       - name: Tag and push release
         if: steps.decision.outputs.action == 'auto-release'
