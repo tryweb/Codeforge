@@ -11,6 +11,18 @@ const deps = {
 
 try {
   const summary = await createAgentModelReconciler(deps).reconcileAll();
+  for (const result of summary.results) {
+    console.error(
+      `[agent-models] result ${JSON.stringify({
+        agent: result.agent,
+        status: result.status,
+        error: result.error,
+        resolved: result.resolved === null
+          ? null
+          : `${result.resolved.providerID}/${result.resolved.modelID}`,
+      })}`,
+    );
+  }
   console.error(
     `[agent-models] reconciled: changed=${summary.changed} applied=${summary.applied} failed=${summary.failed}`,
   );

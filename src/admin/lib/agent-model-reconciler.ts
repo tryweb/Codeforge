@@ -8,6 +8,7 @@ import {
   CONFIGURABLE_NATIVE_AGENTS,
   MANAGED_OPENCODE_DIR,
   type AgentModelsDeps,
+  type AgentModelChange,
   type ApplyResult,
   type FallbackModelEntry,
   type ResolvedModel,
@@ -27,6 +28,14 @@ export type ReconcileSummary = {
   readonly applied: number;
   readonly failed: number;
   readonly agents: readonly string[];
+  readonly results: readonly ReconcileAgentResult[];
+};
+
+export type ReconcileAgentResult = {
+  readonly agent: string;
+  readonly status: ApplyResult["status"];
+  readonly error: string | null;
+  readonly resolved: ResolvedModel | null;
 };
 
 type Capability = {
@@ -160,7 +169,7 @@ export function createAgentModelReconciler(deps: AgentModelsDeps) {
 
   async function runOnce(): Promise<ReconcileSummary> {
     const password = lib.getServerPassword();
-    if (password === null) return { changed: 0, applied: 0, failed: 0, agents: [] };
+    if (password === null) return { changed: 0, applied: 0, failed: 0, agents: [], results: [] };
     const config = await lib.readAgentModelsConfig();
     const [snapshot, state] = await Promise.all([
       lib.fetchProviderSnapshot(password),
@@ -169,7 +178,8 @@ export function createAgentModelReconciler(deps: AgentModelsDeps) {
     await Promise.all(snapshot.connectedProviders.map((providerID) => pruneStaleProbeCacheForProvider(deps, providerID)));
     const capabilities = await fetchCapabilityCatalog(deps, password);
     const connected = new Set(snapshot.connectedProviders);
-    const changed: Array<readonly [string, readonly FallbackModelEntry[]]> = [];
+    const changed: AgentModelChange[] = [];
+    const decisions: Array<Record<string, unknown>> = [];
     const selectCandidate = async (agent: string): Promise<readonly FallbackModelEntry[] | null> => {
       const candidates = snapshot.catalog
         .filter((ref) => parseModelReference(ref) !== null)
@@ -186,31 +196,67 @@ export function createAgentModelReconciler(deps: AgentModelsDeps) {
     for (const agent of state.names) {
       const configured = config[agent]?.models ?? [];
       const primary = configured[0];
+      const resolved = state.resolved.get(agent);
+      const resolvedRef = resolved === undefined ? null : `${resolved.providerID}/${resolved.modelID}`;
+      let observedStatus = "not_checked";
       let desired: readonly FallbackModelEntry[] | null = null;
       if (primary !== undefined) {
         const parsed = parseModelReference(primary.model);
         const status = parsed === null || !connected.has(parsed.providerID) ? null : await probe(primary.model);
+        observedStatus = status?.status ?? "not_checked";
         if (status?.status === "healthy" || (status !== null && !["unavailable", "retired"].includes(status.status))) desired = [primary];
         if (desired === null) desired = await selectCandidate(agent);
       } else {
-        const resolved = state.resolved.get(agent);
-        const resolvedRef = resolved === undefined ? null : `${resolved.providerID}/${resolved.modelID}`;
         if (resolved !== undefined && resolvedRef !== null && connected.has(resolved.providerID)) {
           const status = await probe(resolvedRef);
+          observedStatus = status.status;
           if (status.status === "healthy" || !["unavailable", "retired"].includes(status.status)) desired = [];
         }
         if (desired === null) {
           desired = await selectCandidate(agent);
         }
       }
-      if (desired !== null && !sameEntries(configured, desired)) changed.push([agent, desired]);
+      const changedForAgent = desired !== null && !sameEntries(configured, desired);
+      const decision = desired === null
+        ? "no_usable_model"
+        : changedForAgent
+          ? primary === undefined ? "configure_candidate" : "replace_unusable_configured"
+          : primary === undefined ? "keep_healthy_assigned" : "keep_healthy_configured";
+      decisions.push({
+        agent,
+        configured: primary?.model ?? null,
+        assigned: resolvedRef,
+        probe: observedStatus,
+        desired: desired?.[0]?.model ?? null,
+        changed: changedForAgent,
+        decision,
+      });
+      if (changedForAgent && desired !== null) changed.push({ agent, entries: desired });
+    }
+    for (const decision of decisions) {
+      console.error(`[agent-models] decision ${JSON.stringify(decision)}`);
     }
     let failed = 0;
-    for (const [agent, entries] of changed) {
-      const result = await lib.applyAndVerify(agent, entries);
+    const results: ReconcileAgentResult[] = [];
+    const batchResults = await lib.applyAndVerifyBatch(changed);
+    for (const { agent } of changed) {
+      const result = batchResults.get(agent)
+        ?? { ok: false, status: "write_failed" as const, error: "agent model batch returned no result" };
       if (!result.ok) failed += 1;
+      results.push({
+        agent,
+        status: result.status,
+        error: "error" in result ? result.error : null,
+        resolved: "resolved" in result ? result.resolved : null,
+      });
     }
-    return { changed: changed.length, applied: changed.length - failed, failed, agents: changed.map(([agent]) => agent) };
+    return {
+      changed: changed.length,
+      applied: changed.length - failed,
+      failed,
+      agents: changed.map(({ agent }) => agent),
+      results,
+    };
   }
 
   async function withLock<T>(work: () => Promise<T>, fallback: T): Promise<T> {
@@ -230,7 +276,7 @@ export function createAgentModelReconciler(deps: AgentModelsDeps) {
   }
 
   async function reconcileAll(): Promise<ReconcileSummary> {
-    let summary: ReconcileSummary = { changed: 0, applied: 0, failed: 0, agents: [] };
+    let summary: ReconcileSummary = { changed: 0, applied: 0, failed: 0, agents: [], results: [] };
     do {
       pending = false;
       probes.clear();

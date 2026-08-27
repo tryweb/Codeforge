@@ -1,7 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
-import { join } from "node:path";
-import { tmpdir } from "node:os";
 import { createAgentModelReconciler } from "./agent-model-reconciler";
 import type { AgentModelsDeps } from "./agent-model-types";
 import type { ExecResult } from "./docker";
@@ -16,7 +13,6 @@ type Fixture = {
 function fixture(config: string, provider: string, agents: string, probes: Record<string, string> = {}): Fixture {
   const calls: string[] = [];
   const applied: Array<readonly [string, readonly { readonly model: string }[]]> = [];
-  const dir = mkdtempSync(join(tmpdir(), "agent-model-reconciler-"));
   const deps: AgentModelsDeps = {
     exec: async (command: string): Promise<ExecResult> => {
       calls.push(command);
@@ -34,9 +30,8 @@ function fixture(config: string, provider: string, agents: string, probes: Recor
     },
     restart: async () => ({ ok: true }),
     readEnv: () => ({ OPENCODE_SERVER_PASSWORD: "testpass" }),
-    snapshotDir: dir,
   };
-  return { deps, calls, applied, cleanup: () => rmSync(dir, { recursive: true, force: true }) };
+  return { deps, calls, applied, cleanup: () => {} };
 }
 
 const liveAgents = JSON.stringify([
@@ -61,6 +56,30 @@ describe("agent model reconciler", () => {
     expect(summary.changed).toBe(0);
     expect(ctx.calls.some((call) => call.includes(".agents[$agent]"))).toBe(false);
     ctx.cleanup();
+  });
+
+  test("keeps a healthy assigned model without creating a config override", async () => {
+    const ctx = fixture(
+      JSON.stringify({ "sisyphus-junior": {} }),
+      JSON.stringify({ connected: ["opencode"], all: [{ id: "opencode", models: { "mimo-v2.5-free": { capabilities: {} } } }] }),
+      JSON.stringify([
+        { name: "Sisyphus-Junior", mode: "subagent", model: { providerID: "opencode", modelID: "mimo-v2.5-free" } },
+      ]),
+      { "mimo-v2.5-free": healthy("opencode", "mimo-v2.5-free") },
+    );
+    const logs: string[] = [];
+    const originalError = console.error;
+    console.error = (...args: unknown[]) => logs.push(args.map(String).join(" "));
+    try {
+      const result = await createAgentModelReconciler(ctx.deps).reconcileAll();
+      expect(result.changed).toBe(0);
+      expect(result.applied).toBe(0);
+      expect(ctx.calls.some((call) => call.includes(".agents[$agent]"))).toBe(false);
+      expect(logs.some((line) => line.includes('"decision":"keep_healthy_assigned"'))).toBe(true);
+    } finally {
+      console.error = originalError;
+      ctx.cleanup();
+    }
   });
 
   test("ranks capabilities deterministically and probes only until the first healthy candidate", async () => {
@@ -137,6 +156,12 @@ describe("agent model reconciler", () => {
     expect(result.changed).toBe(1);
     expect(result.applied).toBe(0);
     expect(result.failed).toBe(1);
+    expect(result.results).toEqual([{
+      agent: "general",
+      status: "probe_failed",
+      error: '"404 unavailable"',
+      resolved: null,
+    }]);
     ctx.cleanup();
   });
 });
