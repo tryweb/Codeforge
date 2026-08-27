@@ -1,6 +1,3 @@
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import type { AgentModelsDeps } from "../lib/agent-models";
 import type { ExecResult } from "../lib/docker";
 
@@ -13,7 +10,6 @@ export interface ExecHandler {
 
 export function stubDeps(handlers: readonly ExecHandler[], password: string | null = "testpass") {
   const calls: string[] = [];
-  const dir = mkdtempSync(join(tmpdir(), "agent-models-routes-"));
   const deps: AgentModelsDeps = {
     exec: async (command: string, _timeoutMs?: number): Promise<ExecResult> => {
       calls.push(command);
@@ -54,12 +50,11 @@ export function stubDeps(handlers: readonly ExecHandler[], password: string | nu
     },
     restart: async () => ({ ok: true }),
     readEnv: (): Record<string, string> => password === null ? {} : { OPENCODE_SERVER_PASSWORD: password },
-    snapshotDir: dir,
   };
   return {
     deps,
     calls,
-    cleanup: () => rmSync(dir, { recursive: true, force: true }),
+    cleanup: () => {},
   };
 }
 

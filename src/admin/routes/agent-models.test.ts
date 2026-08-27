@@ -159,8 +159,9 @@ describe("createAgentModelsRoutes — PUT /api/agent-models/:agent", () => {
       { match: /\/agent\b/, stdout: JSON.stringify([
         { name: "explore", mode: "subagent", model: { modelID: "big-pickle", providerID: "opencode" } },
       ]) },
-      { match: /cat ~\/\.omo\/omo\.jsonc/, stdout: '{"agents":{}}' },
+      { match: /cat ~\/\.omo\/omo\.jsonc/, stdout: "/tmp/omo.jsonc.snapshot-test" },
       { match: /\.agents\[\$agent\]\.model = \$model/, stdout: "", exitCode: 1, stderr: "jq: parse error" },
+      { match: /cat '\/tmp\/omo\.jsonc\.snapshot-test'/, stdout: "" },
     ]);
     const app = createAgentModelsRoutes(deps);
     const res = await app.request("http://localhost/api/agent-models/explore", {
