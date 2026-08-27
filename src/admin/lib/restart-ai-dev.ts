@@ -85,11 +85,15 @@ port="$(jq -r '.port // empty' "$pid_file" 2>/dev/null)"
   printf '%s\n' 'managed-opencode pid file missing' >&2
   exit 10
 }
+for startup_wait in 0 1 2 3 4 5 6 7 8 9; do
+  if kill -0 "$pid" 2>/dev/null; then break; fi
+  sleep 1
+done
 kill "$pid" 2>/dev/null || {
   printf '%s\n' 'managed-opencode kill failed' >&2
   exit 11
 }
-for waited in 0 3 6 9 12 15 18 21 24 27 30 33 36 39 42 45 48 51 54 57 60; do
+for waited in 0 3 6 9 12 15 18 21 24 27 30 33 36 39 42 45 48 51 54 57 60 63 66 69 72 75 78 81 84 87 90 93 96 99 102 105 108 111 114 117 120; do
   sleep 3
   # Re-read the managed dir to discover the new process: lifecycle restarts
   # on a different port, so the original pid file is stale.
@@ -112,7 +116,7 @@ printf '%s\n' 'managed-opencode health timeout' >&2
 exit 12`;
 
   try {
-    const result = await deps.exec(script, 75_000);
+    const result = await deps.exec(script, 150_000);
     if (result.exitCode === 0) return { ok: true };
     if (result.exitCode === 10) return { ok: false, error: "managed OpenCode pid file missing" };
     if (result.exitCode === 11) return { ok: false, error: "managed OpenCode kill failed" };
