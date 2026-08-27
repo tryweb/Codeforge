@@ -5,6 +5,11 @@ export interface FallbackModelEntry {
   readonly variant?: string;
 }
 
+export interface AgentModelChange {
+  readonly agent: string;
+  readonly entries: readonly FallbackModelEntry[];
+}
+
 export interface ResolvedModel {
   readonly modelID: string;
   readonly providerID: string;
@@ -55,7 +60,6 @@ export interface AgentModelsDeps {
   readonly exec: (command: string, timeoutMs?: number) => Promise<ExecResult>;
   readonly restart: () => Promise<{ readonly ok: boolean; readonly error?: string }>;
   readonly readEnv: () => Record<string, string>;
-  readonly snapshotDir: string;
 }
 
 export const OMO_CONFIG = "~/.omo/omo.jsonc";

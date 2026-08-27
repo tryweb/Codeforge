@@ -1,21 +1,17 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
-import { join } from "node:path";
-import { tmpdir } from "node:os";
 import { createAgentModelsLib, type AgentModelsDeps } from "./agent-models";
 import type { ExecResult as DockerExecResult } from "./docker";
 
 type ExecResponse = { match?: RegExp; stdout: string; stderr?: string; exitCode?: number };
+const SNAPSHOT_FILE = "/tmp/omo.jsonc.snapshot-test";
 type StubOptions = {
   readonly password?: string | null;
   readonly restart?: AgentModelsDeps["restart"];
-  readonly snapshotDir?: string;
 };
 
 function stubDeps(responses: ExecResponse[] = [], options: StubOptions = {}) {
   const calls: string[] = [];
   let restartCount = 0;
-  const dir = mkdtempSync(join(tmpdir(), "agent-models-test-"));
   const deps: AgentModelsDeps = {
     exec: async (command: string, _timeoutMs?: number): Promise<DockerExecResult> => {
       calls.push(command);
@@ -25,7 +21,6 @@ function stubDeps(responses: ExecResponse[] = [], options: StubOptions = {}) {
     },
     restart: options.restart ?? (async () => { restartCount += 1; return { ok: true }; }),
     readEnv: (): Record<string, string> => options.password === null ? {} : { OPENCODE_SERVER_PASSWORD: options.password ?? "testpass" },
-    snapshotDir: options.snapshotDir ?? dir,
   };
   return {
     deps,
@@ -33,7 +28,7 @@ function stubDeps(responses: ExecResponse[] = [], options: StubOptions = {}) {
     get restartCount() {
       return restartCount;
     },
-    cleanup: () => rmSync(dir, { recursive: true, force: true }),
+    cleanup: () => {},
   };
 }
 
@@ -72,25 +67,22 @@ describe("readAgentModelsConfig", () => {
 });
 
 describe("snapshot / restore round-trip", () => {
-  test("snapshot saves content to snapshotDir and restore pushes it back via base64", async () => {
-    const content = '{"$schema":"x","agents":{"plan":{"fallback_models":[{"model":"kimi-k3"}]}}}';
-    const { deps, calls, cleanup } = stubDeps([{ stdout: content }]);
+  test("snapshot and restore execute entirely inside ai-dev", async () => {
+    const { deps, calls } = stubDeps([{ stdout: `${SNAPSHOT_FILE}\n` }]);
     const lib = createAgentModelsLib(deps);
     const snapshot = await lib.snapshotAgentModelsConfig();
-    expect(snapshot).not.toBeNull();
-    if (snapshot === null) return;
-    expect(readFileSync(snapshot, "utf-8")).toBe(content);
+    expect(snapshot).toBe(SNAPSHOT_FILE);
+    expect(calls[0]).toContain("mktemp");
+    expect(calls[0]).toContain("~/.omo/omo.jsonc");
 
-    const restore = await lib.restoreAgentModelsConfig(snapshot);
+    const restore = await lib.restoreAgentModelsConfig(SNAPSHOT_FILE);
     expect(restore.ok).toBe(true);
     const restoreCmd = calls[1];
     expect(restoreCmd).toBeDefined();
     if (restoreCmd === undefined) return;
-    const b64 = restoreCmd.match(/echo '([^']+)'/)?.[1];
-    expect(b64).toBeDefined();
-    if (b64 === undefined) return;
-    expect(Buffer.from(b64, "base64").toString("utf-8")).toBe(content);
-    cleanup();
+    expect(restoreCmd).toContain(`cat '${SNAPSHOT_FILE}'`);
+    expect(restoreCmd).not.toContain("base64");
+    expect(restoreCmd).toContain("~/.omo/omo.jsonc");
   });
 });
 
@@ -211,6 +203,27 @@ describe("fetchConnectedCatalog", () => {
 });
 
 describe("applyAndVerify", () => {
+  test("writes a batch and restarts managed OpenCode once", async () => {
+    const agentsJson = JSON.stringify([
+      { name: "explore", model: { modelID: "mimo-v2.5-free", providerID: "opencode" } },
+      { name: "librarian", model: { modelID: "mimo-v2.5-free", providerID: "opencode" } },
+    ]);
+    const ctx = stubDeps([
+      { stdout: SNAPSHOT_FILE },
+      { stdout: "" },
+      { stdout: agentsJson },
+      { stdout: agentsJson },
+    ]);
+    const result = await createAgentModelsLib(ctx.deps).applyAndVerifyBatch([
+      { agent: "explore", entries: [] },
+      { agent: "librarian", entries: [] },
+    ]);
+    expect(ctx.restartCount).toBe(1);
+    expect(ctx.calls.filter((command) => command.includes(".agents[$agent]")).length).toBe(1);
+    expect(result.get("explore")).toMatchObject({ ok: true, status: "cleared" });
+    expect(result.get("librarian")).toMatchObject({ ok: true, status: "cleared" });
+  });
+
   test("does not log successful request response bodies", async () => {
     const { deps } = stubDeps([
       {
@@ -239,8 +252,8 @@ describe("applyAndVerify", () => {
     ctx.cleanup();
   });
 
-  test("reports snapshot filesystem failure as write_failed", async () => {
-    const ctx = stubDeps([{ stdout: '{"agents":{}}' }], { snapshotDir: "/proc/agent-models" });
+  test("reports remote snapshot failure as write_failed", async () => {
+    const ctx = stubDeps([{ stdout: "", exitCode: 1, stderr: "snapshot failed" }]);
     const result = await createAgentModelsLib(ctx.deps).applyAndVerify("librarian", []);
     expect(result).toMatchObject({ ok: false, status: "write_failed" });
     expect(ctx.restartCount).toBe(0);
@@ -283,7 +296,7 @@ describe("applyAndVerify", () => {
 
   test("reports rollback_failed when restart failure cannot restore the snapshot", async () => {
     const ctx = stubDeps([
-      { stdout: '{"agents":{}}' },
+      { stdout: SNAPSHOT_FILE },
       { stdout: "" },
       { stdout: "", exitCode: 1, stderr: "restore failed" },
     ], { restart: async () => ({ ok: false, error: "restart failed" }) });
@@ -297,7 +310,7 @@ describe("applyAndVerify", () => {
       { name: "explore", model: { modelID: "gpt-5.6-luna-fast", providerID: "openai" } },
     ]);
     const { deps, calls, cleanup } = stubDeps([
-      { stdout: '{"agents":{}}' }, // snapshot: cat
+      { stdout: SNAPSHOT_FILE },
       { stdout: "" }, // write: jq ok
       { stdout: agentsJson }, // fetch
       {
@@ -326,7 +339,7 @@ describe("applyAndVerify", () => {
 
   test("probe unavailable restores the snapshot and performs a recovery restart", async () => {
     const ctx = stubDeps([
-      { stdout: '{"agents":{}}' },
+      { stdout: SNAPSHOT_FILE },
       { stdout: "" },
       { stdout: JSON.stringify([{ name: "explore", model: { modelID: "gpt-5.6-luna-fast", providerID: "openai" } }]) },
       { match: /\/provider\b/, stdout: JSON.stringify({ connected: ["openai"], all: [] }) },
@@ -336,13 +349,13 @@ describe("applyAndVerify", () => {
     const result = await createAgentModelsLib(ctx.deps).applyAndVerify("explore", [{ model: "openai/gpt-5.6-luna-fast" }]);
     expect(result).toMatchObject({ ok: false, status: "probe_failed" });
     expect(ctx.restartCount).toBe(2);
-    expect(ctx.calls.some((command) => command.includes("base64 -d > ~/.omo/omo.jsonc"))).toBe(true);
+    expect(ctx.calls.some((command) => command.includes(`cat '${SNAPSHOT_FILE}'`))).toBe(true);
     ctx.cleanup();
   });
 
   test("probe retryable keeps the applied config and reports unverified", async () => {
     const ctx = stubDeps([
-      { stdout: '{"agents":{}}' },
+      { stdout: SNAPSHOT_FILE },
       { stdout: "" },
       { stdout: JSON.stringify([{ name: "explore", model: { modelID: "gpt-5.6-luna-fast", providerID: "openai" } }]) },
       { match: /\/provider\b/, stdout: JSON.stringify({ connected: ["openai"], all: [] }) },
@@ -352,13 +365,13 @@ describe("applyAndVerify", () => {
     const result = await createAgentModelsLib(ctx.deps).applyAndVerify("explore", [{ model: "openai/gpt-5.6-luna-fast" }]);
     expect(result).toMatchObject({ ok: false, status: "unverified" });
     expect(ctx.restartCount).toBe(1);
-    expect(ctx.calls.some((command) => command.includes("base64 -d > ~/.omo/omo.jsonc"))).toBe(false);
+    expect(ctx.calls.some((command) => command.includes(`cat '${SNAPSHOT_FILE}'`))).toBe(false);
     ctx.cleanup();
   });
 
   test("probe retired restores the snapshot and reports probe_failed", async () => {
     const ctx = stubDeps([
-      { stdout: '{"agents":{}}' },
+      { stdout: SNAPSHOT_FILE },
       { stdout: "" },
       { stdout: JSON.stringify([{ name: "explore", model: { modelID: "gpt-5.6-luna-fast", providerID: "openai" } }]) },
       { match: /\/provider\b/, stdout: JSON.stringify({ connected: ["openai"], all: [] }) },
@@ -368,13 +381,13 @@ describe("applyAndVerify", () => {
     const result = await createAgentModelsLib(ctx.deps).applyAndVerify("explore", [{ model: "openai/gpt-5.6-luna-fast" }]);
     expect(result).toMatchObject({ ok: false, status: "probe_failed" });
     expect(ctx.restartCount).toBe(2);
-    expect(ctx.calls.some((command) => command.includes("base64 -d > ~/.omo/omo.jsonc"))).toBe(true);
+    expect(ctx.calls.some((command) => command.includes(`cat '${SNAPSHOT_FILE}'`))).toBe(true);
     ctx.cleanup();
   });
 
   test("probe mismatch keeps the applied config and reports runtime_mismatch", async () => {
     const ctx = stubDeps([
-      { stdout: '{"agents":{}}' },
+      { stdout: SNAPSHOT_FILE },
       { stdout: "" },
       { stdout: JSON.stringify([{ name: "explore", model: { modelID: "gpt-5.6-luna-fast", providerID: "openai" } }]) },
       { match: /\/provider\b/, stdout: JSON.stringify({ connected: ["openai"], all: [] }) },
@@ -384,14 +397,14 @@ describe("applyAndVerify", () => {
     const result = await createAgentModelsLib(ctx.deps).applyAndVerify("explore", [{ model: "openai/gpt-5.6-luna-fast" }]);
     expect(result).toMatchObject({ ok: false, status: "runtime_mismatch" });
     expect(ctx.restartCount).toBe(1);
-    expect(ctx.calls.some((command) => command.includes("base64 -d > ~/.omo/omo.jsonc"))).toBe(false);
+    expect(ctx.calls.some((command) => command.includes(`cat '${SNAPSHOT_FILE}'`))).toBe(false);
     ctx.cleanup();
   });
 
   test("probe rollback reports rollback_failed when recovery restart fails", async () => {
     let restartCount = 0;
     const ctx = stubDeps([
-      { stdout: '{"agents":{}}' },
+      { stdout: SNAPSHOT_FILE },
       { stdout: "" },
       { stdout: JSON.stringify([{ name: "explore", model: { modelID: "gpt-5.6-luna-fast", providerID: "openai" } }]) },
       { match: /\/provider\b/, stdout: JSON.stringify({ connected: ["openai"], all: [] }) },
@@ -403,19 +416,19 @@ describe("applyAndVerify", () => {
     } });
     const result = await createAgentModelsLib(ctx.deps).applyAndVerify("explore", [{ model: "openai/gpt-5.6-luna-fast" }]);
     expect(result).toMatchObject({ ok: false, status: "rollback_failed" });
-    expect(ctx.calls.some((command) => command.includes("base64 -d > ~/.omo/omo.jsonc"))).toBe(true);
+    expect(ctx.calls.some((command) => command.includes(`cat '${SNAPSHOT_FILE}'`))).toBe(true);
     ctx.cleanup();
   });
 
   test("probe rollback reports rollback_failed when snapshot restore fails", async () => {
     const ctx = stubDeps([
-      { stdout: '{"agents":{}}' },
+      { stdout: SNAPSHOT_FILE },
       { stdout: "" },
       { stdout: JSON.stringify([{ name: "explore", model: { modelID: "gpt-5.6-luna-fast", providerID: "openai" } }]) },
       { match: /\/provider\b/, stdout: JSON.stringify({ connected: ["openai"], all: [] }) },
       { match: /\/session\b/, stdout: JSON.stringify({ info: { role: "assistant", modelID: "gpt-5.6-luna-fast", providerID: "openai" } }) },
       { match: /title:\"model availability probe\"/, stdout: JSON.stringify({ info: { role: "assistant", error: "404 unavailable" } }) },
-      { match: /base64 -d.*omo\.jsonc/, stdout: "", stderr: "restore failed", exitCode: 1 },
+      { match: /cat.*omo\.jsonc/, stdout: "", stderr: "restore failed", exitCode: 1 },
     ]);
     const result = await createAgentModelsLib(ctx.deps).applyAndVerify("explore", [{ model: "openai/gpt-5.6-luna-fast" }]);
     expect(result).toMatchObject({ ok: false, status: "rollback_failed" });
@@ -425,7 +438,7 @@ describe("applyAndVerify", () => {
 
   test("write failure reports write_failed without restarting", async () => {
     const { deps, restartCount, cleanup } = stubDeps([
-      { stdout: '{"agents":{}}' }, // snapshot
+      { stdout: SNAPSHOT_FILE },
       { stdout: "", exitCode: 1, stderr: "jq: parse error" }, // write fails
     ]);
     const lib = createAgentModelsLib(deps);
@@ -438,7 +451,7 @@ describe("applyAndVerify", () => {
   test("restart failure rolls back the snapshot without a second restart", async () => {
     const { deps, calls, restartCount, cleanup } = stubDeps(
       [
-        { stdout: '{"agents":{}}' }, // snapshot
+        { stdout: SNAPSHOT_FILE },
         { stdout: "" }, // write
       ],
       { restart: async () => ({ ok: false, error: "compose failed" }) },
@@ -448,13 +461,13 @@ describe("applyAndVerify", () => {
     expect(result).toMatchObject({ ok: false, status: "restart_failed", error: "compose failed" });
     expect(restartCount).toBe(0);
     // snapshot restored back into the container
-    expect(calls.some((c) => c.includes("base64 -d > ~/.omo/omo.jsonc"))).toBe(true);
+    expect(calls.some((c) => c.includes(`cat '${SNAPSHOT_FILE}'`))).toBe(true);
     cleanup();
   });
 
   test("fetch failure does not roll back: reports unverified", async () => {
     const ctx = stubDeps([
-      { stdout: '{"agents":{}}' }, // snapshot
+      { stdout: SNAPSHOT_FILE },
       { stdout: "" }, // write
       { stdout: "", exitCode: 2 }, // fetch fails
     ]);
@@ -463,7 +476,7 @@ describe("applyAndVerify", () => {
     expect(result.ok).toBe(false);
     expect(result).toMatchObject({ status: "unverified" });
     expect(ctx.restartCount).toBe(1); // no rollback restart
-    expect(ctx.calls.some((c) => c.includes("base64 -d > ~/.omo/omo.jsonc"))).toBe(false);
+    expect(ctx.calls.some((c) => c.includes(`cat '${SNAPSHOT_FILE}'`))).toBe(false);
     ctx.cleanup();
   });
 
@@ -472,7 +485,7 @@ describe("applyAndVerify", () => {
       { name: "librarian", model: { modelID: "qwen3.7-plus", providerID: "opencode-go" } },
     ]);
     const ctx = stubDeps([
-      { stdout: '{"agents":{"librarian":{}}}' },
+      { stdout: SNAPSHOT_FILE },
       { stdout: "" },
       { stdout: agentsJson },
       {
@@ -496,7 +509,7 @@ describe("applyAndVerify", () => {
       requestVerified: { modelID: "qwen3.7-plus", providerID: "opencode-go" },
       error: "Configured model opencode/nemotron-3.5-lightning-free did not match assigned opencode-go/qwen3.7-plus and request-verified opencode-go/qwen3.7-plus",
     });
-    expect(ctx.calls.some((command) => command.includes("base64 -d > ~/.omo/omo.jsonc"))).toBe(false);
+    expect(ctx.calls.some((command) => command.includes(`cat '${SNAPSHOT_FILE}'`))).toBe(false);
     ctx.cleanup();
   });
 });

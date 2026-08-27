@@ -1,5 +1,3 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
 import {
   buildJqWriteCommand,
   displayNameToKey,
@@ -12,6 +10,7 @@ import {
   OMO_CONFIG,
   VARIANTS,
   type AgentModelConfig,
+  type AgentModelChange,
   type AgentModelEntry,
   type AgentModelsDeps,
   type ApplyResult,
@@ -33,6 +32,7 @@ export {
 };
 export type {
   AgentModelConfig,
+  AgentModelChange,
   AgentModelEntry,
   AgentModelsDeps,
   ApplyResult,
@@ -44,7 +44,6 @@ export const REAL_DEPS: AgentModelsDeps = {
   exec: execInAiDev,
   restart: restartManagedOpenCode,
   readEnv: readEnvFile,
-  snapshotDir: "/opt/ai-engkit/admin-data",
 };
 
 export function createAgentModelsLib(deps: AgentModelsDeps = REAL_DEPS) {
@@ -67,27 +66,19 @@ export function createAgentModelsLib(deps: AgentModelsDeps = REAL_DEPS) {
   }
 
   async function snapshotAgentModelsConfig(): Promise<string | null> {
-    const result = await deps.exec(`cat ${OMO_CONFIG} 2>/dev/null`, 10_000);
-    if (result.exitCode !== 0 || !result.stdout) return null;
-    try {
-      if (!existsSync(deps.snapshotDir)) mkdirSync(deps.snapshotDir, { recursive: true });
-      const file = join(deps.snapshotDir, `omo.jsonc.snapshot-${Date.now()}`);
-      writeFileSync(file, result.stdout, "utf-8");
-      return file;
-    } catch {
-      return null;
-    }
+    const result = await deps.exec(
+      `snapshot=$(mktemp /tmp/omo.jsonc.snapshot.XXXXXX) && cat ${OMO_CONFIG} > "$snapshot" 2>/dev/null && printf '%s' "$snapshot"`,
+      10_000,
+    );
+    if (result.exitCode !== 0 || !result.stdout.trim()) return null;
+    return result.stdout.trim();
   }
 
   async function restoreAgentModelsConfig(snapshotFile: string): Promise<{ readonly ok: boolean; readonly error?: string }> {
-    let content: string;
-    try {
-      content = readFileSync(snapshotFile, "utf-8");
-    } catch {
-      return { ok: false, error: "snapshot file unreadable" };
-    }
-    const encoded = Buffer.from(content).toString("base64");
-    const result = await deps.exec(`echo '${encoded}' | base64 -d > ${OMO_CONFIG}`, 15_000);
+    const result = await deps.exec(
+      `cat '${snapshotFile}' > ${OMO_CONFIG}.tmp && mv ${OMO_CONFIG}.tmp ${OMO_CONFIG} && rm -f '${snapshotFile}'`,
+      15_000,
+    );
     if (result.exitCode !== 0) {
       return { ok: false, error: result.stderr || result.stdout || "restore failed" };
     }
@@ -99,25 +90,7 @@ export function createAgentModelsLib(deps: AgentModelsDeps = REAL_DEPS) {
     return trimmed ? trimmed : null;
   }
 
-  async function applyAndVerify(agent: string, entries: readonly FallbackModelEntry[]): Promise<ApplyResult> {
-    const snapshot = await snapshotAgentModelsConfig();
-    if (snapshot === null) {
-      return { ok: false, status: "write_failed", error: "could not snapshot ~/.omo/omo.jsonc before applying the model" };
-    }
-    const write = await writeAgentFallbackModels(agent, entries);
-    if (!write.ok) {
-      return { ok: false, status: "write_failed", error: write.error ?? "write failed" };
-    }
-
-    const restart = await deps.restart();
-    if (!restart.ok) {
-      const rollback = await restoreAgentModelsConfig(snapshot);
-      if (!rollback.ok) {
-        return { ok: false, status: "rollback_failed", error: `${restart.error ?? "restart failed"}; ${rollback.error ?? "rollback failed"}` };
-      }
-      return { ok: false, status: "restart_failed", error: restart.error ?? "restart failed" };
-    }
-
+  async function verifyAppliedAgent(agent: string, entries: readonly FallbackModelEntry[]): Promise<ApplyResult> {
     const password = getServerPassword();
     if (password === null) {
       return { ok: false, status: "unverified", error: "OPENCODE_SERVER_PASSWORD missing after restart" };
@@ -186,16 +159,74 @@ export function createAgentModelsLib(deps: AgentModelsDeps = REAL_DEPS) {
     if (probe.status === "retryable" || probe.status === "unreachable") {
       return { ok: false, status: "unverified", error: probe.reason ?? "model probe could not be completed" };
     }
-
-    const rollback = await restoreAgentModelsConfig(snapshot);
-    if (!rollback.ok) {
-      return { ok: false, status: "rollback_failed", error: `${probe.reason ?? "model probe failed"}; ${rollback.error ?? "rollback failed"}` };
-    }
-    const recovery = await deps.restart();
-    if (!recovery.ok) {
-      return { ok: false, status: "rollback_failed", error: `${probe.reason ?? "model probe failed"}; ${recovery.error ?? "recovery restart failed"}` };
-    }
     return { ok: false, status: "probe_failed", error: probe.reason ?? `model ${configured} is unavailable` };
+  }
+
+  async function applyAndVerifyBatch(changes: readonly AgentModelChange[]): Promise<ReadonlyMap<string, ApplyResult>> {
+    const results = new Map<string, ApplyResult>();
+    if (changes.length === 0) return results;
+
+    const snapshot = await snapshotAgentModelsConfig();
+    if (snapshot === null) {
+      for (const change of changes) {
+        results.set(change.agent, { ok: false, status: "write_failed", error: "could not snapshot ~/.omo/omo.jsonc before applying the model" });
+      }
+      return results;
+    }
+
+    const write = await deps.exec(changes.map(({ agent, entries }) => buildJqWriteCommand(agent, entries)).join(" && "), 30_000);
+    if (write.exitCode !== 0) {
+      const rollback = await restoreAgentModelsConfig(snapshot);
+      for (const change of changes) {
+        results.set(change.agent, rollback.ok
+          ? { ok: false, status: "write_failed", error: write.stderr || write.stdout || "jq write failed" }
+          : { ok: false, status: "rollback_failed", error: `${write.stderr || write.stdout || "jq write failed"}; ${rollback.error ?? "rollback failed"}` });
+      }
+      return results;
+    }
+
+    const restart = await deps.restart();
+    if (!restart.ok) {
+      const rollback = await restoreAgentModelsConfig(snapshot);
+      for (const change of changes) {
+        results.set(change.agent, rollback.ok
+          ? { ok: false, status: "restart_failed", error: restart.error ?? "restart failed" }
+          : { ok: false, status: "rollback_failed", error: `${restart.error ?? "restart failed"}; ${rollback.error ?? "rollback failed"}` });
+      }
+      return results;
+    }
+
+    for (const change of changes) {
+      results.set(change.agent, await verifyAppliedAgent(change.agent, change.entries));
+    }
+
+    const probeFailure = [...results.entries()].find(([, result]) => !result.ok && result.status === "probe_failed");
+    if (probeFailure !== undefined) {
+      const probeFailureError = probeFailure[1].ok ? "model probe failed" : probeFailure[1].error;
+      const rollback = await restoreAgentModelsConfig(snapshot);
+      const recovery = rollback.ok ? await deps.restart() : { ok: false, error: "recovery restart skipped" };
+      if (!rollback.ok || !recovery.ok) {
+        for (const change of changes) {
+          results.set(change.agent, {
+            ok: false,
+            status: "rollback_failed",
+            error: `${probeFailureError}; ${rollback.error ?? recovery.error ?? "rollback failed"}`,
+          });
+        }
+      } else {
+        for (const [agent, result] of results) {
+          if (agent !== probeFailure[0]) {
+            results.set(agent, { ok: false, status: "rollback_failed", error: `batch rolled back after ${probeFailure[0]} probe failure` });
+          }
+        }
+      }
+    }
+    return results;
+  }
+
+  async function applyAndVerify(agent: string, entries: readonly FallbackModelEntry[]): Promise<ApplyResult> {
+    return (await applyAndVerifyBatch([{ agent, entries }])).get(agent)
+      ?? { ok: false, status: "write_failed", error: "agent model apply returned no result" };
   }
 
   return {
@@ -203,6 +234,7 @@ export function createAgentModelsLib(deps: AgentModelsDeps = REAL_DEPS) {
     writeAgentFallbackModels,
     snapshotAgentModelsConfig,
     restoreAgentModelsConfig,
+    applyAndVerifyBatch,
     getServerPassword,
     fetchConnectedCatalog: live.fetchConnectedCatalog,
     fetchProviderSnapshot: live.fetchProviderSnapshot,
