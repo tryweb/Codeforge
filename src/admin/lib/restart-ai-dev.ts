@@ -91,6 +91,17 @@ kill "$pid" 2>/dev/null || {
 }
 for waited in 0 3 6 9 12 15 18 21 24 27 30 33 36 39 42 45 48 51 54 57 60; do
   sleep 3
+  # Re-read the managed dir to discover the new process: lifecycle restarts
+  # on a different port, so the original pid file is stale.
+  latest="$(ls -t "$MANAGED_DIR"/*.json 2>/dev/null | head -n1)"
+  if [ -n "$latest" ]; then
+    new_port="$(jq -r '.port // empty' "$latest" 2>/dev/null)"
+    new_pid="$(jq -r '.pid // empty' "$latest" 2>/dev/null)"
+    if [ -n "$new_port" ] && [ "$new_port" != "$port" ]; then
+      port="$new_port"
+      pid="$new_pid"
+    fi
+  fi
   endpoint="http://127.0.0.1:$port"
   if curl -fsS -m 3 -H 'Authorization: Basic ${auth}' "$endpoint/global/health" >/dev/null 2>&1; then
     printf '%s\n' "$endpoint"
