@@ -13,6 +13,23 @@ import { AgentModelsPage } from "../views/agent-models";
 
 const AGENT_KEY_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
 
+function validateBatchBody(body: unknown): { changes: Array<{ agent: string; entries: Array<{ model: string; variant?: string }> }> } | string {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) return "Request body must be a JSON object with changes array";
+  const record = body as Record<string, unknown>;
+  if (!Array.isArray(record.changes)) return "changes must be an array";
+  const changes = record.changes as unknown[];
+  if (changes.length === 0) return "changes must not be empty";
+  for (const item of changes) {
+    if (typeof item !== "object" || item === null || Array.isArray(item)) return "each change must be an object with agent and entries";
+    const change = item as Record<string, unknown>;
+    const agent = change.agent;
+    if (typeof agent !== "string" || !AGENT_KEY_PATTERN.test(agent.trim())) return "each change requires a valid agent name";
+    const error = validateFallbackModels({ entries: change.entries });
+    if (error !== null) return `agent ${agent}: ${error}`;
+  }
+  return { changes: changes as Array<{ agent: string; entries: Array<{ model: string; variant?: string }> }> };
+}
+
 export function createAgentModelsRoutes(deps: AgentModelsDeps): Hono {
   const lib = createAgentModelsLib(deps);
   const reconciler = createAgentModelReconciler(deps);
@@ -22,6 +39,67 @@ export function createAgentModelsRoutes(deps: AgentModelsDeps): Hono {
     const password = lib.getServerPassword();
     const state = await collectAgentModelState(lib, password);
     return c.json(state);
+  });
+
+  // Batch endpoint: single restart for N changes
+  agentModels.put("/api/agent-models", async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = validateBatchBody(body);
+    if (typeof parsed === "string") {
+      return c.json({ error: parsed }, 400);
+    }
+
+    const password = lib.getServerPassword();
+    if (password === null) {
+      return c.json(
+        {
+          error:
+            "OPENCODE_SERVER_PASSWORD is not set in .env — live verification and restart-on-save are unavailable. Set it via the Environment page to enable applying agent models.",
+        },
+        409,
+      );
+    }
+
+    const state = await collectAgentModelState(lib, password);
+    const knownAgents = new Set(state.agents.map((entry) => entry.name));
+    for (const change of parsed.changes) {
+      const agent = change.agent.trim();
+      if (!knownAgents.has(agent)) {
+        return c.json({ error: `agent ${agent} is not a configurable live subagent` }, 403);
+      }
+    }
+    if (!state.catalogAvailable && parsed.changes.some((change) => change.entries.length > 0)) {
+      return c.json({ error: "model catalog unavailable" }, 409);
+    }
+    const catalog = new Set(state.catalog);
+    for (const change of parsed.changes) {
+      if (change.entries.some((entry) => !catalog.has(entry.model))) {
+        return c.json({ error: `model ${change.entries.find((e) => !catalog.has(e.model))?.model} is not available in the current environment catalog` }, 400);
+      }
+    }
+
+    for (const change of parsed.changes) {
+      for (const entry of change.entries) {
+        const ref = parseModelReference(entry.model);
+        if (ref === null) continue;
+        const probe: ProbeResult = await probeModel(deps, ref.providerID, ref.modelID);
+        if (probe.status === "retired") {
+          return c.json({ error: `model ${entry.model} has been retired (end of life): ${probe.reason ?? ""}` }, 400);
+        }
+        if (probe.status === "unavailable") {
+          return c.json({ error: `model ${entry.model} is unavailable: ${probe.reason ?? ""}` }, 400);
+        }
+      }
+    }
+
+    // Single snapshot/write/restart for the whole batch
+    const batchChanges = parsed.changes.map((change) => ({ agent: change.agent.trim(), entries: change.entries }));
+    const results = await (lib as unknown as { applyAndVerifyBatch: (changes: typeof batchChanges) => Promise<Map<string, unknown>> }).applyAndVerifyBatch(batchChanges);
+    const resultsRecord: Record<string, unknown> = {};
+    for (const [agent, result] of results) {
+      resultsRecord[agent] = result;
+    }
+    return c.json({ results: resultsRecord });
   });
 
   agentModels.put("/api/agent-models/:agent", async (c) => {

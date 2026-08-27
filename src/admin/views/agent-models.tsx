@@ -54,6 +54,17 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
         </div>
       )}
 
+      <div id="batch-bar" class="card" style="display:none; margin-bottom:16px; background:rgba(245,158,11,0.1); border-color:#f59e0b;">
+        <div style="display:flex; align-items:center; justify-content:space-between;">
+          <span id="batch-count" class="text-sm" style="font-weight:600;"></span>
+          <div style="display:flex; gap:8px;">
+            <button id="btn-discard" class="btn-outline" onclick="discardPending()" style="padding:6px 12px;">Discard</button>
+            <button id="btn-apply" onclick="applyPending()" style="padding:6px 16px; background:#f59e0b; color:#000; font-weight:600;">Apply</button>
+          </div>
+        </div>
+        <div id="batch-status" class="text-sm" style="margin-top:8px;"></div>
+      </div>
+
       <div class="card">
         <style>{`
           .agent-models-table-disabled td {
@@ -105,6 +116,15 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
           @keyframes spin {
             to { transform: rotate(360deg); }
           }
+          .dirty-dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            background: #f59e0b;
+            border-radius: 50%;
+            margin-left: 6px;
+            vertical-align: middle;
+          }
         `}</style>
         <table id="agent-models-table">
           <tr>
@@ -119,15 +139,20 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
             <tr data-agent={a.name}>
               <td><code>{a.name}</code></td>
               <td>
-                {a.configured.length === 0 ? (
-                  <span class="text-muted">—</span>
-                ) : (
-                  (() => {
-                    const e = a.configured[0];
-                    if (!e) return "—";
-                    return `${e.model}${e.variant ? ` (${e.variant})` : ""}`;
-                  })()
-                )}
+                <span class="configured-value">
+                  {a.configured.length === 0 ? (
+                    <span class="text-muted">—</span>
+                  ) : (
+                    (() => {
+                      const e = a.configured[0];
+                      if (!e) return "—";
+                      return `${e.model}${e.variant ? ` (${e.variant})` : ""}`;
+                    })()
+                  )}
+                </span>
+                <span class="dirty-dot" style="display:none;" title="Pending change"></span>
+                <div class="pending-value text-sm" style="display:none; color:#f59e0b;"></div>
+                <div class="batch-result text-sm" style="display:none;"></div>
               </td>
               <td>
                 {a.resolved ? (
@@ -202,13 +227,13 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
           <h3 id="modal-title" style="margin-bottom:4px;">Edit primary model</h3>
           <p class="text-sm text-muted" style="margin-bottom:12px;">
             Sets the model the subagent runs on. Fallback chains are not supported until the OMO
-            plugin honors them; saving restarts ai-dev.
+            plugin honors them. Changes are collected locally — press Apply to restart once.
           </p>
           <div id="model-rows"></div>
           <div class="flex gap-2" style="justify-content:flex-end;margin-top:14px;">
             <button id="btn-cancel" class="btn-outline" onclick="closeModal()">Cancel</button>
             <button id="btn-clear" class="btn-outline" style="display:none;" onclick="clearAgent()">Use automatic model</button>
-            <button id="btn-save" onclick="saveAgent()">Save &amp; Restart</button>
+            <button id="btn-save" onclick="saveAgent()">Save to pending</button>
           </div>
           <div id="save-result" class="text-sm" style="margin-top:12px;"></div>
         </div>
@@ -217,6 +242,7 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
       <script>{html`
         var agentModelsState = ${json};
         var editAgentName = null;
+        var pending = new Map();
 
         function rowTemplate(model, variant) {
           var modelOpts = agentModelsState.catalog.map(function (m) {
@@ -235,11 +261,20 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
           if (!agentModelsState.catalogAvailable || !agentModelsState.hasPassword) return;
           editAgentName = name;
           var agent = agentModelsState.agents.filter(function (a) { return a.name === name; })[0];
+          var pendingEntries = pending.get(name);
           var rows = document.getElementById('model-rows');
           rows.innerHTML = '';
-          var primary = agent && agent.configured.length ? agent.configured[0] : {};
+          var primary;
+          if (pendingEntries !== undefined) {
+            primary = pendingEntries[0] || {};
+          } else {
+            primary = agent && agent.configured.length ? agent.configured[0] : {};
+          }
           rows.insertAdjacentHTML('beforeend', rowTemplate(primary.model || '', primary.variant || ''));
-          document.getElementById('btn-clear').style.display = agent && agent.configured.length ? 'inline-block' : 'none';
+          document.getElementById('btn-clear').style.display = (pendingEntries !== undefined ? pendingEntries.length === 0 : agent && agent.configured.length) ? 'inline-block' : 'none';
+          // Show pending vs configured hint
+          var hint = pendingEntries !== undefined ? ' (pending: ' + (pendingEntries.length ? pendingEntries[0].model : 'automatic') + ')' : '';
+          document.getElementById('modal-title').textContent = 'Edit primary model' + hint;
           document.getElementById('save-result').textContent = '';
           document.getElementById('edit-modal').style.display = 'flex';
         }
@@ -259,6 +294,73 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
           document.getElementById('edit-modal').style.display = 'none';
         }
 
+        function updateBatchBar() {
+          var bar = document.getElementById('batch-bar');
+          var count = document.getElementById('batch-count');
+          var applyBtn = document.getElementById('btn-apply');
+          if (pending.size === 0) {
+            bar.style.display = 'none';
+            return;
+          }
+          bar.style.display = 'block';
+          count.textContent = pending.size + ' pending change' + (pending.size > 1 ? 's' : '');
+          applyBtn.textContent = 'Apply (' + pending.size + ')';
+        }
+
+        function updateRowDirtyState() {
+          document.querySelectorAll('#agent-models-table tr[data-agent]').forEach(function (tr) {
+            var agent = tr.getAttribute('data-agent');
+            var pendingEntries = pending.get(agent);
+            var dot = tr.querySelector('.dirty-dot');
+            var pendingEl = tr.querySelector('.pending-value');
+            var configuredEl = tr.querySelector('.configured-value');
+            var batchResultEl = tr.querySelector('.batch-result');
+            if (pendingEntries !== undefined) {
+              if (dot) dot.style.display = 'inline-block';
+              if (pendingEl) {
+                pendingEl.style.display = 'block';
+                pendingEl.textContent = '→ ' + (pendingEntries.length ? pendingEntries[0].model + (pendingEntries[0].variant ? ' (' + pendingEntries[0].variant + ')' : '') : 'automatic');
+              }
+              if (configuredEl) configuredEl.style.opacity = '0.5';
+              if (batchResultEl) batchResultEl.style.display = 'none';
+            } else {
+              if (dot) dot.style.display = 'none';
+              if (pendingEl) pendingEl.style.display = 'none';
+              if (configuredEl) configuredEl.style.opacity = '1';
+            }
+          });
+        }
+
+        function saveAgent() {
+          var entries = collectEntries();
+          pending.set(editAgentName, entries);
+          updateRowDirtyState();
+          updateBatchBar();
+          closeModal();
+          var resultEl = document.getElementById('save-result');
+          // Clear any previous batch result for this agent
+          var tr = document.querySelector('tr[data-agent="' + editAgentName + '"]');
+          if (tr) {
+            var batchResultEl = tr.querySelector('.batch-result');
+            if (batchResultEl) batchResultEl.style.display = 'none';
+          }
+        }
+
+        function clearAgent() {
+          pending.set(editAgentName, []);
+          updateRowDirtyState();
+          updateBatchBar();
+          closeModal();
+        }
+
+        function discardPending() {
+          pending.clear();
+          updateRowDirtyState();
+          updateBatchBar();
+          document.querySelectorAll('.batch-result').forEach(function (el) { el.style.display = 'none'; el.textContent = ''; });
+          document.getElementById('batch-status').textContent = '';
+        }
+
         function disableTableRows() {
           var table = document.getElementById('agent-models-table');
           if (table) table.classList.add('agent-models-table-disabled');
@@ -273,41 +375,101 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
           if (banner) banner.remove();
         }
 
-        function renderResult(r) {
-          var el = document.getElementById('save-result');
-          if (r.ok && r.status === 'cleared') {
-            var automatic = r.resolved ? r.resolved.modelID + ' @ ' + r.resolved.providerID : 'n/a';
-            el.style.color = '#22c55e';
-            el.textContent = 'Configured model cleared. Automatic model: ' + automatic;
-          } else if (r.ok && r.status === 'verified') {
-            var resolved = r.resolved ? r.resolved.modelID + ' @ ' + r.resolved.providerID : 'n/a';
-            var requestVerified = r.requestVerified ? r.requestVerified.modelID + ' @ ' + r.requestVerified.providerID : 'not verified';
-            el.style.color = '#22c55e';
-            el.textContent = 'Applied and restarted. Successful request model: ' + requestVerified + ' (assigned: ' + resolved + ')';
-          } else if (!r.ok && r.status === 'unverified') {
-            el.style.color = '#f59e0b';
-            el.textContent = 'Applied but could not confirm the server came back: ' + r.error;
-          } else if (!r.ok && r.status === 'rollback_failed') {
-            el.style.color = 'var(--danger)';
-            el.textContent = 'Restart and rollback failed; configuration state may have changed: ' + r.error;
-          } else if (!r.ok && (r.status === 'write_failed' || r.status === 'restart_failed')) {
-            el.style.color = 'var(--danger)';
-            el.textContent = 'Failed (configuration was not changed): ' + r.error;
-          } else {
-            el.style.color = 'var(--danger)';
-            el.textContent = r.error || 'Unknown error';
+        function renderBatchResults(results) {
+          Object.keys(results).forEach(function (agent) {
+            var r = results[agent];
+            var tr = document.querySelector('tr[data-agent="' + agent + '"]');
+            if (!tr) return;
+            var batchResultEl = tr.querySelector('.batch-result');
+            if (!batchResultEl) return;
+            batchResultEl.style.display = 'block';
+            if (r.ok) {
+              batchResultEl.style.color = '#22c55e';
+              batchResultEl.textContent = r.status === 'cleared' ? 'cleared → ' + (r.resolved ? r.resolved.modelID + ' @ ' + r.resolved.providerID : 'n/a') : 'verified → ' + (r.requestVerified ? r.requestVerified.modelID + ' @ ' + r.requestVerified.providerID : r.resolved ? r.resolved.modelID + ' @ ' + r.resolved.providerID : 'n/a');
+            } else {
+              batchResultEl.style.color = r.status === 'unverified' ? '#f59e0b' : 'var(--danger)';
+              batchResultEl.textContent = r.status + ': ' + (r.error || 'Unknown error');
+            }
+          });
+        }
+
+        async function applyPending() {
+          if (pending.size === 0) return;
+          if (!confirm('Apply ' + pending.size + ' change' + (pending.size > 1 ? 's' : '') + ' & restart ai-dev? Active OpenCode sessions will be interrupted.')) return;
+          var applyBtn = document.getElementById('btn-apply');
+          var discardBtn = document.getElementById('btn-discard');
+          var status = document.getElementById('restart-status');
+          var batchStatus = document.getElementById('batch-status');
+          var modal = document.getElementById('edit-modal');
+          applyBtn.disabled = true;
+          discardBtn.disabled = true;
+          disableTableRows();
+          if (modal) {
+            modal.classList.add('disabled');
+            modal.style.display = 'none';
+          }
+
+          var banner = document.createElement('div');
+          banner.className = 'restart-banner';
+          banner.innerHTML = '<span class="spinner"></span> Applying ' + pending.size + ' change' + (pending.size > 1 ? 's' : '') + ' &amp; restarting… This restarts ai-dev and typically takes 30–60 seconds.';
+          document.body.appendChild(banner);
+
+          var elapsed = 0;
+          status.innerHTML = '<span class="spinner"></span> Applying &amp; restarting… <span class="probe-hint">This restarts ai-dev and typically takes 30–60 seconds.</span> <span class="probe-elapsed">0s</span>';
+          batchStatus.textContent = 'Restarting…';
+          var timer = setInterval(function () {
+            elapsed += 1;
+            var el = status.querySelector('.probe-elapsed');
+            if (el) el.textContent = elapsed + 's';
+          }, 1000);
+          try {
+            var changes = Array.from(pending.entries()).map(function (kv) { return { agent: kv[0], entries: kv[1] }; });
+            var res = await fetch('/api/agent-models', {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ changes: changes }),
+            });
+            var data = await res.json();
+            clearInterval(timer);
+            if (!res.ok) {
+              batchStatus.style.color = 'var(--danger)';
+              batchStatus.textContent = data.error || ('HTTP ' + res.status);
+              applyBtn.disabled = false;
+              discardBtn.disabled = false;
+              enableTableRows();
+              status.textContent = '';
+              return;
+            }
+            // data.results is Record<agent, ApplyResult>
+            var results = data.results || {};
+            renderBatchResults(results);
+            var failed = Object.keys(results).filter(function (k) { return !results[k].ok; });
+            if (failed.length === 0) {
+              batchStatus.style.color = '#22c55e';
+              batchStatus.textContent = 'Applied and restarted (' + Object.keys(results).length + ' agents). Reloading…';
+              status.textContent = 'Restarted ✔';
+              setTimeout(function () { status.textContent = ''; batchStatus.textContent = ''; applyBtn.disabled = false; discardBtn.disabled = false; enableTableRows(); pending.clear(); updateRowDirtyState(); updateBatchBar(); location.reload(); }, 2500);
+            } else {
+              batchStatus.style.color = 'var(--danger)';
+              batchStatus.textContent = failed.length + ' failed: ' + failed.join(', ') + '. See per-row status.';
+              applyBtn.disabled = false;
+              discardBtn.disabled = false;
+              enableTableRows();
+              status.textContent = '';
+              // Keep pending for failed ones, clear succeeded? For now keep all pending for retry
+            }
+          } catch (e) {
+            clearInterval(timer);
+            batchStatus.style.color = 'var(--danger)';
+            batchStatus.textContent = e.message;
+            applyBtn.disabled = false;
+            discardBtn.disabled = false;
+            enableTableRows();
+            status.textContent = '';
           }
         }
 
-        async function saveAgent() {
-          var entries = collectEntries();
-          await submitAgentModel(entries, 'Save & restart ai-dev? Active OpenCode sessions will be interrupted.');
-        }
-
-        async function clearAgent() {
-          await submitAgentModel([], 'Clear the configured model and restore automatic selection? Active OpenCode sessions will be interrupted.');
-        }
-
+        // Legacy single-agent path kept for compatibility (not used by new UI)
         async function submitAgentModel(entries, confirmation) {
           if (!confirm(confirmation)) return;
           var btn = document.getElementById('btn-save');
@@ -323,12 +485,12 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
             modal.classList.add('disabled');
             modal.style.display = 'none';
           }
-          
+
           var banner = document.createElement('div');
           banner.className = 'restart-banner';
           banner.innerHTML = '<span class="spinner"></span> Applying &amp; restarting… This restarts ai-dev and typically takes 30–60 seconds.';
           document.body.appendChild(banner);
-          
+
           var elapsed = 0;
           status.innerHTML = '<span class="spinner"></span> Applying &amp; restarting… <span class="probe-hint">This restarts ai-dev and typically takes 30–60 seconds.</span> <span class="probe-elapsed">0s</span>';
           var timer = setInterval(function () {
@@ -345,7 +507,9 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
             var data = await res.json();
             clearInterval(timer);
             if (!res.ok) {
-              renderResult({ ok: false, error: data.error || ('HTTP ' + res.status) });
+              var el = document.getElementById('save-result');
+              el.style.color = 'var(--danger)';
+              el.textContent = data.error || ('HTTP ' + res.status);
               btn.disabled = false;
               clearBtn.disabled = false;
               if (cancelBtn) cancelBtn.disabled = false;
@@ -353,7 +517,29 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
               status.textContent = '';
               return;
             }
-            renderResult(data);
+            var el = document.getElementById('save-result');
+            if (data.ok && data.status === 'cleared') {
+              var automatic = data.resolved ? data.resolved.modelID + ' @ ' + data.resolved.providerID : 'n/a';
+              el.style.color = '#22c55e';
+              el.textContent = 'Configured model cleared. Automatic model: ' + automatic;
+            } else if (data.ok && data.status === 'verified') {
+              var resolved = data.resolved ? data.resolved.modelID + ' @ ' + data.resolved.providerID : 'n/a';
+              var requestVerified = data.requestVerified ? data.requestVerified.modelID + ' @ ' + data.requestVerified.providerID : 'not verified';
+              el.style.color = '#22c55e';
+              el.textContent = 'Applied and restarted. Successful request model: ' + requestVerified + ' (assigned: ' + resolved + ')';
+            } else if (!data.ok && data.status === 'unverified') {
+              el.style.color = '#f59e0b';
+              el.textContent = 'Applied but could not confirm the server came back: ' + data.error;
+            } else if (!data.ok && data.status === 'rollback_failed') {
+              el.style.color = 'var(--danger)';
+              el.textContent = 'Restart and rollback failed; configuration state may have changed: ' + data.error;
+            } else if (!data.ok && (data.status === 'write_failed' || data.status === 'restart_failed')) {
+              el.style.color = 'var(--danger)';
+              el.textContent = 'Failed (configuration was not changed): ' + data.error;
+            } else {
+              el.style.color = 'var(--danger)';
+              el.textContent = data.error || 'Unknown error';
+            }
             if (data.ok === true) {
               status.textContent = 'Restarted ✔';
               setTimeout(function () { status.textContent = ''; btn.disabled = false; clearBtn.disabled = false; if (cancelBtn) cancelBtn.disabled = false; enableTableRows(); location.reload(); }, 2500);
@@ -366,7 +552,9 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
             }
           } catch (e) {
             clearInterval(timer);
-            renderResult({ ok: false, error: e.message });
+            var el = document.getElementById('save-result');
+            el.style.color = 'var(--danger)';
+            el.textContent = e.message;
             btn.disabled = false;
             clearBtn.disabled = false;
             if (cancelBtn) cancelBtn.disabled = false;
