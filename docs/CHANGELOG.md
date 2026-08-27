@@ -1,5 +1,24 @@
 ## [Unreleased]
 
+
+## [1.16.3] - 2026-08-27
+
+### Added
+- Batch apply agent models with single restart and pending UI
+
+### Fixed
+- Extend health wait to 180s, add RECONCILE_STARTUP_NO_RESTART no-kill path and CLI exit on failed
+
+### Documentation
+- Capture managed OpenCode health timeout
+
+### Changed
+- Update route test fixtures
+- Wait through lifecycle health checks
+- Log decisions before applying changes
+- Apply reconciliation changes as one batch
+- Add port re-discovery in polling loop
+
 ## [1.16.2] - 2026-08-27
 
 ### Added
@@ -1656,13 +1675,11 @@
 
 ### Changed
 - Improve the `README.md` document structure.
-
-
 ---
 
 ## Format
 
-[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.16.1...HEAD
+[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.16.3...HEAD
 [0.3.0]: https://github.com/tryweb/ai-engkit/releases/tag/v0.3.0
 [0.3.3]: https://github.com/tryweb/ai-engkit/compare/v0.3.0...v0.3.3
 [0.5.0]: https://github.com/tryweb/ai-engkit/compare/v0.3.3...v0.5.0
@@ -1815,6 +1832,6 @@
 [1.15.7]: https://github.com/tryweb/ai-engkit/compare/v1.15.6...v1.15.7
 [1.15.8]: https://github.com/tryweb/ai-engkit/compare/v1.15.7...v1.15.8
 [1.16.0]: https://github.com/tryweb/ai-engkit/compare/v1.15.8...v1.16.0
-[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.16.2...HEAD
-[1.16.2]: https://github.com/tryweb/ai-engkit/releases/tag/v1.16.2
 [1.16.1]: https://github.com/tryweb/ai-engkit/compare/v1.16.0...v1.16.1
+[1.16.2]: https://github.com/tryweb/ai-engkit/compare/v1.16.1...v1.16.2
+[1.16.3]: https://github.com/tryweb/ai-engkit/compare/v1.16.2...v1.16.3
