@@ -11,17 +11,22 @@ test("Save Changes gates daemon restart Apply", async ({ page }) => {
   await page.goto("/leanctx");
 
   const apply = page.getByRole("button", { name: "Apply Saved Config (restarts daemon)" });
-  await expect(apply).toBeDisabled();
+  await expect(apply).toBeEnabled();
   await expect(page.getByText("Raw TOML")).toHaveCount(0);
+
+  const compressionLevel = page.locator('tr[data-key="compression_level"] select');
+  await compressionLevel.selectOption((await compressionLevel.inputValue()) === "lite" ? "max" : "lite");
+  await compressionLevel.dispatchEvent("change");
+  await expect(apply).toBeDisabled();
+  await expect(page.getByText("Save Changes before applying.")).toBeVisible();
 
   await page.getByRole("button", { name: "Save Changes" }).click();
   await expect(apply).toBeEnabled();
-  await expect(page.getByText("applying restarts the LeanCTX daemon in ai-dev.")).toBeVisible();
+  await expect(page.locator("#config-status")).toHaveText(/Saved( configuration loaded)?\. Apply when ready/);
 
   await page.reload();
-  await page.locator('tr[data-key="compression_level"] select').selectOption("lite");
-  await page.getByRole("button", { name: "Save Changes" }).click();
-  await expect(page.getByText("Saved. Apply when ready")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Apply Saved Config (restarts daemon)" })).toBeEnabled();
+  await expect(page.getByText("Saved configuration loaded.")).toBeVisible();
 
 });
 
@@ -33,22 +38,23 @@ test("saved values survive reload and Reset to Defaults restores the baseline", 
   await page.goto("/leanctx");
 
   const initialCompression = page.locator('tr[data-key="compression_level"] select');
-  await initialCompression.selectOption("lite");
+  await initialCompression.selectOption((await initialCompression.inputValue()) === "lite" ? "max" : "lite");
+  await initialCompression.dispatchEvent("change");
   await page.getByRole("button", { name: "Save Changes" }).click();
-  await expect(page.getByText("Saved. Apply when ready")).toBeVisible();
+  await expect(page.locator("#config-status")).toHaveText(/Saved\. Apply when ready/);
   await page.reload();
 
   const compression = page.locator('tr[data-key="compression_level"] select');
   await compression.selectOption("max");
   await page.getByRole("button", { name: "Save Changes" }).click();
-  await expect(page.getByText("Saved. Apply when ready")).toBeVisible();
+  await expect(page.locator("#config-status")).toHaveText(/Saved\. Apply when ready/);
   await page.reload();
   await expect(compression).toHaveValue("max");
 
   page.once("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: "Reset to Defaults" }).click();
   await page.getByRole("button", { name: "Save Changes" }).click();
-  await expect(page.getByText("Saved. Apply when ready")).toBeVisible();
+  await expect(page.locator("#config-status")).toHaveText(/Saved\. Apply when ready/);
   await page.reload();
   await expect(page.locator('tr[data-key="compression_level"] select')).toHaveValue("lite");
 });

@@ -90,15 +90,15 @@ function renderInput(entry: LeanCtxSchemaEntry, value: unknown, disabled: boolea
 
   switch (inputType) {
     case "checkbox":
-      return html`<input type="checkbox" value="true" ${value === true ? "checked" : ""} ${disabledAttr} />`;
+      return html`<input type="checkbox" value="true" ${value === true ? "checked" : ""} ${disabledAttr} oninput="markDirty()" onchange="markDirty()" />`;
     case "select":
-      return html`<select ${disabledAttr}>
+      return html`<select ${disabledAttr} oninput="markDirty()" onchange="markDirty()">
         ${entry.options?.map((opt) => html`<option value=${opt} ${formattedValue === opt ? "selected" : ""}>${opt}</option>`)}
       </select>`;
     case "textarea":
-      return html`<textarea ${disabledAttr} rows="4" style="font-family:monospace;font-size:0.85rem;width:100%;">${formattedValue}</textarea>`;
+      return html`<textarea ${disabledAttr} oninput="markDirty()" onchange="markDirty()" rows="4" style="font-family:monospace;font-size:0.85rem;width:100%;">${formattedValue}</textarea>`;
     default:
-      return html`<input type="${inputType}" value="${formattedValue}" ${min} ${max} ${step} ${disabledAttr} style="width:100%;" />`;
+      return html`<input type="${inputType}" value="${formattedValue}" ${min} ${max} ${step} ${disabledAttr} oninput="markDirty()" onchange="markDirty()" style="width:100%;" />`;
   }
 }
 
@@ -161,17 +161,18 @@ const LeanCtxEditorContent: FC<LeanCtxEditorProps> = ({ config, meta, schema, dr
         `;
       })}
 
-      <div class="editor-actions">
+      <div class="editor-actions" aria-label="Configuration actions">
         <button class="btn-primary" onclick="saveConfig()">Save Changes</button>
         <button class="btn-primary" onclick="validateConfig()">Validate Config</button>
-        <button class="btn-primary" id="apply-config" onclick="applyConfig(event)" disabled>Apply Saved Config (restarts daemon)</button>
+        <button class="btn-apply" id="apply-config" onclick="applyConfig(event)" aria-describedby="apply-config-help">Apply Saved Config <span class="btn-subtext">(restarts daemon)</span></button>
         <button class="btn-outline" onclick="runDoctor(event)">Run LeanCTX Doctor</button>
         <button class="btn-danger" onclick="resetConfig()">Reset to Defaults</button>
       </div>
       <p class="workflow-hint text-sm text-muted">
         Edit values, then select <strong>Save Changes</strong>. Apply is a separate step and restarts the LeanCTX daemon in ai-dev.
       </p>
-      <p id="config-status" class="text-sm text-muted" aria-live="polite">No changes saved in this session. Save Changes before applying.</p>
+      <p id="apply-config-help" class="action-help text-sm text-muted">Apply uses the saved configuration and restarts the LeanCTX daemon in ai-dev.</p>
+      <p id="config-status" class="text-sm text-muted" aria-live="polite">Saved configuration loaded. Apply when ready; applying restarts the LeanCTX daemon in ai-dev.</p>
 
       <form id="config-form">
         ${Object.entries(sections).map(([sectionName, entries]) => html`
@@ -295,7 +296,18 @@ const LeanCtxEditorContent: FC<LeanCtxEditorProps> = ({ config, meta, schema, dr
 
       refreshDriftWarning();
 
-      let hasSavedChanges = false;
+      let isDirty = false;
+      let hasSavedConfig = true;
+
+      function updateApplyState() {
+        const btn = document.getElementById("apply-config");
+        const help = document.getElementById("apply-config-help");
+        if (!btn || !help) return;
+        btn.disabled = isDirty || !hasSavedConfig;
+        help.textContent = isDirty
+          ? "Save Changes before applying. Apply restarts the LeanCTX daemon in ai-dev."
+          : "Apply uses the saved configuration and restarts the LeanCTX daemon in ai-dev.";
+      }
 
       function getFormData() {
         const form = document.getElementById("config-form");
@@ -336,8 +348,9 @@ const LeanCtxEditorContent: FC<LeanCtxEditorProps> = ({ config, meta, schema, dr
           body: JSON.stringify({ config, target }),
         });
         if (res.ok) {
-          hasSavedChanges = true;
-          document.getElementById("apply-config").disabled = false;
+          isDirty = false;
+          hasSavedConfig = true;
+          updateApplyState();
           document.getElementById("config-status").textContent = "Saved. Apply when ready; applying restarts the LeanCTX daemon in ai-dev.";
         } else {
           const d = await res.json();
@@ -371,17 +384,17 @@ const LeanCtxEditorContent: FC<LeanCtxEditorProps> = ({ config, meta, schema, dr
       }
 
       async function applyConfig(event) {
-        if (!hasSavedChanges) {
+        if (isDirty || !hasSavedConfig) {
           alert("Save Changes before applying. Apply restarts the LeanCTX daemon in ai-dev.");
           return;
         }
-        const btn = event.target;
+        const btn = event.currentTarget;
         btn.disabled = true;
         btn.textContent = "Applying (daemon restarting)...";
         const res = await fetch("/api/leanctx/apply", { method: "POST" });
         const data = await res.json();
         btn.disabled = false;
-        btn.textContent = "Apply Saved Config (restarts daemon)";
+        btn.innerHTML = 'Apply Saved Config <span class="btn-subtext">(restarts daemon)</span>';
         const output = document.getElementById("validate-output");
         if (data.ok) {
           output.innerHTML = '<div class="text-success">✓ Saved configuration applied. The LeanCTX daemon in ai-dev was restarted.</div>';
@@ -442,8 +455,9 @@ const LeanCtxEditorContent: FC<LeanCtxEditorProps> = ({ config, meta, schema, dr
       }
 
       function markDirty() {
-        hasSavedChanges = false;
-        document.getElementById("apply-config").disabled = true;
+        isDirty = true;
+        hasSavedConfig = true;
+        updateApplyState();
         document.getElementById("config-status").textContent = "Unsaved changes. Save before applying.";
       }
 
@@ -460,6 +474,8 @@ const LeanCtxEditorContent: FC<LeanCtxEditorProps> = ({ config, meta, schema, dr
         input.addEventListener("change", markDirty);
       });
 
+      updateApplyState();
+
       document.querySelectorAll(".modal-overlay").forEach(overlay => {
         overlay.addEventListener("click", (e) => {
           if (e.target === overlay) {
@@ -475,7 +491,12 @@ const LeanCtxEditorContent: FC<LeanCtxEditorProps> = ({ config, meta, schema, dr
       .editor-header h1 { margin: 0; }
       .editor-meta { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
       .editor-actions { display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap; }
+      .btn-apply { background: var(--warning); color: #18181b; }
+      .btn-apply:hover { background: #fbbf24; }
+      .btn-apply:disabled { background: var(--border); color: var(--text-muted); cursor: not-allowed; }
+      .btn-subtext { font-size: 0.8em; opacity: 0.85; }
       .workflow-hint { margin: -0.5rem 0 1rem; }
+      .action-help { margin: -0.5rem 0 0.5rem; }
       .config-error { margin-bottom: 1rem; padding: 0.75rem 1rem; border: 1px solid var(--danger); border-radius: 6px; background: var(--danger-bg); }
       .config-error span { display: block; margin-top: 0.25rem; }
       .config-section { margin-bottom: 2rem; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
