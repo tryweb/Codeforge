@@ -137,7 +137,7 @@ RUN mkdir -p /home/${USERNAME}/.config/lean-ctx && \
     cat > /home/${USERNAME}/.config/lean-ctx/config.toml <<'EOF'
 # lean-ctx ai-engkit tuning — overrides conservative defaults
 permission_inheritance = "on"
-compression_level = "off"
+compression_level = "lite"
 cognitive_mode = "full"
 shell_allowlist_extra = ["gh", "glab", "docker", "docker-compose", "docker compose", "pw-mcp", "bun", "marksman", "codegraph", "openspec"]
 graph_index_max_files = 5000
@@ -215,7 +215,7 @@ CONTAINER=$(docker compose -p dev -f docker-compose.dev.yml ps --format '{{.Name
 ## Why It Works
 
 - **`permission_inheritance = "on"`** — 啟用 lean-ctx 的 IDE permission inheritance。現行 agent 權限位於 `~/.omo/omo.jsonc`,`opencode.json` 不含 inline agent section;不可假設舊文件中的 `*.env = ask` 規則仍存在,實際 allow/deny 行為須由 runtime smoke test 驗證。
-- **`compression_level = "off"`** — 3.9.19 triage 事故後採用的現行保守基線。3.9.20 已把 output triage 改為 opt-in（預設 `decision_loop.max_filter_level = 0`），因此 compression level 不再等同 triage 狀態；任何恢復壓縮或 routing 的變更仍須獨立評估。實際 token savings 與 CPU/RAM/latency 影響依 workload 而定。
+- **`compression_level = "lite"`** — 現行 production baseline。3.9.20 已把 output triage 改為 opt-in（預設 `decision_loop.max_filter_level = 0`），因此 compression level 不等同 triage 狀態；routing 仍由獨立 reliability policy 控制，實際 token savings 與 CPU/RAM/latency 影響依 workload 而定。
 - **`graph_index_max_files = 5000`** — 為 ai-engkit 常見的 monorepo 提供上限,避免初次啟動時整個 `~/workspace` 被索引。
 - **shell hook + SKILL.md** — 互動 shell 與 `/help` 都能享受 lean-ctx 能力。實測在 lean-ctx 3.8.11 中,`setup --non-interactive --yes` 比單獨 `init --global` 更完整,會補 `~/.bashrc` / `~/.bashenv`;`init --agent opencode` 仍值得保留來更新 OpenCode rules,但目前版本不一定會產生 `SKILL.md`。
 - **`BASH_ENV` 驗證** — `ENV BASH_ENV=...` 已能提供 non-interactive bash 所需的環境變數;真正該確認的是 `sudo -E` 後變數是否仍在、以及工具是否確實經過 bash 啟動。
