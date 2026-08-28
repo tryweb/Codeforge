@@ -10,8 +10,8 @@ describe("check-gates CLI", () => {
         JSON.stringify({
           inputs: [
             {
-              baseline: { present: true, compressionLevel: "off" },
-              global: { present: true, compressionLevel: "off" },
+              baseline: { present: true, compressionLevel: "lite" },
+              global: { present: true, compressionLevel: "lite" },
               project: { present: false, compressionLevel: null },
               sentinel: {
                 stdout: "lean-ctx-reliability-sentinel-v1\n",

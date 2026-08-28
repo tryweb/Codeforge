@@ -22,8 +22,8 @@ describe("drift alignment fixture", () => {
 
   test("supports captured raw TOML observations without importing Admin runtime code", () => {
     const fixture: CapturedDriftInput = {
-      baseline: { present: true, raw: 'compression_level = "off"\n' },
-      global: { present: true, raw: 'compression_level = "off"\n' },
+      baseline: { present: true, raw: 'compression_level = "lite"\n' },
+      global: { present: true, raw: 'compression_level = "lite"\n' },
       project: { present: false, raw: "" },
       sentinel: {
         stdout: "lean-ctx-reliability-sentinel-v1\n",
