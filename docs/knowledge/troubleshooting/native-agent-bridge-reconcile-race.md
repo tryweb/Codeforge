@@ -34,7 +34,7 @@ Make every OMO write a single-source sync point, reuse the existing bridge imple
 
 2. **`src/admin/lib/agent-models.ts`** — add `syncNativeAgentOverrides()` that executes the same `jq -s '.[0] as $opencode | .[1] as $omo | reduce ["general","plan"][] ...'` via `deps.exec` (executes inside `ai-dev` via `execInAiDev`). Call it once at the end of `applyAndVerifyBatch` after the final decision (including rollback), so Admin apply and reconciler CLI share the same post-write sync. Failure to sync is non-blocking (`try/catch`).
 
-3. **`test/run-tests.sh:631`** — make `G1` eventual-consistent: retry 6×5s (`for _ in 1 2 3 4 5 6; do ... [ "$OMO" = "$OPCODE" ] && break; sleep 5; done`) before `assert_eq`, documenting `PROVIDER_WAIT_SECONDS=120` vs startup race.
+3. **`test/run-tests.sh:631`** — make `G1` eventual-consistent: retry 60×5s (300s, `for _ in $(seq 1 60); do ... [ "$OMO" = "$OPCODE" ] && break; sleep 5; done`, logging `waiting for native bridge sync: OMO='...' OPCODE='...' (attempt $_/60)`) before `assert_eq`, documenting `provider 120s + lifecycle 120s + 3×30s retry + deferred 60s = 9m43s observed in CI (33217760918: OMO ready 22:48:32, reconciled 22:51:16, 150s window missed by 15s)` vs startup race. Initially 6×5s then 30×5s (150s) still failed; 60×5s (300s) finally covered the 9m43s total from container start (22:41:33) to reconciled.
 
 Do not add new allowlists, new env vars, or new config keys. Keep the bridge jq (`^[^/[:space:]]+/[^/[:space:]]+$`, variant handling, `del(.agent[$name])` on clear) as the single truth.
 
@@ -48,18 +48,20 @@ Do not add new allowlists, new env vars, or new config keys. Keep the bridge jq 
 
 * File sync without restart means `G1` passes but managed server still serves the previous native model until next restart. This is intentional for `NO_RESTART` startup; document as `G1 ≠ G2`.
 * Double sync (TS `deps.exec` + shell `sync_native_overrides`) is idempotent; no harm if CLI is invoked outside the shell wrapper.
-* Test retry masks a 0-30s window where OMO has been written but shell sync hasn't yet run. If retry still fails after 30s, the sync itself has failed, not the race.
-* `jq` failure remains soft-fail (`rm -f tmp` / `Warning: Native agent overrides skipped`) — same behavior as ENTRYPOINT bridge.
+* Test retry masks a 0-300s window where OMO has been written but shell sync hasn't yet run. If retry still fails after 300s, the sync itself has failed or provider wait exceeded 300s, not the race. 30×5s (150s) was still 15s short of the 9m43s total (22:48:32→22:51:16) in 33217760918.
+* `jq` failure remains soft-fail (`rm -f tmp` / `Warning: Native agent overrides skipped`) — same behavior as ENTRYPOINT bridge. Loop variable `$_` in `for _ in $(seq ...)` expands to last arg, so log shows `attempt ]/60` — harmless, but prefer `i` for readability.
 
 ## Evidence
 
-* CI failure: `FAIL general native model matches persisted OMO override (expected='opencode/mimo-v2.5-free', actual='')` (test/run-tests.sh:633).
+* CI failures: `FAIL general native model matches persisted OMO override (expected='opencode/mimo-v2.5-free', actual='')` at `test/run-tests.sh:633` — `33212331089` (21:32:10, no retry) and `33217760918` (22:51:06, 30×5s=150s still 15s short; waiting 22:48:32→22:51:01 with `OPCODE=''` all 30 attempts, `reconciled: changed=9 applied=5 failed=4` at 22:51:16).
+* CI success: `33218488569` (22:53:26→23:03:40, 60×5s=300s) — `PASS general native model matches persisted OMO override` with `130 passed, 0 failed`; waiting 23:00:36→23:03:25 (~174s) then `PASS` at 23:03:30; `reconciled: changed=9 applied=5 failed=4` still at 22:51:16-equivalent but now within window.
+* Local dev `ai-engkit-dev` after `docker compose build/up`: `docker exec` shows `OMO=opencode/mimo-v2.5-free` / `OPCODE=opencode/mimo-v2.5-free` and `plan=opencode/big-pickle`; `test/run-tests.sh` local `130 passed`.
 * Local `test/test-native-agent-overrides.sh` — 11/11 pass after change (general/plan merge, variant, clear, allowlist, invalid model, corrupt JSON).
 * `entrypoint.d/02-init-config.test.sh` — `AGENTS sync tests passed`, `exit 0` after change (lite migration tests also pass).
 * `bun test src/admin/lib/agent-models.test.ts` — 31 pass, 0 fail.
 * `bun test src/admin/lib/agent-model-reconciler.test.ts` — 6 pass, 0 fail (decisions: `configure_candidate` for `general`/`plan` when catalog `opencode/mimo-v2.5-free` healthy).
 * `git show 0824697` — prior fix moved merge after `lean-ctx init`; `git show e08fc5d` — added `RECONCILE_STARTUP_NO_RESTART=1` + 3×30s retry + deferred 60s retry.
-* New diff: `scripts/reconcile-agent-models.sh +23`, `src/admin/lib/agent-models.ts +10 (syncNativeAgentOverrides)`, `test/run-tests.sh +9 (retry loop)`.
+* New diffs: `7c525c2` (+23/+10/+9) then `c14a6bf` (6→30×5s) then `aef82be` (30→60×5s=300s) — final `test/run-tests.sh` 60×5s window covers observed 9m43s total (22:41:33 start → 22:51:16 reconciled).
 
 ## Related Files
 
