@@ -37,7 +37,7 @@ else
 fi
 
 ENTRYPOINT_SYNC_TEST="$(dirname "${BASH_SOURCE[0]}")/../entrypoint.d/02-init-config.test.sh"
-if [ -x "$ENTRYPOINT_SYNC_TEST" ] && "$ENTRYPOINT_SYNC_TEST" >/dev/null 2>&1; then
+if [ -x "$ENTRYPOINT_SYNC_TEST" ] && BASH_ENV=/dev/null CLAUDE_ENV_FILE= bash --noprofile --norc "$ENTRYPOINT_SYNC_TEST" >/dev/null 2>&1; then
   pass "AGENTS synchronization marker tests pass"
 else
   fail "AGENTS synchronization marker tests failed"

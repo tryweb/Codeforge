@@ -79,4 +79,16 @@ if grep -Eiq 'automatic (read|search|shell) routing[^.]*\b(enabled|must|mandator
   exit 1
 fi
 
+assert_retain_enable_routing_variant() {
+  local variant_file
+  variant_file="$(mktemp)"
+  printf '%s\n' 'Repository routing state is enabled after a passing G0-G4 `retain` verdict; runtime routing is active.' > "$variant_file"
+  test "$(jq -er '.verdictCases[] | select(.name == "threshold-20") | .expected.verdict' "$ROOT_DIR/test/fixtures/leanctx-evaluation.golden.json")" = "retain"
+  grep -Fqx 'Repository routing state is enabled after a passing G0-G4 `retain` verdict; runtime routing is active.' "$variant_file"
+  ! grep -Fq 'disable-routing' "$variant_file"
+  rm -f "$variant_file"
+}
+
+assert_retain_enable_routing_variant
+
 printf 'authority guidance assertions passed\n'
