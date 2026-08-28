@@ -7,6 +7,13 @@ Todo 7.1 required a mutation-free G0 preflight across every running long-lived `
 UTC run: `2026-08-25T10:56:03Z`
 Evidence: [.omo/evidence/lean-ctx-reliability-gate/task-7/campaign-20260825T105603Z](/home/devuser/workspace/ai-engkit/.omo/evidence/lean-ctx-reliability-gate/task-7/campaign-20260825T105603Z)
 
+> **2026-08-28 addendum:** lean-ctx 3.9.20 closed the 3.9.19 triage
+> incident. A targeted local probe confirmed `Output triage: off` and complete
+> whole-file `ctx_read`, `stat`, `head`, and `od -c` output without hatches.
+> This does not alter the historical G0 result below or re-enable routing; that
+> requires a new isolated passing G0-G4 evaluation and an explicit repository
+> guidance decision.
+
 ## Problem
 
 G0 did not pass for the complete running fleet. Both `ghcr.io/tryweb/ai-engkit:v1.15.6` containers have a baked `compression_level = "lite"` baseline. The plan requires stopping before measurement when any long-lived container fails G0.

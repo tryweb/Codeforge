@@ -4,9 +4,9 @@
 
 ai-engkit 在容器映像建置時安裝 lean-ctx(`Dockerfile` L134)並在 entrypoint 註冊 MCP 伺服器(`entrypoint.d/02-init-config.sh` L152-154)。`docker-compose.yml` 透過 `lean-ctx-data`、`lean-ctx-state` 兩個 named volume 持久化資料,並依 XDG Base Directory 規範分目錄。
 
-> **Current state (lean-ctx 3.9.19):** 下列 Solution A、B、C 已套用到 repo。映像會產生 `config.toml`,entrypoint 會安裝 shell hook 與 OpenCode integration,測試則驗證 MCP 連線及 non-interactive shell 環境。原 Problem 內容保留為設計沿革。
+> **Current state (lean-ctx 3.9.20):** 下列 Solution A、B、C 已套用到 repo。映像會產生 `config.toml`,entrypoint 會安裝 shell hook 與 OpenCode integration,測試則驗證 MCP 連線及 non-interactive shell 環境。原 Problem 內容保留為設計沿革。
 >
-> **v1.15.2 update:** `compression_level` 改為 `"lite"`（非 `"standard"`）;`shell_allowlist_extra` 改為 single-line array 格式以避免 TOML merge 問題;`allow_ide_config_dirs = true` 已加入。lean-ctx 首次啟動時會 reformat config.toml（例如 single-line array → multi-line），但格式仍然有效。見下方 Problem 5-6。
+> **Configuration history:** v1.15.2 曾把 `compression_level` 從 `"standard"` 降為 `"lite"`;3.9.19 triage 事故後，現行 repository baseline 為 `"off"`。3.9.20 已修復該事故，output triage 預設為 opt-in/off，但恢復其他 compression level 或 routing 仍須新的 G0-G4 評估與明確決策。`shell_allowlist_extra` 採 single-line array 以避免 TOML merge 問題;`allow_ide_config_dirs = true` 已加入。
 
 實際部署後,`lean-ctx doctor` 27/32 通過 — 整體骨架完整(XDG layout pin、build-time 安裝、MCP 設定、legacy 遷移邏輯都到位),但仍有 4 個明顯的優化缺口,以及一個會誤導排查方向的 false-positive。
 
@@ -116,7 +116,7 @@ shell_allowlist_extra = ["gh", "glab", "docker", "docker-compose", "docker compo
 
 ### 6. lean-ctx 首次啟動 reformat config.toml
 
-**已知行為（非 bug）：** lean-ctx 3.9.19 在首次啟動時會 reformat `config.toml`，將 single-line array 轉為 multi-line 格式，並可能加入額外設定（如 `allow_ide_config_dirs = true`）。
+**已知行為（非 bug，最初於 lean-ctx 3.9.19 觀察）：** lean-ctx 在首次啟動時會 reformat `config.toml`，將 single-line array 轉為 multi-line 格式，並可能加入額外設定（如 `allow_ide_config_dirs = true`）。
 
 這意味著：
 - Dockerfile 中的 single-line array 格式只是「初始種子」
@@ -137,7 +137,7 @@ RUN mkdir -p /home/${USERNAME}/.config/lean-ctx && \
     cat > /home/${USERNAME}/.config/lean-ctx/config.toml <<'EOF'
 # lean-ctx ai-engkit tuning — overrides conservative defaults
 permission_inheritance = "on"
-compression_level = "lite"
+compression_level = "off"
 cognitive_mode = "full"
 shell_allowlist_extra = ["gh", "glab", "docker", "docker-compose", "docker compose", "pw-mcp", "bun", "marksman", "codegraph", "openspec"]
 graph_index_max_files = 5000
@@ -215,7 +215,7 @@ CONTAINER=$(docker compose -p dev -f docker-compose.dev.yml ps --format '{{.Name
 ## Why It Works
 
 - **`permission_inheritance = "on"`** — 啟用 lean-ctx 的 IDE permission inheritance。現行 agent 權限位於 `~/.omo/omo.jsonc`,`opencode.json` 不含 inline agent section;不可假設舊文件中的 `*.env = ask` 規則仍存在,實際 allow/deny 行為須由 runtime smoke test 驗證。
-- **`compression_level = "lite"`** — 啟用輕量壓縮模式。v1.15.1 原設定為 `"standard"`，v1.15.2 降為 `"lite"` 以減少 CPU 開銷。實際 token savings 與 CPU/RAM/latency 影響依 workload 而定。
+- **`compression_level = "off"`** — 3.9.19 triage 事故後採用的現行保守基線。3.9.20 已把 output triage 改為 opt-in（預設 `decision_loop.max_filter_level = 0`），因此 compression level 不再等同 triage 狀態；任何恢復壓縮或 routing 的變更仍須獨立評估。實際 token savings 與 CPU/RAM/latency 影響依 workload 而定。
 - **`graph_index_max_files = 5000`** — 為 ai-engkit 常見的 monorepo 提供上限,避免初次啟動時整個 `~/workspace` 被索引。
 - **shell hook + SKILL.md** — 互動 shell 與 `/help` 都能享受 lean-ctx 能力。實測在 lean-ctx 3.8.11 中,`setup --non-interactive --yes` 比單獨 `init --global` 更完整,會補 `~/.bashrc` / `~/.bashenv`;`init --agent opencode` 仍值得保留來更新 OpenCode rules,但目前版本不一定會產生 `SKILL.md`。
 - **`BASH_ENV` 驗證** — `ENV BASH_ENV=...` 已能提供 non-interactive bash 所需的環境變數;真正該確認的是 `sudo -E` 後變數是否仍在、以及工具是否確實經過 bash 啟動。
@@ -230,6 +230,11 @@ CONTAINER=$(docker compose -p dev -f docker-compose.dev.yml ps --format '{{.Name
 - **`BASH_ENV` 問題要靠驗證而非重複 export** — 若 bash tool 是走 `bash -c`,現有 Dockerfile `ENV` 即應生效;若 future regression 出在 `sudo -E` / `env_keep`,需要修的是 preserve policy,不是再宣告一次同值。
 
 ## Evidence
+
+- 2026-08-28 lean-ctx 3.9.20 revalidation：`doctor` 顯示
+  `Output triage: off`；一般 whole-file `ctx_read` 與 plain `stat`、`head`、
+  `od -c` 均完整輸出。上游修正依據：
+  https://github.com/yvgude/lean-ctx/releases/tag/v3.9.20
 
 - `lean-ctx doctor` 顯示 27/32 通過,5 個 issues 對應本文 4 個 Problem（pre-fix 3.8.x 歷史結果;3.9.18 必須重新執行）
 - `lean-ctx doctor integrations` 顯示 OpenCode `OpenCode MCP drift`
