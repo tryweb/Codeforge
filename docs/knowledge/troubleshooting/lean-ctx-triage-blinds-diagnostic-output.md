@@ -51,9 +51,9 @@ Concrete failure mode (observed in an OpenChamber session titled
 5. Agent loops: can't edit (mismatch), can't diagnose (output hidden), can't edit.
 
 ## Solution
-The current repository baseline is explicit `compression_level = "off"`. The
+The current repository baseline is explicit `compression_level = "lite"`. The
 3.9.20 fix means `off` is no longer required merely to prevent the 3.9.19
-triage regression; it remains the repository's separate conservative baseline.
+triage regression; `off` remains available for focused diagnostics.
 The 2026-08-25 reliability gate classified the fleet as `disable-routing`, so
 automatic Read, Search, and Shell routing remains disabled. CodeGraph and
 native tools are authoritative; lean-ctx remains available for memory,
@@ -125,8 +125,8 @@ lean-ctx raw "od -c file.tsx"              # CLI form
   `lines:N-M` windows (small outputs only; `lines:1-41` of a 41-line file was
   filtered). For correctness-sensitive raw output, use native tools; the
   hatches are only best-effort when daemon and configuration health is known.
-- The repository's `compression_level = "off"` baseline reduces token savings;
-  retaining or changing it is a separate routing/reliability decision, not a
+- The repository's `compression_level = "lite"` baseline enables bounded token
+  savings; changing it is a separate routing/reliability decision, not a
   3.9.20 triage workaround.
 - Do not infer triage state from `compression_level`; check the `Output triage`
   line in `lean-ctx doctor`.
