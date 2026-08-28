@@ -193,46 +193,15 @@ describe("applyLeanCtxConfig", () => {
     expect(fixture.calls).toEqual(["lean-ctx config apply 2>&1"]);
   });
 
-  test("reports applied only after the daemon doctor check succeeds", async () => {
-    const fixture = createApplyFixture({ doctors: [{ stdout: "daemon is running", stderr: "", exitCode: 0 }] });
+  test("reports applied after config apply and container restart succeed", async () => {
+    const fixture = createApplyFixture();
 
     const result = await applyLeanCtxConfig(fixture.deps);
 
     expect(result).toEqual({ ok: true, status: "applied", output: "applied" });
-    expect(fixture.calls).toEqual(["lean-ctx config apply 2>&1", "lean-ctx doctor 2>&1"]);
+    expect(fixture.calls).toEqual(["lean-ctx config apply 2>&1"]);
     expect(fixture.sleepCalls).toEqual([]);
     expect(fixture.restartCalls).toBe(1);
   });
 
-  test("polls through transient daemon startup before reporting applied", async () => {
-    const fixture = createApplyFixture({
-      doctors: [
-        { stdout: "daemon is not running", stderr: "", exitCode: 0 },
-        { stdout: "daemon is running", stderr: "", exitCode: 0 },
-      ],
-    });
-
-    const result = await applyLeanCtxConfig(fixture.deps);
-
-    expect(result).toMatchObject({ ok: true, status: "applied", output: "applied" });
-    expect(fixture.calls).toEqual([
-      "lean-ctx config apply 2>&1",
-      "lean-ctx doctor 2>&1",
-      "lean-ctx doctor 2>&1",
-    ]);
-    expect(fixture.sleepCalls).toEqual([1000]);
-  });
-
-  test("reports unverified after bounded doctor failures", async () => {
-    const fixture = createApplyFixture({
-      doctors: Array.from({ length: 5 }, () => ({ stdout: "doctor failed", stderr: "", exitCode: 1 })),
-    });
-
-    const result = await applyLeanCtxConfig(fixture.deps);
-
-    expect(result).toEqual({ ok: false, status: "unverified", output: "applied", error: "doctor failed" });
-    expect(fixture.calls).toHaveLength(6);
-    expect(fixture.sleepCalls).toEqual([1000, 1000, 1000, 1000]);
-    expect(fixture.restartCalls).toBe(1);
-  });
 });

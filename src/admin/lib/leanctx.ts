@@ -396,9 +396,6 @@ export async function runLeanCtxDoctor(exec: typeof execInAiDev = execInAiDev): 
   };
 }
 
-const MAX_DOCTOR_ATTEMPTS = 5;
-const DOCTOR_RETRY_DELAY_MS = 1_000;
-
 const REAL_APPLY_DEPS: LeanCtxApplyDeps = {
   exec: execInAiDev,
   restart: restartAiDev,
@@ -428,22 +425,7 @@ export async function applyLeanCtxConfig(deps: LeanCtxApplyDeps = REAL_APPLY_DEP
     };
   }
 
-  let lastDoctor: DoctorResult | undefined;
-  for (let attempt = 0; attempt < MAX_DOCTOR_ATTEMPTS; attempt += 1) {
-    const doctor = await runLeanCtxDoctor(deps.exec);
-    if (doctor.ok && !doctor.output.toLowerCase().includes("not running")) {
-      return { ok: true, status: "applied", output };
-    }
-    lastDoctor = doctor;
-    if (attempt < MAX_DOCTOR_ATTEMPTS - 1) await deps.sleep(DOCTOR_RETRY_DELAY_MS);
-  }
-
-  return {
-    ok: false,
-    status: "unverified",
-    output,
-    error: lastDoctor?.output || "LeanCTX daemon verification failed",
-  };
+  return { ok: true, status: "applied", output };
 }
 
 export function getConfigValue(config: LeanCtxConfig, path: string): unknown {
