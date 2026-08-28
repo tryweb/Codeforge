@@ -628,11 +628,12 @@ assert_eq "OMO config contains no stale [opencode].agents layer" "false" "$OMO_S
 # 8.3.8 Only allowlisted native agents may be generated inline
 OPCODE_UNEXPECTED_AGENTS=$(docker exec "$CONTAINER" jq -r '[(.agent // {}) | keys[] | select((. != "general") and (. != "plan"))] | join(",")' /home/devuser/.config/opencode/opencode.json 2>/dev/null || echo "")
 assert_eq "opencode.json has no unexpected inline agents" "" "$OPCODE_UNEXPECTED_AGENTS"
-# Reconcile runs after openchamber serve (up to 120s provider wait); allow eventual consistency.
-for _ in 1 2 3 4 5 6; do
+# Reconcile runs after openchamber serve (provider 120s + lifecycle 120s + 3x retry); allow eventual consistency up to ~150s.
+for _ in $(seq 1 30); do
   OMO_GENERAL_MODEL=$(docker exec "$CONTAINER" jq -r '.agents.general.model // empty' "$OMO_CONFIG_FILE" 2>/dev/null || echo "")
   OPCODE_GENERAL_MODEL=$(docker exec "$CONTAINER" jq -r '.agent.general.model // empty' /home/devuser/.config/opencode/opencode.json 2>/dev/null || echo "")
   if [ "$OMO_GENERAL_MODEL" = "$OPCODE_GENERAL_MODEL" ]; then break; fi
+  echo "  waiting for native bridge sync: OMO='$OMO_GENERAL_MODEL' OPCODE='$OPCODE_GENERAL_MODEL' (attempt $_/30)" >&2
   sleep 5
 done
 assert_eq "general native model matches persisted OMO override" "$OMO_GENERAL_MODEL" "$OPCODE_GENERAL_MODEL"
