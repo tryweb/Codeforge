@@ -78,7 +78,7 @@ assert_malformed_backup_preserves_original_bytes() {
 }
 
 assert_malformed_backup_names_are_unique() {
-  local root backups first_backup second_backup
+  local root backups first_backup second_backup="" backup
   root="$(mktemp -d)"
   printf '%s\n' 'compression_level = "off"' > "$root/default.toml"
   printf '%s\n' 'compression_level = "off"' 'broken = [' > "$root/config.toml"
@@ -89,7 +89,13 @@ assert_malformed_backup_names_are_unique() {
   run_ensure "$root"
   backups=("$root"/config.toml.malformed.*)
   test "${#backups[@]}" -eq 2
-  second_backup="${backups[1]}"
+  for backup in "${backups[@]}"; do
+    if [ "$backup" != "$first_backup" ]; then
+      second_backup="$backup"
+      break
+    fi
+  done
+  test -n "$second_backup"
   test "$first_backup" != "$second_backup"
   rm -rf "$root"
 }
@@ -119,6 +125,24 @@ assert_off_config_backfills_missing_baseline_keys() {
   grep -Fxq 'graph_index_max_files = 9999' "$root/config.toml"
   grep -Fxq 'savings_footer = "auto"' "$root/config.toml"
   test "$(grep -cE '^[[:space:]]*compression_level[[:space:]]*=' "$root/config.toml")" -eq 1
+  rm -rf "$root"
+}
+
+assert_lite_config_is_valid_and_idempotent() {
+  local root baseline_before
+  root="$(mktemp -d)"
+  printf '%s\n' \
+    'compression_level = "off"' \
+    'graph_index_max_files = 9999' > "$root/default.toml"
+  printf '%s\n' \
+    'compression_level = "lite"' \
+    'graph_index_max_files = 5000' > "$root/config.toml"
+  cp "$root/default.toml" "$root/baseline-before.toml"
+  run_ensure "$root"
+  run_ensure "$root"
+  grep -Fxq 'compression_level = "lite"' "$root/config.toml"
+  test "$(grep -cE '^[[:space:]]*compression_level[[:space:]]*=' "$root/config.toml")" -eq 1
+  cmp -s "$root/baseline-before.toml" "$root/default.toml"
   rm -rf "$root"
 }
 
@@ -153,7 +177,7 @@ assert_malformed() {
 }
 
 assert_normal_sync_is_atomic_and_idempotent() {
-  local root
+  local root first_hash second_hash
   root="$(mktemp -d)"
   printf '%s\n' '<!-- @ai-engkit -->' managed '<!-- /@ai-engkit -->' > "$root/default.md"
   printf '%s\n' prefix '<!-- @ai-engkit -->' stale '<!-- /@ai-engkit -->' suffix > "$root/AGENTS.md"
@@ -161,10 +185,10 @@ assert_normal_sync_is_atomic_and_idempotent() {
   grep -Fxq prefix "$root/AGENTS.md"
   grep -Fxq managed "$root/AGENTS.md"
   grep -Fxq suffix "$root/AGENTS.md"
-  sha256sum "$root/AGENTS.md" > "$root/first.sha"
+  first_hash="$(sha256sum "$root/AGENTS.md" | cut -d' ' -f1)"
   run_sync "$root" > "$root/second.out" 2> "$root/second.err"
-  sha256sum "$root/AGENTS.md" > "$root/second.sha"
-  cmp -s "$root/first.sha" "$root/second.sha"
+  second_hash="$(sha256sum "$root/AGENTS.md" | cut -d' ' -f1)"
+  test "$first_hash" = "$second_hash"
   test ! -s "$root/second.out"
   test ! -s "$root/second.err"
   rm -rf "$root"
@@ -177,6 +201,7 @@ if command -v lean-ctx >/dev/null 2>&1; then
   assert_malformed_backup_preserves_original_bytes
   assert_malformed_backup_names_are_unique
   assert_off_config_backfills_missing_baseline_keys
+  assert_lite_config_is_valid_and_idempotent
   assert_valid_config_cleans_deprecated_keys
 else
   printf 'lean-ctx not on host; skipping malformed recovery assertion\n' >&2

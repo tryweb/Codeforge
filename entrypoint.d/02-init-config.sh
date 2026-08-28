@@ -345,8 +345,6 @@ initialize_omo_permissions "$OMO_CONFIG_FILE" "$DEFAULT_OMO_CONFIG"
 if ! normalize_omo_config "$OMO_CONFIG_FILE"; then
   echo "Warning: OMO config normalization was not applied; review the reported path" >&2
 fi
-merge_native_agent_overrides "$OPCODE_CONFIG_FILE" "$OMO_CONFIG_FILE"
-
 if command -v lean-ctx &>/dev/null; then
   if ! grep -qF 'lean-ctx shell hook' "$HOME/.bashrc" 2>/dev/null; then
     lean-ctx setup --non-interactive --yes >/dev/null 2>&1 || true
@@ -356,6 +354,8 @@ if command -v lean-ctx &>/dev/null; then
     lean-ctx init --agent opencode >/dev/null 2>&1 || true
   fi
 fi
+
+merge_native_agent_overrides "$OPCODE_CONFIG_FILE" "$OMO_CONFIG_FILE"
 
 merge_project_lsp_config
 
