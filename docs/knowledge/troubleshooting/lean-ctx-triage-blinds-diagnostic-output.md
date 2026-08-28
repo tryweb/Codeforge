@@ -1,4 +1,4 @@
-# lean-ctx `compression_level = "standard"` blinds the agent to diagnostic output
+# Historical: lean-ctx 3.9.19 triage blinded the agent to diagnostic output
 
 ## Context
 ai-engkit's Docker image bakes a lean-ctx config into
@@ -6,9 +6,18 @@ ai-engkit's Docker image bakes a lean-ctx config into
 The agent executes shell commands via lean-ctx's `ctx_shell` and reads files via
 `ctx_read`. lean-ctx wraps and compresses command output to save tokens.
 
+> **Current status (lean-ctx 3.9.20, verified 2026-08-28):** Upstream closed
+> the 3.9.19 triage incident. Output filtering is now opt-in with
+> `decision_loop.max_filter_level = 0` by default, `ctx_read` is exempt from
+> triage, and documented lossless modes bypass it. `lean-ctx doctor` reports
+> `Output triage: off`. Local whole-file `ctx_read` and plain `stat`, `head`,
+> and `od -c` probes returned complete output without hatches. This document
+> keeps the 3.9.19 incident and recovery evidence for historical diagnosis.
+
 ## Problem
-The original bake set `compression_level = "standard"`, which is **more aggressive
-than lean-ctx's upstream default (`lite`)**. At this level, lean-ctx's triage
+Under lean-ctx 3.9.19, the original bake set
+`compression_level = "standard"`, which was **more aggressive than lean-ctx's
+upstream default (`lite`)**. At this level, lean-ctx's triage
 pipeline returns the placeholder
 
 ```
@@ -24,8 +33,8 @@ and `ctx_read` of persisted files. Re-measured 2026-08-24 under a *healthy*
 `lines:N-M` windows (roughly ≤ 6 lines / a few hundred chars) pass — the
 decision is score-and-size based, not path-based.
 
-**Config-vs-daemon drift reproduces the same blindness.** The triage tier is
-fixed when the lean-ctx daemon starts; editing `compression_level` in
+**In 3.9.19, config-vs-daemon drift reproduced the same blindness.** The triage
+tier was fixed when the lean-ctx daemon started; editing `compression_level` in
 `config.toml` alone changes nothing for the running daemon. On 2026-08-24 the
 disk said `lite` while every tool result still reported
 `[lean-ctx: N lines filtered by triage (level 2)]` — until
@@ -43,7 +52,9 @@ Concrete failure mode (observed in an OpenChamber session titled
 
 ## Solution
 The current repository baseline is explicit `compression_level = "off"`. The
-2026-08-25 reliability gate classified the fleet as `disable-routing`, so
+3.9.20 fix means `off` is no longer required merely to prevent the 3.9.19
+triage regression; it remains the repository's separate conservative baseline.
+The 2026-08-25 reliability gate classified the fleet as `disable-routing`, so
 automatic Read, Search, and Shell routing remains disabled. CodeGraph and
 native tools are authoritative; lean-ctx remains available for memory,
 knowledge, and non-authoritative opt-in exploration. Escape hatches are not a
@@ -79,8 +90,9 @@ baseline uses `off` instead:
 + compression_level = "lite"
 ```
 
-For the rare case where `lite` still filters content the agent needs, use the
-per-command escape hatches (allowlist still applies):
+On 3.9.20, first check `lean-ctx doctor`. If `Output triage` is intentionally
+active, use a documented per-command lossless mode or escape hatch (the
+allowlist still applies):
 
 ```bash
 LEAN_CTX_RAW=1 od -c file.tsx              # uncompressed this run
@@ -89,20 +101,22 @@ lean-ctx raw "od -c file.tsx"              # CLI form
 ```
 
 ## Why It Works
-- `compression_level` enum is `off | lite | standard | max`; upstream default
-  is `lite`. `standard`/`max` enable the aggressive triage that hides
-  diagnostic content.
-- `LEAN_CTX_RAW=1` and `lean-ctx --raw` skip compression for one invocation.
+- In 3.9.20, output filtering is controlled by
+  `decision_loop.max_filter_level`, which defaults to `0`; compression level no
+  longer establishes whether output triage is active. `lean-ctx doctor` exposes
+  the effective filter state.
+- `ctx_read` is exempt from triage. `raw`, `full`, `full-compact`, `lines:`,
+  `anchored:`, `diff`, `aggressiveness=0`, and `fresh` are pinned lossless
+  bypasses by upstream tests.
+- `LEAN_CTX_RAW=1` and `lean-ctx raw` skip compression for one invocation.
 - `LEAN_CTX_DISABLED=1` additionally disables the shell hook for that invocation.
-- The shell-path hatches (`LEAN_CTX_RAW=1`, `LEAN_CTX_DISABLED=1`) are honored
-  only while the daemon and `config.toml` agree. Measured 2026-08-24: with a
-  stale daemon they silently did nothing on the MCP tool path; after the daemon
-  was restarted onto the on-disk `lite` config, both hatches passed full output
-  through `ctx_shell`. Treat them as unreliable whenever results show `(level
-  2)` notices — fix the daemon first (`config apply` + OpenChamber restart).
+- The 2026-08-24 observation that hatches were ignored belongs to 3.9.19. On
+  3.9.20 they are part of the tested bypass contract, but AI-EngKit still does
+  not use lean-ctx output alone to establish correctness.
 
 ## Side Effects / Tradeoffs
-- `lite` is **less aggressive than `standard`, not zero** — measured 2026-08-24
+- **Historical 3.9.19 behavior:** `lite` was less aggressive than `standard`,
+  not zero — measured 2026-08-24
   under a freshly applied `lite`: whole-file `ctx_read` still returns the
   level-2 placeholder (sometimes substituted with unrelated context snippets,
   e.g. the repo `AGENTS.md` head), and plain `stat` / `od -c` / `head -20`
@@ -111,10 +125,11 @@ lean-ctx raw "od -c file.tsx"              # CLI form
   `lines:N-M` windows (small outputs only; `lines:1-41` of a 41-line file was
   filtered). For correctness-sensitive raw output, use native tools; the
   hatches are only best-effort when daemon and configuration health is known.
-- `off` defeats lean-ctx's token-savings purpose for routine commands; use
-  only when actively debugging.
-- Raising `compression_level` to `standard`/`max` to "see more" makes the blind
-  spot **worse**, not better.
+- The repository's `compression_level = "off"` baseline reduces token savings;
+  retaining or changing it is a separate routing/reliability decision, not a
+  3.9.20 triage workaround.
+- Do not infer triage state from `compression_level`; check the `Output triage`
+  line in `lean-ctx doctor`.
 
 ## Evidence
 - OpenChamber session screenshot showing the `Edit File` → `od -c` filtered →
@@ -137,9 +152,22 @@ lean-ctx raw "od -c file.tsx"              # CLI form
   unchanged`; `lean-ctx config apply` → `daemon stopped (PID …)` + new PID,
   while every `ctx_*` tool returned `-32001` until OpenChamber restarted.
 
+### 2026-08-28 re-verification (lean-ctx 3.9.20)
+
+- Upstream release: [v3.9.20 — Fixed: triage (community incident, 3.9.19)](https://github.com/yvgude/lean-ctx/releases/tag/v3.9.20).
+- `lean-ctx --version` returned `3.9.20`; `lean-ctx doctor` returned
+  `Output triage: off (decision_loop.max_filter_level = 0 — tool output is never dropped)`.
+- A 40-line, 960-byte marker fixture had SHA-256
+  `b3cba43c2b02a9303a0d28d3b629b59885003fdcbc893a0710ee6f2766bd96f0`.
+  Normal whole-file `ctx_read` returned all 40 lines. Plain `ctx_shell` `stat`,
+  `head -20`, and `od -c` returned complete output without `raw=true` or env
+  hatches.
+- This targeted probe confirms the 3.9.19 triage failure is not reproduced. It
+  does not supersede the separate fleet G0-G4 requirement for routing changes.
+
 ## Related Files
 - `Dockerfile` (~line 148, `compression_level` in baked `config.toml`)
-- `.opencode/AGENTS.md.default` (added `### When lean-ctx Triage Hides Diagnostic Output` section)
+- `.opencode/AGENTS.md.default` (`### lean-ctx v3.9.20 Output Triage` guidance)
 - `/home/devuser/.config/lean-ctx/config.toml` (runtime, in container)
 - `/home/devuser/.config/lean-ctx/env.sh` (BASH_ENV-loaded hook)
 - `docs/knowledge/tooling/lean-ctx-optimization.md` (companion: allowlist tuning)
