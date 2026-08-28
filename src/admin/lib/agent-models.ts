@@ -162,6 +162,15 @@ export function createAgentModelsLib(deps: AgentModelsDeps = REAL_DEPS) {
     return { ok: false, status: "probe_failed", error: probe.reason ?? `model ${configured} is unavailable` };
   }
 
+  async function syncNativeAgentOverrides(): Promise<void> {
+    const op = "$HOME/.config/opencode/opencode.json";
+    const omo = OMO_CONFIG;
+    const cmd = `tmp="${op}.native-agent-overrides.tmp"; [ -f "${op}" ] && [ -f "${omo}" ] && jq -s '.[0] as $opencode | .[1] as $omo | reduce ["general", "plan"][] as $name ($opencode; ($omo.agents[$name] // {}) as $override | if (($override.model | type) == "string" and ($override.model | test("^[^/[:space:]]+/[^/[:space:]]+$"))) then .agent = (.agent // {}) | .agent[$name].model = $override.model | if (($override.variant | type) == "string" and ($override.variant | length) > 0) then .agent[$name].variant = $override.variant else del(.agent[$name].variant) end else del(.agent[$name]) end)' "${op}" "${omo}" > "$tmp" 2>/dev/null && mv "$tmp" "${op}" || rm -f "$tmp"`;
+    try {
+      await deps.exec(cmd, 10_000);
+    } catch {}
+  }
+
   async function applyAndVerifyBatch(changes: readonly AgentModelChange[]): Promise<ReadonlyMap<string, ApplyResult>> {
     const results = new Map<string, ApplyResult>();
     if (changes.length === 0) return results;
@@ -221,6 +230,7 @@ export function createAgentModelsLib(deps: AgentModelsDeps = REAL_DEPS) {
         }
       }
     }
+    await syncNativeAgentOverrides();
     return results;
   }
 
