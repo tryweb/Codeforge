@@ -468,7 +468,7 @@ fi
 
 LEAN_CTX_CONFIG=$(docker exec "$CONTAINER" sh -c 'cat /home/devuser/.config/lean-ctx/config.toml' 2>/dev/null || echo "")
 assert_contains "lean-ctx config enables permission inheritance" 'permission_inheritance = "on"' "$LEAN_CTX_CONFIG"
-assert_contains "lean-ctx config sets off compression" 'compression_level = "off"' "$LEAN_CTX_CONFIG"
+assert_contains "lean-ctx config sets lite compression" 'compression_level = "lite"' "$LEAN_CTX_CONFIG"
 assert_contains "lean-ctx config pins full cognitive mode" 'cognitive_mode = "full"' "$LEAN_CTX_CONFIG"
 assert_contains "lean-ctx config caps graph index" 'graph_index_max_files = 5000' "$LEAN_CTX_CONFIG"
 
