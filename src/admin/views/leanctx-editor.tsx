@@ -386,7 +386,14 @@ const LeanCtxEditorContent: FC<LeanCtxEditorProps> = ({ config, meta, schema, dr
         if (data.ok) {
           output.innerHTML = '<div class="text-success">✓ Saved configuration applied. The LeanCTX daemon in ai-dev was restarted.</div>';
         } else {
-          output.innerHTML = '<div class="text-danger">✗ Apply failed; the LeanCTX daemon may not have restarted: ' + (data.output || "Unknown error") + '</div>';
+          const message = data.status === "unverified"
+            ? "Configuration was applied, but daemon readiness could not be verified: "
+            : "Apply failed: ";
+          output.replaceChildren();
+          const error = document.createElement("div");
+          error.className = "text-danger";
+          error.textContent = "✗ " + message + (data.error || data.output || "Unknown error");
+          output.append(error);
         }
         document.getElementById("result-modal-title").textContent = "Apply Result";
         document.getElementById("validate-modal").style.display = "flex";
