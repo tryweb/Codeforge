@@ -7,39 +7,19 @@ WORKSPACE_DIR="${WORKSPACE_DIR:-$HOME/workspace}"
 LEANCTX_BASELINE_CONFIG="${LEANCTX_BASELINE_CONFIG:-/etc/lean-ctx/config.default.toml}"
 LEANCTX_RUNTIME_CONFIG="${LEANCTX_RUNTIME_CONFIG:-$HOME/.config/lean-ctx/config.toml}"
 migrate_leanctx_compression_level() {
-    local marker_path="${LEANCTX_RUNTIME_CONFIG}.migration-v1"
-    local backup_path="${LEANCTX_RUNTIME_CONFIG}.pre-migration-v1"
+    local marker_path="${LEANCTX_RUNTIME_CONFIG}.migration-v2"
+    local backup_path="${LEANCTX_RUNTIME_CONFIG}.pre-migration-v2"
     local current_level
     local temporary_path
 
     [ -f "$LEANCTX_RUNTIME_CONFIG" ] || return 0
-    if grep -qE '^[[:space:]]*compression_level[[:space:]]*=[[:space:]]*"off"[[:space:]]*(#.*)?$' "$LEANCTX_RUNTIME_CONFIG"; then
-        if [ -f "$backup_path" ] && [ ! -e "$marker_path" ]; then
-            temporary_path="${marker_path}.tmp.$$"
-            printf '%s\n' 'lean-ctx compression migration v1' > "$temporary_path" || return 1
-            chmod 600 "$temporary_path" || { rm -f "$temporary_path"; return 1; }
-            mv "$temporary_path" "$marker_path" || { rm -f "$temporary_path"; return 1; }
-        fi
-        return 0
-    fi
     [ -e "$marker_path" ] && return 0
-    if grep -qE '^[[:space:]]*compression_level[[:space:]]*=[^"#]*"[^"#]*$' "$LEANCTX_RUNTIME_CONFIG"; then
-        return 0
-    fi
 
     current_level="$(sed -nE 's/^[[:space:]]*compression_level[[:space:]]*=[[:space:]]*"([^"]*)".*$/\1/p' "$LEANCTX_RUNTIME_CONFIG" | head -n 1)"
     case "$current_level" in
         off)
-            if [ -f "$backup_path" ] && [ ! -e "$marker_path" ]; then
-                temporary_path="${marker_path}.tmp.$$"
-                printf '%s\n' 'lean-ctx compression migration v1' > "$temporary_path" || return 1
-                chmod 600 "$temporary_path" || { rm -f "$temporary_path"; return 1; }
-                mv "$temporary_path" "$marker_path" || { rm -f "$temporary_path"; return 1; }
-            fi
-            return 0
             ;;
-        lite|standard|max)
-            ;;
+        lite|standard|max) return 0 ;;
         *)
             return 0
             ;;
@@ -54,7 +34,7 @@ migrate_leanctx_compression_level() {
         BEGIN { replaced = 0 }
         !replaced && $0 ~ /^[[:space:]]*compression_level[[:space:]]*=/ {
             match($0, /^[[:space:]]*/)
-            print substr($0, 1, RLENGTH) "compression_level = \"off\""
+            print substr($0, 1, RLENGTH) "compression_level = \"lite\""
             replaced = 1
             next
         }
@@ -69,7 +49,7 @@ migrate_leanctx_compression_level() {
         return 0
     fi
     temporary_path="${marker_path}.tmp.$$"
-    printf '%s\n' 'lean-ctx compression migration v1' > "$temporary_path" || return 1
+    printf '%s\n' 'lean-ctx compression migration v2' > "$temporary_path" || return 1
     chmod 600 "$temporary_path" || { rm -f "$temporary_path"; return 1; }
     mv "$temporary_path" "$marker_path" || { rm -f "$temporary_path"; return 1; }
 }

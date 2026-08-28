@@ -31,17 +31,17 @@ run_ensure() {
 assert_migration_backup_and_marker_boundary() {
   local root
   root="$(mktemp -d)"
-  printf '%s\n' 'compression_level = "lite"' 'shell_write_policy = "disabled"' > "$root/config.toml"
+  printf '%s\n' 'compression_level = "off"' 'shell_write_policy = "disabled"' > "$root/config.toml"
   cp "$root/config.toml" "$root/before.toml"
   run_migration "$root"
-  grep -Fxq 'compression_level = "off"' "$root/config.toml"
-  grep -Fxq 'shell_write_policy = "disabled"' "$root/config.toml"
-  cmp -s "$root/before.toml" "$root/config.toml.pre-migration-v1"
-  test -f "$root/config.toml.migration-v1"
-  cp "$root/config.toml.pre-migration-v1" "$root/config.toml"
-  run_migration "$root"
   grep -Fxq 'compression_level = "lite"' "$root/config.toml"
-  test -f "$root/config.toml.migration-v1"
+  grep -Fxq 'shell_write_policy = "disabled"' "$root/config.toml"
+  cmp -s "$root/before.toml" "$root/config.toml.pre-migration-v2"
+  test -f "$root/config.toml.migration-v2"
+  cp "$root/config.toml.pre-migration-v2" "$root/config.toml"
+  run_migration "$root"
+  grep -Fxq 'compression_level = "off"' "$root/config.toml"
+  test -f "$root/config.toml.migration-v2"
   rm -rf "$root"
 }
 
@@ -103,13 +103,13 @@ assert_malformed_backup_names_are_unique() {
 assert_migration_marker_is_atomic_and_private() {
   local root marker mode
   root="$(mktemp -d)"
-  printf '%s\n' 'compression_level = "lite"' > "$root/config.toml"
+  printf '%s\n' 'compression_level = "off"' > "$root/config.toml"
   run_migration "$root"
-  marker="$root/config.toml.migration-v1"
+  marker="$root/config.toml.migration-v2"
   test -f "$marker"
   mode="$(stat -c '%a' "$marker" 2>/dev/null || stat -f '%A' "$marker")"
   test "$mode" = "600"
-  ! compgen -G "$root/config.toml.migration-v1.tmp.*" >/dev/null
+  ! compgen -G "$root/config.toml.migration-v2.tmp.*" >/dev/null
   rm -rf "$root"
 }
 
