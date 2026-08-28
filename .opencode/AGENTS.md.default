@@ -111,41 +111,32 @@ input was a plain JSON string while the filter assumed an object/array.
 3. **Fail loudly**: use `jq -e` so null/empty results exit non-zero instead of
    silently feeding garbage into the next command.
 
-### When lean-ctx Triage Hides Diagnostic Output
+### lean-ctx v3.9.20 Output Triage
 
-The baked config is `compression_level = "lite"`. Even `lite` runs an
-Intelligent-Triage pass that replaces matched content with
-`[lean-ctx: N lines filtered by triage (level 2)]` — including whole-file
-`ctx_read` results and plain `stat` / `od -c` / `head` shell output. Narrow
-`lines:N-M` windows (small outputs only) and hatch-prefixed commands get
-through.
+AI-EngKit pins lean-ctx 3.9.20, which closes the 3.9.19 triage incident:
 
-If you hit that placeholder and need the raw content:
+- Output filtering is opt-in; `decision_loop.max_filter_level` defaults to `0`.
+- `ctx_read` is exempt from triage, and documented lossless modes (`raw`,
+  `full`, `full-compact`, `lines:`, `anchored:`, `diff`, `aggressiveness=0`,
+  `fresh`) bypass it.
+- Source and log output no longer undergo line-level lossy deletion.
+- `lean-ctx doctor` reports the effective state as `Output triage: off` or
+  `active (max level N)`.
 
-1. Prefix the command with an escape hatch (the allowlist still applies).
-   These work while the lean-ctx daemon matches the on-disk config:
+Use normal `ctx_read` and `ctx_shell` calls for non-authoritative exploration;
+the old requirement to use narrow windows or raw hatches for every whole-file
+read no longer applies. The baked `compression_level = "off"` and repository
+`disable-routing` decision remain separate conservative policies. Do not infer
+triage state from the compression level or re-enable routing without a new
+isolated passing G0-G4 evaluation and an explicit repository guidance decision.
 
-```bash
-LEAN_CTX_RAW=1 od -c /path/to/file.tsx          # uncompressed this run
-LEAN_CTX_DISABLED=1 sed -n '460,476p' file.tsx  # bypass compression + hook
-lean-ctx raw "od -c file.tsx"                   # CLI form
-```
-
-2. If the hatches ALSO come back filtered or empty, the daemon is stale
-   relative to disk — typically `compression_level` was changed without
-   `apply`, or the daemon predates a config/container change. Fix in order:
-   `lean-ctx config set <key> <value> && lean-ctx config apply` (restarts the
-   daemon; running sessions' ctx tools hang with `-32001` until
-   OpenChamber / `opencode serve` restarts), then retry. Full details:
-   `docs/knowledge/troubleshooting/lean-ctx-triage-blinds-diagnostic-output.md`.
-
-3. For file content, avoid whole-file reads under triage: write the bytes you
-   need to inspect and read them back with `ctx_read(mode="lines:N-M")` —
-   small windows pass where full reads do not. `ctx_execute` (sandboxed)
-   covers multi-line logic.
-
-Do **not** raise `compression_level` to `standard`/`max` to "see more" —
-it makes the blind spot worse, not better.
+If `doctor` reports triage active, or output contains an omission marker, use a
+documented lossless mode or one-shot hatch (`raw=true`, `LEAN_CTX_RAW=1`,
+`LEAN_CTX_DISABLED=1`, or `lean-ctx raw`) and capture the effective doctor/config
+state. Treat unexpected filtering while `doctor` reports off as a regression or
+daemon/config drift; do not weaken `shell_security` or rely on the bypass alone
+for correctness. Historical reproduction and recovery evidence remains in
+`docs/knowledge/troubleshooting/lean-ctx-triage-blinds-diagnostic-output.md`.
 
 ## Project Knowledge Base — Recall Before You Debug
 
