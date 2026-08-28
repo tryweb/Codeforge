@@ -18,9 +18,9 @@ describe("filterToSchema", () => {
 });
 
 describe("compression defaults", () => {
-  test("uses an explicit lossless default", () => {
+  test("uses the lite baseline", () => {
     const compression = LEANCTX_SCHEMA.find((entry) => entry.key === "compression_level");
 
-    expect(compression?.default).toBe("off");
+    expect(compression?.default).toBe("lite");
   });
 });
