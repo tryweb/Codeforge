@@ -50,7 +50,7 @@ test("saved values survive reload and Reset to Defaults restores the baseline", 
   await page.getByRole("button", { name: "Save Changes" }).click();
   await expect(page.getByText("Saved. Apply when ready")).toBeVisible();
   await page.reload();
-  await expect(page.locator('tr[data-key="compression_level"] select')).toHaveValue("off");
+  await expect(page.locator('tr[data-key="compression_level"] select')).toHaveValue("lite");
 });
 
 test("malformed runtime config is backed up and recovered from the baseline", async ({ page }) => {
@@ -67,7 +67,7 @@ test("malformed runtime config is backed up and recovered from the baseline", as
     execFileSync("docker", ["restart", aiDevContainer]);
     await page.waitForTimeout(3000);
     await page.goto("/leanctx");
-    await expect(page.locator('tr[data-key="compression_level"] select')).toHaveValue("off");
+    await expect(page.locator('tr[data-key="compression_level"] select')).toHaveValue("lite");
     execFileSync("docker", ["exec", aiDevContainer, "sh", "-c", `test -n "$(find /home/devuser/.config/lean-ctx -name 'config.toml.malformed.*' -print -quit)"`]);
   } finally {
     execFileSync("docker", ["exec", aiDevContainer, "cp", backupPath, configPath]);
