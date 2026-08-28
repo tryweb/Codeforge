@@ -19,8 +19,8 @@ const exactSentinel = {
 
 function input(overrides: Partial<CapturedDriftInput> = {}): CapturedDriftInput {
   return {
-    baseline: { present: true, compressionLevel: "off" },
-    global: { present: true, compressionLevel: "off" },
+    baseline: { present: true, compressionLevel: "lite" },
+    global: { present: true, compressionLevel: "lite" },
     project: { present: false, compressionLevel: null },
     sentinel: exactSentinel,
     ...overrides,
@@ -31,7 +31,7 @@ describe("captured drift gate checker", () => {
   test("maps the six statuses using production precedence", () => {
     const cases: ReadonlyArray<readonly [string, CapturedDriftInput, DriftStatus]> = [
       ["healthy", input(), "healthy"],
-      ["config drift", input({ baseline: { present: true, compressionLevel: "lite" } }), "config_drift"],
+      ["config drift", input({ baseline: { present: true, compressionLevel: "off" } }), "config_drift"],
       ["project override", input({ project: { present: true, compressionLevel: "max" } }), "project_override"],
       ["daemon unavailable", input({ sentinel: { ...exactSentinel, timedOut: true } }), "daemon_unavailable"],
       ["behavior mismatch", input({ sentinel: { ...exactSentinel, stdout: "[lean-ctx: marker]\n" } }), "behavioral_mismatch"],
@@ -56,16 +56,16 @@ describe("captured drift gate checker", () => {
     expect(result.status).toBe("indeterminate");
   });
 
-  test("G0 passes only for healthy exact lossless baseline and sentinel", () => {
+  test("G0 passes only for healthy exact lite baseline and sentinel", () => {
     expect(runReliabilityGates([input()]).g0.passed).toBe(true);
     expect(runReliabilityGates([input({ sentinel: { ...exactSentinel, exitCode: 1 } })]).g0.passed).toBe(false);
-    expect(runReliabilityGates([input({ baseline: { present: true, compressionLevel: "lite" } })]).g0.passed).toBe(false);
+    expect(runReliabilityGates([input({ baseline: { present: true, compressionLevel: "off" } })]).g0.passed).toBe(false);
   });
 
   test("G1 passes when its matrix contains every non-healthy status and healthy", () => {
     const matrix = [
       input(),
-      input({ baseline: { present: true, compressionLevel: "lite" } }),
+      input({ baseline: { present: true, compressionLevel: "off" } }),
       input({ project: { present: true, compressionLevel: "max" } }),
       input({ sentinel: { ...exactSentinel, exitCode: 1 } }),
       input({ sentinel: { ...exactSentinel, stdout: "wrong\n" } }),

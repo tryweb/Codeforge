@@ -181,7 +181,7 @@ export function evaluateCapturedDrift(input: CapturedDriftInput): DriftAssessmen
   const baselineLevel = parsedCompression(input.baseline);
   const globalLevel = parsedCompression(input.global);
   if (!input.baseline.present || baselineLevel === null) return { status: "indeterminate", details: ["baseline lacks explicit compression level"] };
-  if (baselineLevel !== "off" || globalLevel !== null && globalLevel !== "off") return { status: "config_drift", details: ["baseline or global compression level is not off"] };
+  if (baselineLevel !== "lite" || globalLevel !== null && globalLevel !== "lite") return { status: "config_drift", details: ["baseline or global compression level is not lite"] };
   if (input.project.present) return { status: "project_override", details: ["project override is present"] };
   return sentinelAssessment(input.sentinel);
 }
