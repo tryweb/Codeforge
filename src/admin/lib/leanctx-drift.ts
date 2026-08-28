@@ -216,8 +216,8 @@ export async function detectLeanCtxDrift(
   if (!baseline.present || baseline.compressionLevel === null) {
     return claim({ status: "indeterminate", details: ["baseline lacks an explicit compression_level"] }, now);
   }
-  if (baseline.compressionLevel !== "off" || global.compressionLevel !== null && global.compressionLevel !== "off") {
-    return claim({ status: "config_drift", details: ["baseline or global compression_level is not off"] }, now);
+  if (baseline.compressionLevel !== "lite" || global.compressionLevel !== null && global.compressionLevel !== "lite") {
+    return claim({ status: "config_drift", details: ["baseline or global compression_level is not lite"] }, now);
   }
   if (project.present) {
     return claim({ status: "project_override", details: [`project override present at ${project.path}`] }, now);

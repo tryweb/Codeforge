@@ -26,8 +26,8 @@ function createFixture(options: FixtureOptions = {}): {
 } {
   const calls: string[] = [];
   const contents: Readonly<Record<string, string | null>> = {
-    [BASELINE_CONFIG_PATH]: options.baseline ?? 'compression_level = "off"\n',
-    [GLOBAL_CONFIG_PATH]: options.global ?? 'compression_level = "off"\n',
+    [BASELINE_CONFIG_PATH]: options.baseline ?? 'compression_level = "lite"\n',
+    [GLOBAL_CONFIG_PATH]: options.global ?? 'compression_level = "lite"\n',
     [PROJECT_CONFIG_PATH]: options.project ?? null,
   };
 
@@ -50,7 +50,7 @@ function createFixture(options: FixtureOptions = {}): {
 }
 
 describe("detectLeanCtxDrift", () => {
-  test("reports healthy for explicit-off layers and an exact sentinel", async () => {
+  test("reports healthy for explicit-lite layers and an exact sentinel", async () => {
     const fixture = createFixture();
 
     const result = await detectLeanCtxDrift(fixture.deps, { now: () => "2026-08-25T00:00:00.000Z" });
@@ -62,7 +62,7 @@ describe("detectLeanCtxDrift", () => {
   });
 
   test("reports config_drift for a lossy baseline or global layer", async () => {
-    const baselineFixture = createFixture({ baseline: 'compression_level = "lite"\n' });
+    const baselineFixture = createFixture({ baseline: 'compression_level = "off"\n' });
     const globalFixture = createFixture({ global: 'compression_level = "standard"\n' });
 
     const baselineResult = await detectLeanCtxDrift(baselineFixture.deps);
