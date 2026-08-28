@@ -68,8 +68,10 @@ migrate_leanctx_compression_level() {
         rm -f "$temporary_path"
         return 0
     fi
-    printf '%s\n' 'lean-ctx compression migration v1' > "$marker_path"
-    chmod 600 "$marker_path"
+    temporary_path="${marker_path}.tmp.$$"
+    printf '%s\n' 'lean-ctx compression migration v1' > "$temporary_path" || return 1
+    chmod 600 "$temporary_path" || { rm -f "$temporary_path"; return 1; }
+    mv "$temporary_path" "$marker_path" || { rm -f "$temporary_path"; return 1; }
 }
 migrate_leanctx_compression_level
 
@@ -119,16 +121,13 @@ ensure_leanctx_config() {
     return
   fi
 
-  sed -i -E \
-    -e 's/^tools\.profile[[:space:]]*=/tool_profile =/' \
-    -e '/^budget\.information_gate\.(enabled|max_overlap_ratio|min_novel_lines|track_granularity)[[:space:]]*=/d' \
-    "$LEANCTX_RUNTIME_CONFIG"
+  local leanctx_available=0
+  command -v lean-ctx >/dev/null 2>&1 || leanctx_available=1
 
-  command -v lean-ctx >/dev/null 2>&1 || return 1
-
-  if leanctx_runtime_config_is_malformed; then
+  if [ "$leanctx_available" -eq 0 ] && leanctx_runtime_config_is_malformed; then
     local backup_path
-    backup_path="${LEANCTX_RUNTIME_CONFIG}.malformed.$(date -u +%Y%m%dT%H%M%SZ)"
+    backup_path="$(mktemp "${LEANCTX_RUNTIME_CONFIG}.malformed.XXXXXX")"
+    rm -f "$backup_path"
     mv "$LEANCTX_RUNTIME_CONFIG" "$backup_path"
     if [[ -f "$LEANCTX_BASELINE_CONFIG" ]]; then
       cp "$LEANCTX_BASELINE_CONFIG" "$LEANCTX_RUNTIME_CONFIG"
@@ -140,15 +139,26 @@ ensure_leanctx_config() {
     return
   fi
 
+  sed -i -E \
+    -e 's/^tools\.profile[[:space:]]*=/tool_profile =/' \
+    -e '/^budget\.information_gate\.(enabled|max_overlap_ratio|min_novel_lines|track_granularity)[[:space:]]*=/d' \
+    "$LEANCTX_RUNTIME_CONFIG"
+
+  [ "$leanctx_available" -eq 0 ] || return 1
+
+  local compression_is_off=0
   if grep -qE '^[[:space:]]*compression_level[[:space:]]*=[[:space:]]*"off"[[:space:]]*(#.*)?$' "$LEANCTX_RUNTIME_CONFIG"; then
-    return
+    compression_is_off=1
   fi
 
   if [[ -f "$LEANCTX_BASELINE_CONFIG" ]]; then
-    while IFS= read -r line; do
+    while IFS= read -r line || [[ -n "$line" ]]; do
       if [[ "$line" =~ ^([a-zA-Z_][a-zA-Z0-9_]*)[[:space:]]*= ]]; then
         local key="${BASH_REMATCH[1]}"
-        if ! grep -qE "^${key}[[:space:]]*=" "$LEANCTX_RUNTIME_CONFIG"; then
+        if [ "$compression_is_off" -eq 1 ] && [ "$key" = "compression_level" ]; then
+          continue
+        fi
+        if ! grep -qE "^[[:space:]]*${key}[[:space:]]*=" "$LEANCTX_RUNTIME_CONFIG"; then
           printf '\n%s\n' "$line" >> "$LEANCTX_RUNTIME_CONFIG"
           printf 'lean-ctx: migrated missing key %s\n' "$key"
         fi

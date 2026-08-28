@@ -59,6 +59,85 @@ assert_off_config_still_recovers_malformed_toml() {
   rm -rf "$root"
 }
 
+assert_malformed_backup_preserves_original_bytes() {
+  local root backups
+  root="$(mktemp -d)"
+  printf '%s\n' 'compression_level = "off"' > "$root/default.toml"
+  printf '%s\n' \
+    'compression_level = "off"' \
+    'tools.profile = "legacy"' \
+    'budget.information_gate.enabled = true' \
+    'broken = [' > "$root/config.toml"
+  cp "$root/config.toml" "$root/before.toml"
+  run_ensure "$root"
+  backups=("$root"/config.toml.malformed.*)
+  test -f "${backups[0]}"
+  cmp -s "$root/before.toml" "${backups[0]}"
+  ! grep -Fq 'tool_profile' "${backups[0]}"
+  rm -rf "$root"
+}
+
+assert_malformed_backup_names_are_unique() {
+  local root backups first_backup second_backup
+  root="$(mktemp -d)"
+  printf '%s\n' 'compression_level = "off"' > "$root/default.toml"
+  printf '%s\n' 'compression_level = "off"' 'broken = [' > "$root/config.toml"
+  run_ensure "$root"
+  backups=("$root"/config.toml.malformed.*)
+  first_backup="${backups[0]}"
+  printf '%s\n' 'compression_level = "off"' 'broken = [' > "$root/config.toml"
+  run_ensure "$root"
+  backups=("$root"/config.toml.malformed.*)
+  test "${#backups[@]}" -eq 2
+  second_backup="${backups[1]}"
+  test "$first_backup" != "$second_backup"
+  rm -rf "$root"
+}
+
+assert_migration_marker_is_atomic_and_private() {
+  local root marker mode
+  root="$(mktemp -d)"
+  printf '%s\n' 'compression_level = "lite"' > "$root/config.toml"
+  run_migration "$root"
+  marker="$root/config.toml.migration-v1"
+  test -f "$marker"
+  mode="$(stat -c '%a' "$marker" 2>/dev/null || stat -f '%A' "$marker")"
+  test "$mode" = "600"
+  ! compgen -G "$root/config.toml.migration-v1.tmp.*" >/dev/null
+  rm -rf "$root"
+}
+
+assert_off_config_backfills_missing_baseline_keys() {
+  local root
+  root="$(mktemp -d)"
+  printf '%s\n' \
+    'compression_level = "off"' \
+    'graph_index_max_files = 9999' \
+    'savings_footer = "auto"' > "$root/default.toml"
+  printf '%s\n' 'compression_level = "off"' > "$root/config.toml"
+  run_ensure "$root"
+  grep -Fxq 'graph_index_max_files = 9999' "$root/config.toml"
+  grep -Fxq 'savings_footer = "auto"' "$root/config.toml"
+  test "$(grep -cE '^[[:space:]]*compression_level[[:space:]]*=' "$root/config.toml")" -eq 1
+  rm -rf "$root"
+}
+
+assert_valid_config_cleans_deprecated_keys() {
+  local root
+  root="$(mktemp -d)"
+  printf '%s\n' 'compression_level = "off"' > "$root/default.toml"
+  printf '%s\n' \
+    'compression_level = "off"' \
+    'tools.profile = "legacy"' \
+    'budget.information_gate.enabled = true' \
+    'graph_index_max_files = 5000' > "$root/config.toml"
+  run_ensure "$root"
+  ! grep -Fq 'tools.profile' "$root/config.toml"
+  ! grep -Fq 'budget.information_gate.enabled' "$root/config.toml"
+  grep -Fxq 'tool_profile = "legacy"' "$root/config.toml"
+  rm -rf "$root"
+}
+
 assert_malformed() {
   local name="$1"
   local content="$2"
@@ -95,9 +174,14 @@ assert_normal_sync_is_atomic_and_idempotent
 assert_migration_backup_and_marker_boundary
 if command -v lean-ctx >/dev/null 2>&1; then
   assert_off_config_still_recovers_malformed_toml
+  assert_malformed_backup_preserves_original_bytes
+  assert_malformed_backup_names_are_unique
+  assert_off_config_backfills_missing_baseline_keys
+  assert_valid_config_cleans_deprecated_keys
 else
   printf 'lean-ctx not on host; skipping malformed recovery assertion\n' >&2
 fi
+assert_migration_marker_is_atomic_and_private
 assert_malformed closing-before-opening $'prefix\n<!-- /@ai-engkit -->\nbody\n<!-- @ai-engkit -->\nmanaged\n<!-- /@ai-engkit -->\nsuffix'
 assert_malformed duplicate-opening $'prefix\n<!-- @ai-engkit -->\nfirst\n<!-- @ai-engkit -->\nsecond\n<!-- /@ai-engkit -->\nsuffix'
 assert_malformed opening-without-close $'prefix\n<!-- @ai-engkit -->\nmanaged\nsuffix'
