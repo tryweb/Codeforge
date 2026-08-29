@@ -72,4 +72,14 @@ describe("LeanCtxEditorPage", () => {
 
     expect(rendered).not.toContain("Configuration requires repair.");
   });
+
+  it("includes mobile layout rules for the configuration form", () => {
+    const rendered = renderHtml();
+
+    expect(rendered).toContain(".config-table thead { display: none; }");
+    expect(rendered).toContain(".config-table tr[data-key] { display: block;");
+    expect(rendered).toContain(".editor-actions { display: grid;");
+    expect(rendered).toContain("min-height: 44px");
+    expect(rendered).toContain("font-size: 16px");
+  });
 });

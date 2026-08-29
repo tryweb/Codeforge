@@ -372,6 +372,50 @@ const LeanCtxEditorContent: FC<LeanCtxEditorProps> = ({ config, meta, schema }) 
       .badge { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 9999px; font-size: 0.7rem; font-weight: 600; }
       .badge-warning { background: var(--warning-bg); color: var(--warning); }
       pre { margin: 0; }
+      @media (max-width: 768px) {
+        .leanctx-editor { padding: 0; }
+        .editor-header { flex-direction: column; align-items: stretch; gap: 0.5rem; }
+        .editor-meta { display: block; }
+        .editor-meta code, .workflow-hint, .action-help, #config-status { overflow-wrap: anywhere; }
+        .editor-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem; }
+        .editor-actions button { min-width: 0; min-height: 44px; }
+        .btn-subtext { display: block; }
+        .config-section { margin-bottom: 1rem; }
+        .config-table, .config-table tbody { display: block; }
+        .config-table thead { display: none; }
+        .config-table tr[data-key] { display: block; margin-bottom: 0.75rem; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+        .config-table td { display: block; padding: 0.75rem; border-bottom: 1px solid var(--border); }
+        .config-table tr[data-key] td:last-child { border-bottom: none; }
+        .config-table code { overflow-wrap: anywhere; }
+        .value-cell { align-items: stretch; flex-direction: column; gap: 0.5rem; }
+        .value-actions { justify-content: flex-end; }
+        .value-actions .btn-icon { min-width: 44px; min-height: 44px; }
+        .config-table input, .config-table select, .config-table textarea { box-sizing: border-box; width: 100%; min-height: 44px; font-size: 16px; }
+        .config-table textarea { font-size: 16px !important; }
+        .modal-overlay { align-items: flex-end; padding: 1rem; box-sizing: border-box; }
+        .modal { min-width: 0; width: 100%; max-width: none; max-height: 80vh; padding: 1rem; }
+      }
+      .mobile .leanctx-editor { padding: 0; }
+      .mobile .editor-header { flex-direction: column; align-items: stretch; gap: 0.5rem; }
+      .mobile .editor-meta { display: block; }
+      .mobile .editor-meta code, .mobile .workflow-hint, .mobile .action-help, .mobile #config-status { overflow-wrap: anywhere; }
+      .mobile .editor-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem; }
+      .mobile .editor-actions button { min-width: 0; min-height: 44px; }
+      .mobile .btn-subtext { display: block; }
+      .mobile .config-section { margin-bottom: 1rem; }
+      .mobile .config-table, .mobile .config-table tbody { display: block; }
+      .mobile .config-table thead { display: none; }
+      .mobile .config-table tr[data-key] { display: block; margin-bottom: 0.75rem; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+      .mobile .config-table td { display: block; padding: 0.75rem; border-bottom: 1px solid var(--border); }
+      .mobile .config-table tr[data-key] td:last-child { border-bottom: none; }
+      .mobile .config-table code { overflow-wrap: anywhere; }
+      .mobile .value-cell { align-items: stretch; flex-direction: column; gap: 0.5rem; }
+      .mobile .value-actions { justify-content: flex-end; }
+      .mobile .value-actions .btn-icon { min-width: 44px; min-height: 44px; }
+      .mobile .config-table input, .mobile .config-table select, .mobile .config-table textarea { box-sizing: border-box; width: 100%; min-height: 44px; font-size: 16px; }
+      .mobile .config-table textarea { font-size: 16px !important; }
+      .mobile .modal-overlay { align-items: flex-end; padding: 1rem; box-sizing: border-box; }
+      .mobile .modal { min-width: 0; width: 100%; max-width: none; max-height: 80vh; padding: 1rem; }
     `}</style>
   `;
 };
