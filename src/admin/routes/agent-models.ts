@@ -13,6 +13,17 @@ import { AgentModelsPage } from "../views/agent-models";
 
 const AGENT_KEY_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
 
+function validateSuggestionBody(body: unknown): { readonly providers: readonly string[] | null } | string {
+  if (body === undefined || body === null) return { providers: null };
+  if (typeof body !== "object" || Array.isArray(body)) return "Request body must be a JSON object";
+  const providers = (body as Record<string, unknown>).providers;
+  if (providers === undefined) return { providers: null };
+  if (!Array.isArray(providers) || providers.some((provider) => typeof provider !== "string" || provider.trim().length === 0)) {
+    return "providers must be an array of non-empty strings";
+  }
+  return { providers: [...new Set(providers.map((provider) => provider.trim()))] };
+}
+
 function validateBatchBody(body: unknown): { changes: Array<{ agent: string; entries: Array<{ model: string; variant?: string }> }> } | string {
   if (typeof body !== "object" || body === null || Array.isArray(body)) return "Request body must be a JSON object with changes array";
   const record = body as Record<string, unknown>;
@@ -39,6 +50,29 @@ export function createAgentModelsRoutes(deps: AgentModelsDeps): Hono {
     const password = lib.getServerPassword();
     const state = await collectAgentModelState(lib, password);
     return c.json(state);
+  });
+
+  agentModels.post("/api/agent-models/suggestions", async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = validateSuggestionBody(body);
+    if (typeof parsed === "string") return c.json({ error: parsed }, 400);
+
+    const password = lib.getServerPassword();
+    if (password === null) return c.json({ error: "OPENCODE_SERVER_PASSWORD is not set in .env" }, 409);
+    const state = await collectAgentModelState(lib, password);
+    if (!state.catalogAvailable) return c.json({ error: "model catalog unavailable" }, 409);
+
+    const connected = new Set(state.providers);
+    const unknown = parsed.providers?.find((provider) => !connected.has(provider));
+    if (unknown !== undefined) return c.json({ error: `provider ${unknown} is not connected` }, 400);
+    const selected = parsed.providers === null || parsed.providers.length === 0
+      || parsed.providers.length === state.providers.length
+      ? null
+      : parsed.providers;
+    const suggestions = await reconciler.suggest(selected);
+    const result: Record<string, readonly { readonly model: string; readonly variant?: string }[]> = {};
+    for (const [agent, entries] of suggestions) result[agent] = entries;
+    return c.json({ suggestions: result, providers: state.providers });
   });
 
   // Batch endpoint: single restart for N changes

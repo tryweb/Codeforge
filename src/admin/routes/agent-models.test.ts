@@ -189,6 +189,11 @@ describe("createAgentModelsRoutes — GET /agent-models page", () => {
     expect(html).toContain("plan");
     expect(html).toContain("kimi-k3");
     expect(html).toContain("Use automatic model");
+    expect(html).toContain("Suggestion providers");
+    expect(html).toContain("All providers");
+    expect(html).toContain("Generate suggestions");
+    expect(html).toContain("Generating model suggestions");
+    expect(html).toContain("Checking provider models and preparing pending changes");
     cleanup();
   });
 
@@ -198,6 +203,67 @@ describe("createAgentModelsRoutes — GET /agent-models page", () => {
     const res = await app.request("http://localhost/agent-models");
     const html = await res.text();
     expect(html).toContain("Prerequisite missing");
+    cleanup();
+  });
+});
+
+describe("createAgentModelsRoutes — POST /api/agent-models/suggestions", () => {
+  test("returns suggestions restricted to the selected provider", async () => {
+    const { deps, calls, cleanup } = stubDeps(listHandlers());
+    const app = createAgentModelsRoutes(deps);
+    const res = await app.request("http://localhost/api/agent-models/suggestions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ providers: ["opencode-go"] }),
+    });
+    const data = await res.json();
+    expect(res.status).toBe(200);
+    expect(data.providers).toEqual(["openai", "opencode-go"]);
+    for (const entries of Object.values(data.suggestions) as Array<Array<{ model: string }>>) {
+      expect(entries[0]?.model.startsWith("opencode-go/")).toBe(true);
+    }
+    expect(calls.some((call) => call.includes(".agents[$agent]"))).toBe(false);
+    cleanup();
+  });
+
+  test("defaults to all connected providers", async () => {
+    const { deps, cleanup } = stubDeps(listHandlers());
+    const app = createAgentModelsRoutes(deps);
+    const res = await app.request("http://localhost/api/agent-models/suggestions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    const data = await res.json();
+    expect(res.status).toBe(200);
+    for (const entries of Object.values(data.suggestions) as Array<Array<{ model: string }>>) {
+      expect(["openai/gpt-5.6-sol", "opencode-go/kimi-k3"]).toContain(entries[0]?.model);
+    }
+    cleanup();
+  });
+
+  test("rejects an unknown provider without writing config", async () => {
+    const { deps, calls, cleanup } = stubDeps(listHandlers());
+    const app = createAgentModelsRoutes(deps);
+    const res = await app.request("http://localhost/api/agent-models/suggestions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ providers: ["missing"] }),
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toContain("not connected");
+    expect(calls.some((call) => call.includes(".agents[$agent]"))).toBe(false);
+    cleanup();
+  });
+
+  test("rejects malformed provider selection", async () => {
+    const { deps, cleanup } = stubDeps([]);
+    const res = await createAgentModelsRoutes(deps).request("http://localhost/api/agent-models/suggestions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ providers: [42] }),
+    });
+    expect(res.status).toBe(400);
     cleanup();
   });
 });

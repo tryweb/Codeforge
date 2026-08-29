@@ -262,6 +262,7 @@ export type AgentModelsLib = ReturnType<typeof createAgentModelsLib>;
 export type AgentModelsViewState = {
   agents: AgentModelEntry[];
   catalog: string[];
+  providers: string[];
   hasPassword: boolean;
   catalogAvailable: boolean;
 };
@@ -350,6 +351,7 @@ export async function collectAgentModelState(
   return {
     agents,
     catalog: [...providerSnapshot.catalog],
+    providers: [...providerSnapshot.connectedProviders].sort(),
     hasPassword: password !== null,
     catalogAvailable: providerSnapshot.catalog.length > 0,
   };
