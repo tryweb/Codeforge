@@ -467,10 +467,18 @@ else
 fi
 
 LEAN_CTX_CONFIG=$(docker exec "$CONTAINER" sh -c 'cat /home/devuser/.config/lean-ctx/config.toml' 2>/dev/null || echo "")
+LEAN_CTX_BASELINE_CONFIG=$(docker exec "$CONTAINER" sh -c 'cat /etc/lean-ctx/config.default.toml' 2>/dev/null || echo "")
 assert_contains "lean-ctx config enables permission inheritance" 'permission_inheritance = "on"' "$LEAN_CTX_CONFIG"
 assert_contains "lean-ctx config sets lite compression" 'compression_level = "lite"' "$LEAN_CTX_CONFIG"
-assert_contains "lean-ctx config pins full cognitive mode" 'cognitive_mode = "full"' "$LEAN_CTX_CONFIG"
-assert_contains "lean-ctx config caps graph index" 'graph_index_max_files = 5000' "$LEAN_CTX_CONFIG"
+assert_contains "lean-ctx config enables secret detection" 'secret_detection.enabled = true' "$LEAN_CTX_CONFIG"
+assert_contains "lean-ctx config enables secret redaction" 'secret_detection.redact = true' "$LEAN_CTX_CONFIG"
+if echo "$LEAN_CTX_CONFIG" | grep '^cognitive_mode[[:space:]]*=' >/dev/null; then
+  fail "lean-ctx config contains inert cognitive mode"
+else
+  pass "lean-ctx config omits inert cognitive mode"
+fi
+assert_contains "lean-ctx runtime config retains a graph index cap" 'graph_index_max_files = ' "$LEAN_CTX_CONFIG"
+assert_contains "lean-ctx baseline caps graph index at 5000" 'graph_index_max_files = 5000' "$LEAN_CTX_BASELINE_CONFIG"
 
 BASHRC_CONTENT=$(docker exec "$CONTAINER" sh -c 'cat /home/devuser/.bashrc' 2>/dev/null || echo "")
 assert_contains "~/.bashrc contains lean-ctx shell hook" 'lean-ctx shell hook' "$BASHRC_CONTENT"
