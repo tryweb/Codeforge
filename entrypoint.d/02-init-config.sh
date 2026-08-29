@@ -122,6 +122,7 @@ ensure_leanctx_config() {
   sed -i -E \
     -e 's/^tools\.profile[[:space:]]*=/tool_profile =/' \
     -e '/^budget\.information_gate\.(enabled|max_overlap_ratio|min_novel_lines|track_granularity)[[:space:]]*=/d' \
+    -e '/^[[:space:]]*(cognitive_mode|search\.candidate_count|loop_detection\.(enabled|max_calls_per_tool|max_total_calls)|boundary_policy\.universal_gotchas|proxy\.(enabled|port)|secret_detection\.redact_in_archive)[[:space:]]*=/d' \
     "$LEANCTX_RUNTIME_CONFIG"
 
   [ "$leanctx_available" -eq 0 ] || return 1
@@ -133,12 +134,13 @@ ensure_leanctx_config() {
 
   if [[ -f "$LEANCTX_BASELINE_CONFIG" ]]; then
     while IFS= read -r line || [[ -n "$line" ]]; do
-      if [[ "$line" =~ ^([a-zA-Z_][a-zA-Z0-9_]*)[[:space:]]*= ]]; then
+      if [[ "$line" =~ ^([a-zA-Z_][a-zA-Z0-9_.]*)[[:space:]]*= ]]; then
         local key="${BASH_REMATCH[1]}"
+        local key_pattern="${key//./\\.}"
         if [ "$compression_is_off" -eq 1 ] && [ "$key" = "compression_level" ]; then
           continue
         fi
-        if ! grep -qE "^[[:space:]]*${key}[[:space:]]*=" "$LEANCTX_RUNTIME_CONFIG"; then
+        if ! grep -qE "^[[:space:]]*${key_pattern}[[:space:]]*=" "$LEANCTX_RUNTIME_CONFIG"; then
           printf '\n%s\n' "$line" >> "$LEANCTX_RUNTIME_CONFIG"
           printf 'lean-ctx: migrated missing key %s\n' "$key"
         fi

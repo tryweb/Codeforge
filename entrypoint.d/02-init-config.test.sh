@@ -146,19 +146,34 @@ assert_lite_config_is_valid_and_idempotent() {
   rm -rf "$root"
 }
 
-assert_valid_config_cleans_deprecated_keys() {
+assert_valid_config_cleans_inert_keys_and_backfills_dotted_baseline_keys() {
   local root
   root="$(mktemp -d)"
-  printf '%s\n' 'compression_level = "off"' > "$root/default.toml"
   printf '%s\n' \
     'compression_level = "off"' \
+    'secret_detection.enabled = true' \
+    'secret_detection.redact = true' > "$root/default.toml"
+  printf '%s\n' \
+    'compression_level = "off"' \
+    'cognitive_mode = "full"' \
+    'loop_detection.enabled = false' \
+    'proxy.enabled = false' \
+    'secret_detection.redact_in_archive = false' \
+    'search.candidate_count = 100' \
+    'loop_detection.max_calls_per_tool = 50' \
+    'loop_detection.max_total_calls = 200' \
+    'boundary_policy.universal_gotchas = false' \
+    'proxy.port = 4444' \
     'tools.profile = "legacy"' \
     'budget.information_gate.enabled = true' \
     'graph_index_max_files = 5000' > "$root/config.toml"
   run_ensure "$root"
+  ! grep -Eq '^(cognitive_mode|search\.candidate_count|loop_detection\.(enabled|max_calls_per_tool|max_total_calls)|boundary_policy\.universal_gotchas|proxy\.(enabled|port)|secret_detection\.redact_in_archive)[[:space:]]*=' "$root/config.toml"
   ! grep -Fq 'tools.profile' "$root/config.toml"
   ! grep -Fq 'budget.information_gate.enabled' "$root/config.toml"
   grep -Fxq 'tool_profile = "legacy"' "$root/config.toml"
+  grep -Fxq 'secret_detection.enabled = true' "$root/config.toml"
+  grep -Fxq 'secret_detection.redact = true' "$root/config.toml"
   rm -rf "$root"
 }
 
@@ -202,7 +217,7 @@ if command -v lean-ctx >/dev/null 2>&1; then
   assert_malformed_backup_names_are_unique
   assert_off_config_backfills_missing_baseline_keys
   assert_lite_config_is_valid_and_idempotent
-  assert_valid_config_cleans_deprecated_keys
+  assert_valid_config_cleans_inert_keys_and_backfills_dotted_baseline_keys
 else
   printf 'lean-ctx not on host; skipping malformed recovery assertion\n' >&2
 fi
