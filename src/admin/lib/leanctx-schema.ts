@@ -29,14 +29,6 @@ export const LEANCTX_SCHEMA: LeanCtxSchemaEntry[] = [
     section: "Core",
   },
   {
-    key: "cognitive_mode",
-    type: "select",
-    description: "Token budget mode for context window management",
-    default: "full",
-    options: ["compact", "full"],
-    section: "Core",
-  },
-  {
     key: "permission_inheritance",
     type: "select",
     description: "Shell permission inheritance behavior",
@@ -246,15 +238,6 @@ export const LEANCTX_SCHEMA: LeanCtxSchemaEntry[] = [
     max: 10,
     section: "Search",
   },
-  {
-    key: "search.candidate_count",
-    type: "number",
-    description: "Number of candidates for semantic search",
-    default: 100,
-    min: 10,
-    max: 1000,
-    section: "Search",
-  },
 
   // Memory section
   {
@@ -283,33 +266,6 @@ export const LEANCTX_SCHEMA: LeanCtxSchemaEntry[] = [
     min: 10,
     max: 2000,
     section: "Memory",
-  },
-
-  // Loop detection section
-  {
-    key: "loop_detection.enabled",
-    type: "boolean",
-    description: "Enable per-tool call limits to prevent agent loops",
-    default: true,
-    section: "Loop Detection",
-  },
-  {
-    key: "loop_detection.max_calls_per_tool",
-    type: "number",
-    description: "Maximum calls per tool per turn",
-    default: 50,
-    min: 5,
-    max: 500,
-    section: "Loop Detection",
-  },
-  {
-    key: "loop_detection.max_total_calls",
-    type: "number",
-    description: "Maximum total tool calls per turn",
-    default: 200,
-    min: 20,
-    max: 2000,
-    section: "Loop Detection",
   },
 
   // Updates section
@@ -345,13 +301,6 @@ export const LEANCTX_SCHEMA: LeanCtxSchemaEntry[] = [
     default: false,
     section: "Boundary Policy",
   },
-  {
-    key: "boundary_policy.universal_gotchas",
-    type: "boolean",
-    description: "Share gotchas across projects",
-    default: false,
-    section: "Boundary Policy",
-  },
 
   // Secret detection section
   {
@@ -362,30 +311,13 @@ export const LEANCTX_SCHEMA: LeanCtxSchemaEntry[] = [
     section: "Secret Detection",
   },
   {
-    key: "secret_detection.redact_in_archive",
+    key: "secret_detection.redact",
     type: "boolean",
-    description: "Redact secrets in archived output",
+    description: "Redact detected secrets from output",
     default: true,
     section: "Secret Detection",
   },
 
-  // Proxy section
-  {
-    key: "proxy.enabled",
-    type: "boolean",
-    description: "Enable local proxy for request compression",
-    default: false,
-    section: "Proxy",
-  },
-  {
-    key: "proxy.port",
-    type: "number",
-    description: "Proxy port",
-    default: 4444,
-    min: 1024,
-    max: 65535,
-    section: "Proxy",
-  },
 ];
 
 export function getSchemaBySection(schema: LeanCtxSchemaEntry[] = LEANCTX_SCHEMA): Record<string, LeanCtxSchemaEntry[]> {
