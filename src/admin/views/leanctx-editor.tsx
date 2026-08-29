@@ -2,65 +2,16 @@ import { html, raw } from "hono/html";
 import type { FC } from "hono/jsx";
 import { Layout } from "./layout";
 import { getSchemaBySection, type LeanCtxSchemaEntry } from "../lib/leanctx-schema";
-import type { DoneClaim } from "../lib/leanctx-drift";
 
 interface LeanCtxEditorProps {
   config: Record<string, unknown>;
   meta?: {
-    source: "global" | "project" | "merged";
     globalPath: string;
-    projectPath: string;
-    hasProjectOverride: boolean;
     baselinePath: string;
     runtimeParseError?: string;
-    projectParseError?: string;
     baselineParseError?: string;
   };
   schema: LeanCtxSchemaEntry[];
-  drift?: DoneClaim;
-}
-
-type DriftWarningCopy = {
-  readonly title: string;
-  readonly remediation: string;
-};
-
-function assertNever(value: never): never {
-  throw new Error(`Unexpected lean-ctx drift status: ${String(value)}`);
-}
-
-function getDriftWarningCopy(status: DoneClaim["status"]): DriftWarningCopy | null {
-  switch (status) {
-    case "healthy":
-      return null;
-    case "config_drift":
-      return {
-        title: "Configuration drift detected.",
-        remediation: "Review the baseline and global compression settings before applying a change.",
-      };
-    case "project_override":
-      return {
-        title: "Project override detected.",
-        remediation: "Review or remove the reported project override before relying on global settings.",
-      };
-    case "daemon_unavailable":
-      return {
-        title: "LeanCTX daemon unavailable.",
-        remediation: "Check the ai-dev LeanCTX daemon and retry the drift check when it is available.",
-      };
-    case "behavioral_mismatch":
-      return {
-        title: "LeanCTX behavior mismatch detected.",
-        remediation: "Inspect the sentinel behavior and restore the daemon's expected lossless output.",
-      };
-    case "indeterminate":
-      return {
-        title: "LeanCTX drift status is indeterminate.",
-        remediation: "Review the reported configuration or availability problem before relying on this result.",
-      };
-    default:
-      return assertNever(status);
-  }
 }
 
 function formatValue(value: unknown): string {
@@ -102,9 +53,8 @@ function renderInput(entry: LeanCtxSchemaEntry, value: unknown, disabled: boolea
   }
 }
 
-const LeanCtxEditorContent: FC<LeanCtxEditorProps> = ({ config, meta, schema, drift }) => {
+const LeanCtxEditorContent: FC<LeanCtxEditorProps> = ({ config, meta, schema }) => {
   const sections = getSchemaBySection(schema);
-  const driftWarning = drift ? getDriftWarningCopy(drift.status) : null;
 
   return html`
     <div class="leanctx-editor">
@@ -112,67 +62,32 @@ const LeanCtxEditorContent: FC<LeanCtxEditorProps> = ({ config, meta, schema, dr
         <h1>LeanCTX Configuration</h1>
         <div class="editor-meta">
           ${meta && html`
-            <span class="badge badge-${meta.source === "project" ? "success" : meta.source === "merged" ? "warning" : "default"}">
-              Source: ${meta.source}
-            </span>
             <span class="text-sm text-muted">
               Global: <code>${meta.globalPath}</code>
-              ${meta.hasProjectOverride ? html` | Project: <code>${meta.projectPath}</code>` : ""}
+              | Baseline: <code>${meta.baselinePath}</code>
             </span>
           `}
         </div>
       </div>
-      ${(meta?.runtimeParseError || meta?.projectParseError || meta?.baselineParseError) && html`
+      ${(meta?.runtimeParseError || meta?.baselineParseError) && html`
         <div class="config-error text-danger" role="alert">
           <strong>Configuration requires repair.</strong>
-          ${meta.runtimeParseError || meta.projectParseError || meta.baselineParseError}
-          <span>Use Reset to Defaults, then Save Changes before applying.</span>
+          ${meta.runtimeParseError || meta.baselineParseError}
+          <span>Use Reset to Defaults to restore the baseline and repair the configuration.</span>
         </div>
       `}
-      ${drift && driftWarning && html`
-        <div
-          class="config-error leanctx-drift-warning"
-          data-drift-status="${drift.status}"
-          role="alert"
-          tabindex="-1"
-          aria-labelledby="leanctx-drift-title"
-          aria-describedby="leanctx-drift-remediation"
-        >
-          <strong id="leanctx-drift-title">${driftWarning.title}</strong>
-          <p id="leanctx-drift-remediation">${driftWarning.remediation}</p>
-          ${drift.details.length > 0 && html`
-            <ul>
-              ${drift.details.map((detail) => html`<li>${detail}</li>`)}
-            </ul>
-          `}
-          <p>Detection does not apply or restart configuration.</p>
-          <span class="text-xs text-muted">Checked at <code>${drift.checkedAt}</code></span>
-        </div>
-      `}
-      <div id="leanctx-drift-client-warning" class="config-error" tabindex="-1" hidden></div>
-      ${(["config_drift", "project_override", "daemon_unavailable", "behavioral_mismatch", "indeterminate"] as const).map((status) => {
-        const copy = getDriftWarningCopy(status);
-        return copy && html`
-          <template data-drift-status="${status}">
-            <strong id="leanctx-drift-client-title">${copy.title}</strong>
-            <p id="leanctx-drift-client-remediation">${copy.remediation}</p>
-            <p>Detection does not apply or restart configuration.</p>
-          </template>
-        `;
-      })}
 
       <div class="editor-actions" aria-label="Configuration actions">
         <button class="btn-primary" onclick="saveConfig()">Save Changes</button>
         <button class="btn-primary" onclick="validateConfig()">Validate Config</button>
-        <button class="btn-apply" id="apply-config" onclick="applyConfig(event)" aria-describedby="apply-config-help">Apply Saved Config <span class="btn-subtext">(restarts daemon)</span></button>
-        <button class="btn-outline" onclick="runDoctor(event)">Run LeanCTX Doctor</button>
+        <button class="btn-apply" id="apply-config" onclick="applyConfig(event)" aria-describedby="apply-config-help">Apply Saved Config <span class="btn-subtext">(lean-ctx config apply)</span></button>
         <button class="btn-danger" onclick="resetConfig()">Reset to Defaults</button>
       </div>
       <p class="workflow-hint text-sm text-muted">
-        Edit values, then select <strong>Save Changes</strong>. Apply is a separate step and restarts the LeanCTX daemon in ai-dev.
+        Edit values, then select <strong>Save Changes</strong>. Apply runs <code>lean-ctx config apply</code> in ai-dev; the CLI restarts the LeanCTX daemon without recreating the container.
       </p>
-      <p id="apply-config-help" class="action-help text-sm text-muted">Apply uses the saved configuration and restarts the LeanCTX daemon in ai-dev.</p>
-      <p id="config-status" class="text-sm text-muted" aria-live="polite">Saved configuration loaded. Apply when ready; applying restarts the LeanCTX daemon in ai-dev.</p>
+      <p id="apply-config-help" class="action-help text-sm text-muted">Apply uses the saved configuration and runs lean-ctx config apply in ai-dev.</p>
+      <p id="config-status" class="text-sm text-muted" aria-live="polite">Saved configuration loaded. Apply when ready; applying runs lean-ctx config apply in ai-dev.</p>
 
       <form id="config-form">
         ${Object.entries(sections).map(([sectionName, entries]) => html`
@@ -217,21 +132,6 @@ const LeanCtxEditorContent: FC<LeanCtxEditorProps> = ({ config, meta, schema, dr
         `)}
       </form>
 
-      <div id="doctor-modal" class="modal-overlay" style="display:none;">
-        <div class="modal modal-large">
-          <div class="modal-header">
-            <h3>LeanCTX Doctor Output</h3>
-            <button class="btn-icon" onclick="closeDoctorModal()">✕</button>
-          </div>
-          <div class="modal-body">
-            <pre id="doctor-output" style="white-space:pre-wrap;font-size:0.8rem;max-height:60vh;overflow:auto;"></pre>
-          </div>
-          <div class="modal-footer">
-            <button class="btn-primary" onclick="closeDoctorModal()">Close</button>
-          </div>
-        </div>
-      </div>
-
       <div id="validate-modal" class="modal-overlay" style="display:none;">
         <div class="modal">
           <div class="modal-header">
@@ -247,55 +147,6 @@ const LeanCtxEditorContent: FC<LeanCtxEditorProps> = ({ config, meta, schema, dr
     </div>
 
     <script>${html`
-      async function refreshDriftWarning() {
-        const warning = document.getElementById("leanctx-drift-client-warning");
-        if (!warning) return;
-        try {
-          const response = await fetch("/api/leanctx/drift");
-          if (!response.ok) return;
-          const drift = await response.json();
-          const serverWarning = document.querySelector(".leanctx-drift-warning");
-          if (drift.status === "healthy") {
-            serverWarning?.remove();
-            warning.hidden = true;
-            warning.replaceChildren();
-            return;
-          }
-          if (serverWarning?.dataset.driftStatus === drift.status) {
-            warning.hidden = true;
-            return;
-          }
-          serverWarning?.remove();
-          const template = Array.from(document.querySelectorAll("template[data-drift-status]"))
-            .find((candidate) => candidate.dataset.driftStatus === drift.status);
-          if (!template) return;
-          warning.replaceChildren(template.content.cloneNode(true));
-          if (Array.isArray(drift.details) && drift.details.length > 0) {
-            const details = document.createElement("ul");
-            for (const detail of drift.details) {
-              const item = document.createElement("li");
-              item.textContent = detail;
-              details.append(item);
-            }
-            warning.append(details);
-          }
-          const checked = document.createElement("span");
-          checked.className = "text-xs text-muted";
-          checked.textContent = "Checked at " + drift.checkedAt;
-          warning.append(checked);
-          warning.dataset.driftStatus = drift.status;
-          warning.setAttribute("role", "alert");
-          warning.setAttribute("tabindex", "-1");
-          warning.setAttribute("aria-labelledby", "leanctx-drift-client-title");
-          warning.setAttribute("aria-describedby", "leanctx-drift-client-remediation");
-          warning.hidden = false;
-        } catch {
-          return;
-        }
-      }
-
-      refreshDriftWarning();
-
       let isDirty = false;
       let hasSavedConfig = true;
 
@@ -305,8 +156,8 @@ const LeanCtxEditorContent: FC<LeanCtxEditorProps> = ({ config, meta, schema, dr
         if (!btn || !help) return;
         btn.disabled = isDirty || !hasSavedConfig;
         help.textContent = isDirty
-          ? "Save Changes before applying. Apply restarts the LeanCTX daemon in ai-dev."
-          : "Apply uses the saved configuration and restarts the LeanCTX daemon in ai-dev.";
+          ? "Save Changes before applying. Apply runs lean-ctx config apply in ai-dev."
+          : "Apply uses the saved configuration and runs lean-ctx config apply in ai-dev.";
       }
 
       function getFormData() {
@@ -335,7 +186,7 @@ const LeanCtxEditorContent: FC<LeanCtxEditorProps> = ({ config, meta, schema, dr
         return data;
       }
 
-      async function saveConfig(target = "global") {
+      async function saveConfig() {
         const btn = document.querySelector('button[onclick="saveConfig()"]');
         if (btn) {
           btn.disabled = true;
@@ -345,13 +196,13 @@ const LeanCtxEditorContent: FC<LeanCtxEditorProps> = ({ config, meta, schema, dr
         const res = await fetch("/api/leanctx/config", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ config, target }),
+          body: JSON.stringify({ config }),
         });
         if (res.ok) {
           isDirty = false;
           hasSavedConfig = true;
           updateApplyState();
-          document.getElementById("config-status").textContent = "Saved. Apply when ready; applying restarts the LeanCTX daemon in ai-dev.";
+          document.getElementById("config-status").textContent = "Saved. Apply when ready; applying runs lean-ctx config apply in ai-dev.";
         } else {
           const d = await res.json();
           alert(d.error || "Failed to save");
@@ -385,51 +236,50 @@ const LeanCtxEditorContent: FC<LeanCtxEditorProps> = ({ config, meta, schema, dr
 
       async function applyConfig(event) {
         if (isDirty || !hasSavedConfig) {
-          alert("Save Changes before applying. Apply restarts the LeanCTX daemon in ai-dev.");
+          alert("Save Changes before applying. Apply runs lean-ctx config apply in ai-dev.");
           return;
         }
         const btn = event.currentTarget;
         btn.disabled = true;
-        btn.textContent = "Applying (daemon restarting)...";
+        btn.textContent = "Applying...";
         const res = await fetch("/api/leanctx/apply", { method: "POST" });
         const data = await res.json();
         btn.disabled = false;
-        btn.innerHTML = 'Apply Saved Config <span class="btn-subtext">(restarts daemon)</span>';
+        btn.innerHTML = 'Apply Saved Config <span class="btn-subtext">(lean-ctx config apply)</span>';
         const output = document.getElementById("validate-output");
         if (data.ok) {
-          output.innerHTML = '<div class="text-success">✓ Saved configuration applied. The LeanCTX daemon in ai-dev was restarted.</div>';
+          output.innerHTML = '<div class="text-success">✓ Saved configuration applied via lean-ctx config apply. The LeanCTX daemon was restarted by the CLI; the ai-dev container was not recreated.</div>';
         } else {
-          const message = data.status === "unverified"
-            ? "Configuration was applied, but daemon readiness could not be verified: "
-            : "Apply failed: ";
           output.replaceChildren();
           const error = document.createElement("div");
           error.className = "text-danger";
-          error.textContent = "✗ " + message + (data.error || data.output || "Unknown error");
+          error.textContent = "✗ Apply failed: " + (data.error || data.output || "Unknown error");
           output.append(error);
         }
         document.getElementById("result-modal-title").textContent = "Apply Result";
         document.getElementById("validate-modal").style.display = "flex";
       }
 
-      async function runDoctor(event) {
-        const btn = event.target;
-        btn.disabled = true;
-        btn.textContent = "Running...";
-        const res = await fetch("/api/leanctx/doctor");
+      async function resetConfig() {
+        if (!confirm("Reset all visible values to the image baseline? This writes the baseline to config.toml immediately and repairs a malformed config.")) return;
+        const res = await fetch("/api/leanctx/config/reset", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "{}",
+        });
         const data = await res.json();
-        btn.disabled = false;
-        btn.textContent = "Run LeanCTX Doctor";
-        document.getElementById("doctor-output").textContent = data.output;
-        document.getElementById("doctor-modal").style.display = "flex";
-      }
-
-      function resetConfig() {
-        if (!confirm("Reset all visible values to their defaults? Save Changes to write this reset to config.toml.")) return;
-        for (const entry of ${raw(JSON.stringify(schema))}) {
-          setInputValue(entry.key, entry.default);
+        if (res.ok) {
+          const baseline = data.config || {};
+          for (const entry of ${raw(JSON.stringify(schema))}) {
+            setInputValue(entry.key, baseline[entry.key] !== undefined ? baseline[entry.key] : entry.default);
+          }
+          isDirty = false;
+          hasSavedConfig = true;
+          updateApplyState();
+          document.getElementById("config-status").textContent = "Baseline restored. Apply when ready; applying runs lean-ctx config apply in ai-dev.";
+        } else {
+          alert(data.error || "Failed to reset config");
         }
-        markDirty();
       }
 
       function setInputValue(key, value) {
@@ -459,10 +309,6 @@ const LeanCtxEditorContent: FC<LeanCtxEditorProps> = ({ config, meta, schema, dr
         hasSavedConfig = true;
         updateApplyState();
         document.getElementById("config-status").textContent = "Unsaved changes. Save before applying.";
-      }
-
-      function closeDoctorModal() {
-        document.getElementById("doctor-modal").style.display = "none";
       }
 
       function closeValidateModal() {
@@ -513,7 +359,6 @@ const LeanCtxEditorContent: FC<LeanCtxEditorProps> = ({ config, meta, schema, dr
       .btn-icon:hover { background: var(--bg-tertiary); }
       .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; }
       .modal { background: var(--bg); border-radius: 8px; padding: 1.5rem; min-width: 400px; max-width: 90vw; max-height: 90vh; overflow: auto; }
-      .modal-large { min-width: 800px; }
       .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
       .modal-header h3 { margin: 0; }
       .modal-footer { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1rem; }
@@ -525,10 +370,7 @@ const LeanCtxEditorContent: FC<LeanCtxEditorProps> = ({ config, meta, schema, dr
       .text-xs { font-size: 0.75rem; }
       .mt-2 { margin-top: 0.5rem; }
       .badge { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 9999px; font-size: 0.7rem; font-weight: 600; }
-      .badge-success { background: var(--success-bg); color: var(--success); }
       .badge-warning { background: var(--warning-bg); color: var(--warning); }
-      .badge-danger { background: var(--danger-bg); color: var(--danger); }
-      .badge-default { background: var(--bg-tertiary); color: var(--text); }
       pre { margin: 0; }
     `}</style>
   `;
@@ -538,11 +380,10 @@ export function LeanCtxEditorPage(
   config: Record<string, unknown>,
   meta: LeanCtxEditorProps["meta"],
   schema: LeanCtxSchemaEntry[],
-  drift?: DoneClaim,
 ) {
   return (
     <Layout title="LeanCTX Config" currentPath="/leanctx">
-      <LeanCtxEditorContent config={config} meta={meta} schema={schema} drift={drift} />
+      <LeanCtxEditorContent config={config} meta={meta} schema={schema} />
     </Layout>
   );
 }

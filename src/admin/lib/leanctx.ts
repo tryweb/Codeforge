@@ -1,11 +1,9 @@
 import { execInAiDev } from "./docker";
 import { filterToSchema } from "./leanctx-schema";
-import { restartAiDev } from "./restart-ai-dev";
 import { parse, stringify } from "smol-toml";
 
 export const BASELINE_CONFIG_PATH = "/etc/lean-ctx/config.default.toml";
 export const GLOBAL_CONFIG_PATH = "/home/devuser/.config/lean-ctx/config.toml";
-export const PROJECT_CONFIG_PATH = "/home/devuser/workspace/ai-engkit/.lean-ctx.toml";
 
 export interface LeanCtxConfig {
   [key: string]: unknown;
@@ -13,13 +11,9 @@ export interface LeanCtxConfig {
 
 export interface LeanCtxConfigWithMeta extends LeanCtxConfig {
   _meta?: {
-    source: "global" | "project" | "merged";
     globalPath: string;
-    projectPath: string;
-    hasProjectOverride: boolean;
     baselinePath: string;
     runtimeParseError?: string;
-    projectParseError?: string;
     baselineParseError?: string;
   };
 }
@@ -30,27 +24,14 @@ export interface ValidationResult {
   warnings?: string[];
 }
 
-export interface DoctorResult {
-  ok: boolean;
-  output: string;
-  parsed?: {
-    configEffective: boolean;
-    warnings: string[];
-    errors: string[];
-  };
-}
-
 export interface ApplyResult {
   readonly ok: boolean;
   readonly output: string;
-  readonly status: "apply_failed" | "restart_failed" | "unverified" | "applied";
   readonly error?: string;
 }
 
 export interface LeanCtxApplyDeps {
   readonly exec: typeof execInAiDev;
-  readonly restart: typeof restartAiDev;
-  readonly sleep: (delayMs: number) => Promise<void>;
 }
 
 export interface ConfigFileResult {
@@ -105,27 +86,13 @@ export async function readLeanCtxBaseline(): Promise<ConfigFileResult> {
 export async function readLeanCtxConfig(): Promise<LeanCtxConfigWithMeta> {
   const baseline = await readLeanCtxBaseline();
   const global = await readConfigFile(GLOBAL_CONFIG_PATH);
-  const project = await readConfigFile(PROJECT_CONFIG_PATH);
-
-  const hasProjectOverride = project.present;
-  let merged: LeanCtxConfig = mergeLeanCtxConfig(baseline.config, global.config);
-  let source: "global" | "project" | "merged" = "global";
-
-  if (hasProjectOverride) {
-    merged = mergeLeanCtxConfig(merged, project.config);
-    source = Object.keys(project.config).length > 0 ? "merged" : "global";
-  }
 
   return {
-    ...merged,
+    ...mergeLeanCtxConfig(baseline.config, global.config),
     _meta: {
-      source,
       globalPath: GLOBAL_CONFIG_PATH,
-      projectPath: PROJECT_CONFIG_PATH,
-      hasProjectOverride,
       baselinePath: BASELINE_CONFIG_PATH,
       runtimeParseError: global.parseError,
-      projectParseError: project.parseError,
       baselineParseError: baseline.parseError,
     },
   };
@@ -154,31 +121,101 @@ function deepMerge(target: LeanCtxConfig, source: LeanCtxConfig): LeanCtxConfig 
   return result;
 }
 
+function isPlainObject(value: unknown): value is LeanCtxConfig {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function cloneConfig(config: LeanCtxConfig): LeanCtxConfig {
+  const clone: LeanCtxConfig = {};
+  for (const [key, value] of Object.entries(config)) {
+    clone[key] = isPlainObject(value) ? cloneConfig(value) : value;
+  }
+  return clone;
+}
+
+/**
+ * Expand flat dotted schema keys ("archive.enabled") into nested objects
+ * ({ archive: { enabled: ... } }) so smol-toml emits real TOML tables instead
+ * of quoted literal keys ("archive.enabled" = true), which lean-ctx ignores.
+ * Keys are processed in sorted order — a prefix always sorts before its
+ * extensions — so on a collision the deeper (more specific) key wins.
+ */
+export function expandDottedKeys(config: LeanCtxConfig): LeanCtxConfig {
+  const result = cloneConfig(config);
+  for (const key of Object.keys(result).sort()) {
+    if (!key.includes(".")) continue;
+    const value = result[key];
+    delete result[key];
+    const segments = key.split(".");
+    let cursor = result;
+    for (let i = 0; i < segments.length - 1; i++) {
+      const segment = segments[i];
+      const existing = cursor[segment];
+      if (isPlainObject(existing)) {
+        cursor = existing;
+      } else {
+        const nested: LeanCtxConfig = {};
+        cursor[segment] = nested;
+        cursor = nested;
+      }
+    }
+    cursor[segments[segments.length - 1]] = value;
+  }
+  return result;
+}
+
+/**
+ * Filter to schema-supported keys, expand flat dotted keys into nested
+ * tables, and serialize to TOML.
+ */
+export function serializeLeanCtxConfig(config: LeanCtxConfig): string {
+  return stringify(expandDottedKeys(filterToSchema(config)));
+}
+
 export async function writeLeanCtxConfig(
   config: LeanCtxConfig,
-  target: "global" | "project" = "global",
   options: { allowOverwriteMalformed?: boolean } = {},
 ): Promise<{ ok: boolean; error?: string }> {
-  const path = target === "global" ? GLOBAL_CONFIG_PATH : PROJECT_CONFIG_PATH;
   const supportedConfig = filterToSchema(config);
 
   // Merge into the existing raw text to preserve comments/sections; fall back
   // to a full serialization when the file is absent or the merge is unsafe.
-  let toml = stringify(supportedConfig);
-  const raw = await readRawConfigFile(path);
+  let toml = serializeLeanCtxConfig(config);
+  const raw = await readRawConfigFile(GLOBAL_CONFIG_PATH);
   if (raw !== null) {
     const rawConfig = parseTomlSafe(raw);
     const mergedConfig = mergeLeanCtxConfig(rawConfig, supportedConfig);
     const hasUnsupportedKeys = !deepEqual(rawConfig, filterToSchema(rawConfig));
     const merged = hasUnsupportedKeys ? null : mergeConfigIntoToml(raw, supportedConfig);
     if (merged === null && !options.allowOverwriteMalformed && !hasUnsupportedKeys) {
-      return { ok: false, error: `${path} is malformed; reset the configuration before saving` };
+      return { ok: false, error: `${GLOBAL_CONFIG_PATH} is malformed; reset the configuration before saving` };
     }
     if (merged !== null) toml = merged;
-    else if (hasUnsupportedKeys) toml = stringify(filterToSchema(mergedConfig));
+    else if (hasUnsupportedKeys) toml = serializeLeanCtxConfig(mergedConfig);
   }
 
-  const ok = await writeRawConfigFile(path, toml);
+  const ok = await writeRawConfigFile(GLOBAL_CONFIG_PATH, toml);
+  return ok ? { ok: true } : { ok: false, error: "Failed to write lean-ctx config in ai-dev" };
+}
+
+export interface LeanCtxResetDeps {
+  readonly writeFile: typeof writeRawConfigFile;
+}
+
+const REAL_RESET_DEPS: LeanCtxResetDeps = { writeFile: writeRawConfigFile };
+
+/**
+ * Reset-specific write: serialize the baseline alone and replace the global
+ * file wholesale. Unlike writeLeanCtxConfig this never merges into the
+ * existing raw TOML, so stale keys from a prior global that the baseline does
+ * not set (e.g. archive.enabled or autonomy.* overrides) are dropped.
+ */
+export async function resetLeanCtxConfig(
+  baseline: LeanCtxConfig,
+  deps: LeanCtxResetDeps = REAL_RESET_DEPS,
+): Promise<{ ok: boolean; error?: string }> {
+  const toml = serializeLeanCtxConfig(baseline);
+  const ok = await deps.writeFile(GLOBAL_CONFIG_PATH, toml);
   return ok ? { ok: true } : { ok: false, error: "Failed to write lean-ctx config in ai-dev" };
 }
 
@@ -353,7 +390,7 @@ function deepEqual(a: unknown, b: unknown): boolean {
 }
 
 export async function validateLeanCtxConfig(config: LeanCtxConfig): Promise<ValidationResult> {
-  const toml = stringify(config);
+  const toml = serializeLeanCtxConfig(config);
   const result = await execInAiDev(
     `cat <<'TOMLEOF' | lean-ctx config validate -\n${toml}\nTOMLEOF`,
     15_000,
@@ -370,36 +407,8 @@ export async function validateLeanCtxConfig(config: LeanCtxConfig): Promise<Vali
   };
 }
 
-export async function runLeanCtxDoctor(exec: typeof execInAiDev = execInAiDev): Promise<DoctorResult> {
-  const result = await exec("lean-ctx doctor 2>&1", 30_000);
-
-  const output = result.stdout || result.stderr || "";
-  const warnings: string[] = [];
-  const errors: string[] = [];
-
-  for (const line of output.split("\n")) {
-    if (line.includes("WARN") || line.includes("warning") || line.includes("⚠")) {
-      warnings.push(line.trim());
-    } else if (line.includes("ERROR") || line.includes("error") || line.includes("✗")) {
-      errors.push(line.trim());
-    }
-  }
-
-  return {
-    ok: result.exitCode === 0 && errors.length === 0,
-    output,
-    parsed: {
-      configEffective: !output.includes("config.toml") || output.includes("effective"),
-      warnings,
-      errors,
-    },
-  };
-}
-
 const REAL_APPLY_DEPS: LeanCtxApplyDeps = {
   exec: execInAiDev,
-  restart: restartAiDev,
-  sleep: (delayMs) => new Promise((resolve) => setTimeout(resolve, delayMs)),
 };
 
 export async function applyLeanCtxConfig(deps: LeanCtxApplyDeps = REAL_APPLY_DEPS): Promise<ApplyResult> {
@@ -409,70 +418,10 @@ export async function applyLeanCtxConfig(deps: LeanCtxApplyDeps = REAL_APPLY_DEP
   if (result.exitCode !== 0) {
     return {
       ok: false,
-      status: "apply_failed",
       output,
       error: output || "LeanCTX config apply failed",
     };
   }
 
-  const restart = await deps.restart();
-  if (!restart.ok) {
-    return {
-      ok: false,
-      status: "restart_failed",
-      output,
-      error: restart.error || "Failed to restart ai-dev container",
-    };
-  }
-
-  return { ok: true, status: "applied", output };
-}
-
-export function getConfigValue(config: LeanCtxConfig, path: string): unknown {
-  const keys = path.split(".");
-  let current: unknown = config;
-
-  for (const key of keys) {
-    if (current && typeof current === "object" && !Array.isArray(current)) {
-      current = (current as Record<string, unknown>)[key];
-    } else {
-      return undefined;
-    }
-  }
-
-  return current;
-}
-
-export function setConfigValue(config: LeanCtxConfig, path: string, value: unknown): LeanCtxConfig {
-  const keys = path.split(".");
-  const result = JSON.parse(JSON.stringify(config)) as LeanCtxConfig;
-  let current: Record<string, unknown> = result;
-
-  for (let i = 0; i < keys.length - 1; i++) {
-    const key = keys[i];
-    if (!(key in current) || typeof current[key] !== "object" || current[key] === null) {
-      current[key] = {};
-    }
-    current = current[key] as Record<string, unknown>;
-  }
-
-  current[keys[keys.length - 1]] = value;
-  return result;
-}
-
-export function deleteConfigValue(config: LeanCtxConfig, path: string): LeanCtxConfig {
-  const keys = path.split(".");
-  const result = JSON.parse(JSON.stringify(config)) as LeanCtxConfig;
-  let current: Record<string, unknown> = result;
-
-  for (let i = 0; i < keys.length - 1; i++) {
-    const key = keys[i];
-    if (!(key in current) || typeof current[key] !== "object" || current[key] === null) {
-      return result;
-    }
-    current = current[key] as Record<string, unknown>;
-  }
-
-  delete current[keys[keys.length - 1]];
-  return result;
+  return { ok: true, output };
 }
