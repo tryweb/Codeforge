@@ -6,7 +6,7 @@ ai-engkit 在容器映像建置時安裝 lean-ctx(`Dockerfile` L134)並在 entry
 
 > **Current state (lean-ctx 3.9.20):** 下列 Solution A、B、C 已套用到 repo。映像會產生 `config.toml`,entrypoint 會安裝 shell hook 與 OpenCode integration,測試則驗證 MCP 連線及 non-interactive shell 環境。原 Problem 內容保留為設計沿革。
 >
-> **Configuration history:** v1.15.2 曾把 `compression_level` 從 `"standard"` 降為 `"lite"`;3.9.19 triage 事故後，現行 repository baseline 為 `"off"`。3.9.20 已修復該事故，output triage 預設為 opt-in/off，但恢復其他 compression level 或 routing 仍須新的 G0-G4 評估與明確決策。`shell_allowlist_extra` 採 single-line array 以避免 TOML merge 問題;`allow_ide_config_dirs = true` 已加入。
+> **Configuration history:** v1.15.2 曾把 `compression_level` 從 `"standard"` 降為 `"lite"`;3.9.19 triage 事故後曾暫時改為 `"off"`。3.9.20 修復該事故後，現行 repository baseline 已恢復為 `"lite"`，但 routing 仍須新的 G0-G4 評估與明確決策才能重新啟用。v3.9.20 schema 驗證亦確認 `cognitive_mode` 已是 inert key，因此 baseline 不再設定它，並明確啟用 `secret_detection.enabled` 與 `secret_detection.redact`。
 
 實際部署後,`lean-ctx doctor` 27/32 通過 — 整體骨架完整(XDG layout pin、build-time 安裝、MCP 設定、legacy 遷移邏輯都到位),但仍有 4 個明顯的優化缺口,以及一個會誤導排查方向的 false-positive。
 
@@ -14,7 +14,7 @@ ai-engkit 在容器映像建置時安裝 lean-ctx(`Dockerfile` L134)並在 entry
 
 ### 1. 完全使用 lean-ctx 預設值 — 沒有 `~/.config/lean-ctx/config.toml`
 
-**Resolved:** `Dockerfile` 現已 bake `config.toml`,並在 3.9.18 升級時明確設定 `cognitive_mode = "full"`。
+**Resolved:** `Dockerfile` 現已 bake `config.toml`;v3.9.20 baseline 只保留 runtime schema 支援的設定，並明確設定 secret detection 與 redaction。
 
 `lean-ctx doctor` 顯示:
 
@@ -138,7 +138,8 @@ RUN mkdir -p /home/${USERNAME}/.config/lean-ctx && \
 # lean-ctx ai-engkit tuning — overrides conservative defaults
 permission_inheritance = "on"
 compression_level = "lite"
-cognitive_mode = "full"
+secret_detection.enabled = true
+secret_detection.redact = true
 shell_allowlist_extra = ["gh", "glab", "docker", "docker-compose", "docker compose", "pw-mcp", "bun", "marksman", "codegraph", "openspec"]
 graph_index_max_files = 5000
 savings_footer = "auto"
@@ -205,12 +206,12 @@ CONTAINER=$(docker compose -p dev -f docker-compose.dev.yml ps --format '{{.Name
 驗收條件:
 
 1. `lean-ctx --version` 回報 Dockerfile pin 的版本。
-2. baked `config.toml` 通過 `lean-ctx config validate`,且明確包含預期的 `cognitive_mode`。
+2. baked `config.toml` 通過 `lean-ctx config validate`,且 `lean-ctx config schema` 確認所有 baked keys 都存在；`config validate` 對 unknown keys 為 lenient，不能單獨作為 key-existence 證據。
 3. `opencode mcp list` 顯示 lean-ctx connected,核心工具 `ctx_read`、`ctx_shell`、`ctx_compose` 存在;不要斷言固定工具總數,因為工具可見性受 profile 影響。這只驗證 MCP 可用性,不取代 CodeGraph/native correctness authority。
 4. `lean-ctx doctor` 不新增 failure,並以 execution agent / read-only agent 各跑一個代表性 workflow,確認沒有可重現的 permission regression 或 hang;診斷、測試、git、build 與寫入的 correctness claims 須以 native/LSP/direct surfaces 驗證。
 5. CPU、RAM、latency 與 volume 使用量只以前後固定 workload 的實測值評估;upstream release notes 未提供可直接套用的資源增幅。
 
-生產部署前先備份 `lean-ctx-data`、`lean-ctx-state` volumes。若 MCP 斷線、核心工具缺失、persisted state 無法讀取或發生可重現的 permission regression,恢復舊 image 與升級前 volume snapshot。`cognitive_mode = "off"` 僅用於隔離 cognitive 功能問題,不視為完整 rollback。
+生產部署前先備份 `lean-ctx-data`、`lean-ctx-state` volumes。若 MCP 斷線、核心工具缺失、persisted state 無法讀取或發生可重現的 permission regression,恢復舊 image 與升級前 volume snapshot；不要使用 schema 不支援的 legacy key 作為 rollback 開關。
 
 ## Why It Works
 
