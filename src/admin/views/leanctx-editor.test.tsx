@@ -1,90 +1,75 @@
 import { describe, expect, it } from "bun:test";
 import { LEANCTX_SCHEMA } from "../lib/leanctx-schema";
-import type { DoneClaim } from "../lib/leanctx-drift";
 import { LeanCtxEditorPage } from "./leanctx-editor";
 
 const meta = {
-  source: "global" as const,
-  globalPath: "/tmp/global/config.toml",
-  projectPath: "/tmp/project/config.toml",
-  hasProjectOverride: false,
+  globalPath: "/home/devuser/.config/lean-ctx/config.toml",
   baselinePath: "/etc/lean-ctx/config.default.toml",
 };
 
-function renderTree(): string {
+function renderProps(): string {
   return JSON.stringify(LeanCtxEditorPage({ "test.value": 'say "hi"' }, meta, LEANCTX_SCHEMA));
 }
 
-function renderWithDrift(drift: DoneClaim): string {
-  return String(LeanCtxEditorPage({ "test.value": "value" }, meta, LEANCTX_SCHEMA, drift));
+function renderHtml(): string {
+  return String(LeanCtxEditorPage({ "test.value": "value" }, meta, LEANCTX_SCHEMA));
 }
 
 describe("LeanCtxEditorPage", () => {
   it("preserves configuration values in the page tree without HTML entity escaping", () => {
-    const rendered = renderTree();
+    const rendered = renderProps();
 
     expect(rendered).toContain('say \\"hi\\"');
     expect(rendered).not.toContain("&quot;");
   });
 
-  it("does not render a drift warning for a healthy claim", () => {
-    const rendered = renderWithDrift({
-      done: true,
-      status: "healthy",
-      details: [],
-      checkedAt: "2026-08-25T00:00:00.000Z",
-    });
+  it("renders the structured editor with Save, Validate, Apply, and Reset controls", () => {
+    const rendered = renderHtml();
 
-    expect(rendered).not.toContain('role="alert"');
+    expect(rendered).toContain('data-key="compression_level"');
+    expect(rendered).toContain("Save Changes");
+    expect(rendered).toContain("Validate Config");
+    expect(rendered).toContain("Apply Saved Config");
+    expect(rendered).toContain("Reset to Defaults");
+    expect(rendered).toContain("Default:");
   });
 
-const warningCases = [
-    ["config_drift", "Configuration drift detected."],
-    ["project_override", "Project override detected."],
-    ["daemon_unavailable", "LeanCTX daemon unavailable."],
-    ["behavioral_mismatch", "LeanCTX behavior mismatch detected."],
-    ["indeterminate", "LeanCTX drift status is indeterminate."],
-  ] as const;
+  it("does not render drift, status, or doctor UI", () => {
+    const rendered = renderHtml();
 
-function claimFor(status: (typeof warningCases)[number][0]): DoneClaim {
-  switch (status) {
-    case "behavioral_mismatch":
-      return {
-        done: true,
-        status,
-        details: [`${status} detail`],
-        expectedBytes: 1,
-        observedBytes: 2,
-        expectedSha256: "expected",
-        observedSha256: "observed",
-        checkedAt: "2026-08-25T00:00:00.000Z",
-      };
-    case "config_drift":
-    case "project_override":
-    case "daemon_unavailable":
-    case "indeterminate":
-      return {
-        done: true,
-        status,
-        details: [`${status} detail`],
-        checkedAt: "2026-08-25T00:00:00.000Z",
-      };
-    default:
-      throw new Error(`Unexpected warning status: ${String(status)}`);
-  }
-}
+    expect(rendered).not.toContain("leanctx-drift-warning");
+    expect(rendered).not.toContain("/api/leanctx/drift");
+    expect(rendered).not.toContain("/api/leanctx/status");
+    expect(rendered).not.toContain("Run LeanCTX Doctor");
+    expect(rendered).not.toContain("restarts the LeanCTX daemon in ai-dev");
+  });
 
-  for (const [status, title] of warningCases) {
-    it(`renders a persistent accessible warning for ${status}`, () => {
-      const rendered = renderWithDrift(claimFor(status));
+  it("describes Apply as lean-ctx config apply without container recreation", () => {
+    const rendered = renderHtml();
 
-      expect(rendered).toContain('class="config-error leanctx-drift-warning"');
-      expect(rendered).toContain(`data-drift-status="${status}"`);
-      expect(rendered).toContain('role="alert"');
-      expect(rendered).toContain(title);
-      expect(rendered).toContain(`${status} detail`);
-      expect(rendered).toContain("Detection does not apply or restart configuration.");
-      expect(rendered).toContain("2026-08-25T00:00:00.000Z");
-    });
-  }
+    expect(rendered).toContain("lean-ctx config apply");
+    expect(rendered).toContain('id="apply-config-help"');
+    expect(rendered).toContain('aria-live="polite"');
+    expect(rendered).not.toContain("restarting the LeanCTX daemon");
+  });
+
+  it("renders the repair banner when the runtime config is malformed", () => {
+    const rendered = String(
+      LeanCtxEditorPage(
+        {},
+        { ...meta, runtimeParseError: "/home/devuser/.config/lean-ctx/config.toml is malformed TOML: broken" },
+        LEANCTX_SCHEMA,
+      ),
+    );
+
+    expect(rendered).toContain("Configuration requires repair.");
+    expect(rendered).toContain("is malformed TOML");
+    expect(rendered).toContain('role="alert"');
+  });
+
+  it("renders no repair banner when both config layers parse", () => {
+    const rendered = renderHtml();
+
+    expect(rendered).not.toContain("Configuration requires repair.");
+  });
 });
