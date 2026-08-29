@@ -4,9 +4,9 @@ Provide one reliable configuration contract for LeanCTX in which the Docker imag
 
 ## Requirements
 
-### Requirement: Dockerfile baseline is the canonical default
+### Requirement: Docker image baseline is the canonical default
 
-The system SHALL expose the LeanCTX configuration baseline packaged with the Docker image as the canonical default for the running ai-engkit release. The baseline SHALL include every configured key and value, including the complete `shell_allowlist_extra` command list.
+The system SHALL expose the LeanCTX configuration baseline packaged with the Docker image (`/etc/lean-ctx/config.default.toml`) as the canonical default. Reset SHALL restore exactly this baseline.
 
 #### Scenario: Admin displays the packaged baseline
 
@@ -15,138 +15,82 @@ The system SHALL expose the LeanCTX configuration baseline packaged with the Doc
 
 #### Scenario: Reset restores the packaged baseline
 
-- **WHEN** an administrator selects Reset to Defaults and confirms
-- **THEN** the persisted runtime configuration is replaced with the current image baseline
-- **AND** `shell_allowlist_extra` contains the commands declared by the Dockerfile baseline
+- **WHEN** an administrator selects Reset to Defaults and saves
+- **THEN** the persisted global configuration is replaced with the current image baseline
 
-### Requirement: Runtime configuration is seeded only when absent
+### Requirement: Global persisted config is seeded only when absent
 
-The system SHALL initialize the persisted runtime configuration from the canonical baseline only when no runtime configuration exists. Startup SHALL NOT overwrite an existing runtime configuration with image defaults.
+The system SHALL initialize the persisted global configuration (`/home/devuser/.config/lean-ctx/config.toml`) from the canonical baseline only when no global configuration exists. Startup SHALL NOT overwrite an existing global configuration with image defaults. The Admin UI SHALL treat this global file as the only user-writable configuration layer.
 
 #### Scenario: First container startup
 
-- **WHEN** the runtime configuration file does not exist
+- **WHEN** the global configuration file does not exist
 - **THEN** startup creates it from the canonical image baseline before LeanCTX services run
 
 #### Scenario: Existing user configuration on restart
 
-- **WHEN** the runtime configuration file exists with user values
+- **WHEN** the global configuration file exists with user values
 - **THEN** container startup preserves those values and starts LeanCTX using them
 
-#### Scenario: New image adds a configuration key
+### Requirement: Structured schema Save, Reset, and Validate
 
-- **WHEN** an existing runtime configuration lacks a key present in the new image baseline
-- **THEN** startup may add the missing key with the new baseline value
-- **AND** startup SHALL NOT replace any existing user value
+The Admin UI SHALL edit the global configuration exclusively through schema-driven structured fields with default badges, and SHALL provide Save (persist to the global config), Reset (restore schema defaults derived from the baseline), and Validate (run `lean-ctx config validate`). Saving a value that cannot be written because the existing file is malformed SHALL fail with HTTP 409 until Reset repairs the file.
 
-### Requirement: Admin edits persist as the effective configuration
+#### Scenario: Save persists a structured edit
 
-The Admin UI SHALL allow an administrator to view and modify the persisted runtime configuration. A successful save SHALL be used by LeanCTX after restart without requiring the administrator to edit files manually.
+- **WHEN** an administrator changes a field and selects Save Changes
+- **THEN** the global configuration stores the new value and reloading the page shows it
 
-#### Scenario: Save a configuration value
+#### Scenario: Malformed global config blocks Save and offers Reset
 
-- **WHEN** an administrator changes a valid value and saves it
-- **THEN** the runtime configuration stores the new value
-- **AND** reloading the Admin page shows the new value
+- **WHEN** the global configuration file is malformed TOML and the administrator saves
+- **THEN** the save is rejected with HTTP 409 and the UI reports that the configuration requires repair
+- **AND** Reset restores the baseline and repairs the file
 
-#### Scenario: Restart preserves a saved value
+#### Scenario: Validate reports schema conformance
 
-- **WHEN** an administrator saves a valid value and the container is restarted or recreated
-- **THEN** LeanCTX starts with the saved value rather than the image baseline
+- **WHEN** the administrator selects Validate Config
+- **THEN** the UI reports whether the edited values pass `lean-ctx config validate`
 
-#### Scenario: Invalid value is rejected
+### Requirement: Apply runs lean-ctx config apply without container recreation
 
-- **WHEN** an administrator submits a value that violates the configuration schema or type
-- **THEN** the save is rejected with an actionable error
-- **AND** the previous persisted configuration remains unchanged
+Apply SHALL run `lean-ctx config apply` in ai-dev and report its result. Apply MUST NOT restart or recreate the ai-dev container and MUST NOT sleep or poll; the lean-ctx CLI owns the daemon restart.
 
-### Requirement: Configuration sources are explicit
+#### Scenario: Apply succeeds without container recreation
 
-The system SHALL distinguish the immutable image baseline from the persisted runtime configuration. The baseline SHALL be stored outside the named volume used for user configuration, and the runtime file SHALL remain the only writable user state.
+- **WHEN** the administrator selects Apply Saved Config with a saved configuration
+- **THEN** `lean-ctx config apply` runs, the LeanCTX daemon process is restarted by the CLI
+- **AND** the ai-dev container start time is unchanged
 
-#### Scenario: Image rebuild with existing volume
+#### Scenario: Apply failure is reported
 
-- **WHEN** a new image is built while the runtime configuration volume already exists
-- **THEN** the existing runtime configuration remains intact
-- **AND** the new image baseline is available for Reset and missing-key migration
+- **WHEN** `lean-ctx config apply` exits non-zero
+- **THEN** the UI reports the failure output and no lifecycle action occurs
 
-#### Scenario: Reset after image update
+### Requirement: Local dirty and saved UI state
 
-- **WHEN** Reset to Defaults is performed after the image baseline changes
-- **THEN** the reset uses the new image baseline rather than stale values from the named volume
-
-### Requirement: Malformed configuration is reported safely
-
-The system SHALL detect malformed runtime configuration content and SHALL NOT silently treat it as an empty configuration.
-
-#### Scenario: Malformed TOML at startup
-
-- **WHEN** the runtime configuration cannot be parsed as valid TOML
-- **THEN** startup reports the configuration error clearly
-- **AND** LeanCTX SHALL NOT silently run with an empty replacement configuration
-
-#### Scenario: Malformed TOML in Admin view
-
-### Requirement: Admin applies saved configuration with an explicit daemon restart
-The Admin editor MUST keep field edits pending until `Save Changes` is selected,
-and MUST describe Apply as restarting the LeanCTX daemon in `ai-dev`.
+The Admin UI SHALL track edits locally: Apply SHALL be unavailable while there are unsaved changes, and SHALL become available after a successful Save. The UI SHALL NOT fetch status or drift endpoints to derive this state.
 
 #### Scenario: Unsaved edits cannot be applied
+
 - **WHEN** the operator changes a field without saving
-- **THEN** Apply remains unavailable and the UI instructs the operator to save first
+- **THEN** Apply is disabled and the help text instructs the operator to save first
 
-#### Scenario: Saved configuration is applied
-- **WHEN** the operator selects Save Changes and then Apply Saved Config
-- **THEN** the saved `config.toml` is applied in `ai-dev` and the UI states that the LeanCTX daemon was restarted
+#### Scenario: Saved state re-enables Apply
 
-### Requirement: Configuration is edited through structured fields
-The Admin editor MUST NOT expose a Raw TOML editor or a second per-field
-immediate-save workflow.
-
-#### Scenario: Structured editor is displayed
-- **WHEN** the operator opens the LeanCTX configuration page
-- **THEN** the page displays structured fields, Save Changes, Validate Config, and Apply Saved Config controls without Raw TOML controls
-
-- **WHEN** the Admin reads a malformed runtime configuration
-- **THEN** the UI reports that the configuration requires repair
-- **AND** the administrator can restore the canonical baseline without manually editing the volume
+- **WHEN** a Save succeeds
+- **THEN** Apply becomes enabled and the status text confirms the saved state
 
 ### Requirement: Explicit compression-off migration
+
 The system MUST support a one-time, versioned migration that creates a backup before changing compression. The migration MUST run only when the current value is `lite`, `standard`, or `max`, MUST set compression explicitly to `off`, and MUST preserve unrelated configuration values. It MUST NOT auto-apply or restart services.
 
 #### Scenario: Eligible migration
+
 - **WHEN** the versioned migration marker is absent and compression is `lite`, `standard`, or `max`
 - **THEN** a versioned backup is created, compression becomes `off`, unrelated values remain unchanged, and apply or restart remains administrator initiated
 
 #### Scenario: Migration is already complete or ineligible
+
 - **WHEN** the marker exists or compression is already `off` or another value
 - **THEN** no migration or backup is performed
-
-### Requirement: Report-only behavioral drift
-The system MUST report baseline, global, project, daemon, and all long-lived container behavioral drift without mutating configuration or lifecycle state. CodeGraph and native behavior MUST be authoritative. Memory and knowledge behavior MUST be exempt from drift and benefit evaluation.
-
-#### Scenario: Project override and daemon comparison
-- **WHEN** a project override exists or the daemon is available
-- **THEN** the report identifies the project and daemon comparisons separately from baseline and global state, without applying changes
-
-#### Scenario: Malformed config or unavailable daemon
-- **WHEN** configuration is malformed or the daemon is unavailable
-- **THEN** the report identifies the condition and does not mutate state
-
-### Requirement: Fixed external reliability gate
-The system MUST evaluate exactly 20 fixed scenarios under two fixed profiles. It MUST retain automatic routing only when there are zero incidents and independently measured net benefit is at least 20 percent. Integration depth MUST NOT count as a benefit.
-
-#### Scenario: Passing gate
-- **WHEN** both profiles complete all 20 scenarios with zero incidents and at least 20 percent independent net benefit
-- **THEN** automatic Read, Search, and Shell routing remains enabled
-
-#### Scenario: Missing metrics or failed gate
-- **WHEN** any scenario is incomplete, required metrics are missing, an incident occurs, or net benefit is below 20 percent
-- **THEN** automatic Read, Search, and Shell routing is disabled while MCP, Admin, and persistence remain available
-
-### Requirement: Safe administrative boundaries
-The system MUST keep shell writes disabled and the path jail enabled. Apply and restart MUST be explicit administrator actions, including after migration or evaluation.
-
-#### Scenario: Non-automated lifecycle action
-- **WHEN** migration or evaluation completes
-- **THEN** no apply or restart occurs automatically

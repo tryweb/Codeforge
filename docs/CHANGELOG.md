@@ -1,5 +1,10 @@
 ## [Unreleased]
 
+### Changed
+- Simplify LeanCTX Admin configuration around the Docker image baseline, global persisted config, structured Save/Reset/Validate, and `lean-ctx config apply` without container recreation.
+
+### Removed
+- Remove Admin drift/status/doctor/set/delete routes, lifecycle drift UI, and the reliability gate from the `leanctx-admin-config` capability contract.
 
 ## [1.16.3] - 2026-08-27
 
