@@ -2,9 +2,12 @@ import { describe, expect, test } from "bun:test";
 import { parse } from "smol-toml";
 import {
   applyLeanCtxConfig,
+  expandDottedKeys,
   mergeConfigIntoToml,
   mergeLeanCtxConfig,
   parseLeanCtxToml,
+  resetLeanCtxConfig,
+  serializeLeanCtxConfig,
   type LeanCtxApplyDeps,
 } from "./leanctx";
 import type { ExecResult } from "./docker";
@@ -119,47 +122,124 @@ describe("LeanCTX config lifecycle", () => {
     expect(result.parseError).toContain("/tmp/config.toml is malformed TOML");
   });
 
-  test("merges baseline, runtime, and project values in precedence order", () => {
+  test("merges baseline and global values in precedence order", () => {
     const merged = mergeLeanCtxConfig(
       { compression_level: "lite", archive: { enabled: true } },
       { compression_level: "max" },
-      { archive: { enabled: false } },
     );
 
-    expect(merged).toEqual({ compression_level: "max", archive: { enabled: false } });
+    expect(merged).toEqual({ compression_level: "max", archive: { enabled: true } });
   });
 });
 
-type ApplyFixtureOptions = {
-  readonly apply?: ExecResult;
-  readonly doctors?: readonly ExecResult[];
-  readonly restart?: { readonly ok: boolean; readonly error?: string };
-};
+describe("expandDottedKeys", () => {
+  test("expands flat dotted keys into nested objects", () => {
+    expect(expandDottedKeys({ "archive.enabled": true, "archive.threshold_chars": 800 })).toEqual({
+      archive: { enabled: true, threshold_chars: 800 },
+    });
+  });
 
-function createApplyFixture(options: ApplyFixtureOptions = {}): {
+  test("resolves scalar/table collisions deterministically regardless of key order", () => {
+    expect(expandDottedKeys({ a: 1, "a.b": 2 })).toEqual({ a: { b: 2 } });
+    expect(expandDottedKeys({ "a.b": 2, a: 1 })).toEqual({ a: { b: 2 } });
+  });
+
+  test("merges dotted keys into an existing nested object without mutating the input", () => {
+    const input = { archive: { enabled: true }, "archive.threshold_chars": 800 };
+
+    const expanded = expandDottedKeys(input);
+
+    expect(expanded).toEqual({ archive: { enabled: true, threshold_chars: 800 } });
+    expect(input).toEqual({ archive: { enabled: true }, "archive.threshold_chars": 800 });
+  });
+});
+
+describe("serializeLeanCtxConfig", () => {
+  test("round-trips flat dotted schema keys as nested TOML tables", () => {
+    const toml = serializeLeanCtxConfig({
+      compression_level: "max",
+      "archive.enabled": true,
+      "archive.threshold_chars": 800,
+    });
+
+    expect(toml).not.toContain('"archive.enabled"');
+    expect(parse(toml)).toEqual({
+      compression_level: "max",
+      archive: { enabled: true, threshold_chars: 800 },
+    });
+  });
+
+  test("keeps nested input nested and drops keys outside the schema", () => {
+    const toml = serializeLeanCtxConfig({
+      compression_level: "max",
+      archive: { enabled: false },
+      autonomy: { enabled: true },
+    });
+
+    expect(parse(toml)).toEqual({ compression_level: "max", archive: { enabled: false } });
+  });
+});
+
+describe("resetLeanCtxConfig", () => {
+  test("writes the baseline as a full replacement, dropping prior global keys", async () => {
+    // A prior global holding archive.enabled/autonomy.* overrides must not
+    // survive: reset serializes the baseline alone instead of merging into
+    // the existing file the way writeLeanCtxConfig does.
+    const written: string[] = [];
+
+    const result = await resetLeanCtxConfig(
+      { compression_level: "lite" },
+      { writeFile: async (_path, content) => { written.push(content); return true; } },
+    );
+
+    expect(result).toEqual({ ok: true });
+    expect(parse(written[0])).toEqual({ compression_level: "lite" });
+    expect(written[0]).not.toContain("archive");
+    expect(written[0]).not.toContain("autonomy");
+  });
+
+  test("serializes baseline dotted keys as nested tables", async () => {
+    const written: string[] = [];
+
+    await resetLeanCtxConfig(
+      { "archive.enabled": true },
+      { writeFile: async (_path, content) => { written.push(content); return true; } },
+    );
+
+    expect(written[0]).not.toContain('"archive.enabled"');
+    expect(parse(written[0])).toEqual({ archive: { enabled: true } });
+  });
+
+  test("reports a write failure", async () => {
+    const result = await resetLeanCtxConfig({}, { writeFile: async () => false });
+
+    expect(result).toEqual({ ok: false, error: "Failed to write lean-ctx config in ai-dev" });
+  });
+});
+
+// The fixture deliberately hands applyLeanCtxConfig a restart-capable object:
+// the exec-only contract is proven by asserting restart and sleep are never
+// invoked even though they are available.
+function createApplyFixture(options: { readonly apply?: ExecResult } = {}): {
   readonly deps: LeanCtxApplyDeps;
   readonly calls: readonly string[];
   readonly sleepCalls: readonly number[];
-  readonly restartCalls: number;
+  readonly restartCalls: () => number;
 } {
   const calls: string[] = [];
   const sleepCalls: number[] = [];
   let restartCalls = 0;
-  const doctors = [...(options.doctors ?? [])];
 
-  const deps: LeanCtxApplyDeps = {
-    exec: async (command, _timeoutMs): Promise<ExecResult> => {
+  const deps = {
+    exec: async (command: string, _timeoutMs?: number): Promise<ExecResult> => {
       calls.push(command);
-      if (command.startsWith("lean-ctx config apply")) {
-        return options.apply ?? { stdout: "applied", stderr: "", exitCode: 0 };
-      }
-      return doctors.shift() ?? { stdout: "daemon is not running", stderr: "", exitCode: 1 };
+      return options.apply ?? { stdout: "applied", stderr: "", exitCode: 0 };
     },
     restart: async () => {
       restartCalls += 1;
-      return options.restart ?? { ok: true };
+      return { ok: true };
     },
-    sleep: async (delayMs) => {
+    sleep: async (delayMs: number) => {
       sleepCalls.push(delayMs);
     },
   };
@@ -168,40 +248,30 @@ function createApplyFixture(options: ApplyFixtureOptions = {}): {
     deps,
     calls,
     sleepCalls,
-    get restartCalls() {
-      return restartCalls;
-    },
+    restartCalls: () => restartCalls,
   };
 }
 
 describe("applyLeanCtxConfig", () => {
-  test("reports apply_failed and does not restart when config apply fails", async () => {
-    const fixture = createApplyFixture({ apply: { stdout: "apply failed", stderr: "", exitCode: 1 } });
-
-    const result = await applyLeanCtxConfig(fixture.deps);
-
-    expect(result).toEqual({ ok: false, status: "apply_failed", output: "apply failed", error: "apply failed" });
-    expect(fixture.calls).toEqual(["lean-ctx config apply 2>&1"]);
-  });
-
-  test("reports restart_failed without checking the daemon when restart fails", async () => {
-    const fixture = createApplyFixture({ restart: { ok: false, error: "compose failed" } });
-
-    const result = await applyLeanCtxConfig(fixture.deps);
-
-    expect(result).toEqual({ ok: false, status: "restart_failed", output: "applied", error: "compose failed" });
-    expect(fixture.calls).toEqual(["lean-ctx config apply 2>&1"]);
-  });
-
-  test("reports applied after config apply and container restart succeed", async () => {
+  test("runs lean-ctx config apply exec-only and reports success", async () => {
     const fixture = createApplyFixture();
 
     const result = await applyLeanCtxConfig(fixture.deps);
 
-    expect(result).toEqual({ ok: true, status: "applied", output: "applied" });
+    expect(result).toEqual({ ok: true, output: "applied" });
     expect(fixture.calls).toEqual(["lean-ctx config apply 2>&1"]);
+    expect(fixture.restartCalls()).toBe(0);
     expect(fixture.sleepCalls).toEqual([]);
-    expect(fixture.restartCalls).toBe(1);
   });
 
+  test("reports the failure output without restarting or sleeping", async () => {
+    const fixture = createApplyFixture({ apply: { stdout: "", stderr: "apply boom", exitCode: 1 } });
+
+    const result = await applyLeanCtxConfig(fixture.deps);
+
+    expect(result).toEqual({ ok: false, output: "apply boom", error: "apply boom" });
+    expect(fixture.calls).toEqual(["lean-ctx config apply 2>&1"]);
+    expect(fixture.restartCalls()).toBe(0);
+    expect(fixture.sleepCalls).toEqual([]);
+  });
 });
