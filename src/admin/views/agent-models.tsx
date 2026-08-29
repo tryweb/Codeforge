@@ -6,6 +6,7 @@ import type { AgentModelEntry } from "../lib/agent-models";
 interface AgentModelsState {
   agents: AgentModelEntry[];
   catalog: string[];
+  providers: string[];
   hasPassword: boolean;
   catalogAvailable: boolean;
 }
@@ -17,6 +18,7 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
     JSON.stringify({
       agents: state.agents,
       catalog: state.catalog,
+      providers: state.providers,
       hasPassword: state.hasPassword,
       catalogAvailable: state.catalogAvailable,
     }).replace(/</g, "\\u003c"),
@@ -63,6 +65,39 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
           </div>
         </div>
         <div id="batch-status" class="text-sm" style="margin-top:8px;"></div>
+      </div>
+
+      <div class="card" style="margin-bottom:16px;">
+        <fieldset id="provider-filter" style="border:0;padding:0;margin:0;">
+          <legend style="font-weight:600;margin-bottom:6px;">Suggestion providers</legend>
+          <p class="text-sm text-muted" style="margin:0 0 12px;">
+            Generate a reasonable configured model from the selected providers. Manual edits are kept.
+          </p>
+          <label style="display:inline-flex;align-items:center;gap:8px;margin-right:16px;">
+            <input id="provider-all" type="checkbox" checked disabled={!state.catalogAvailable || !state.hasPassword} />
+            All providers
+          </label>
+          <span id="provider-options" style="display:inline-flex;flex-wrap:wrap;gap:12px 16px;">
+            {state.providers.map((provider) => (
+              <label style="display:inline-flex;align-items:center;gap:8px;">
+                <input class="provider-option" type="checkbox" value={provider} checked disabled={!state.catalogAvailable || !state.hasPassword} />
+                {provider}
+              </label>
+            ))}
+          </span>
+          <button
+            id="btn-generate"
+            class="btn-outline"
+            onclick="generateSuggestions()"
+            disabled={!state.catalogAvailable || !state.hasPassword || state.providers.length === 0}
+            style="margin-top:14px;"
+          >
+            Generate suggestions
+          </button>
+          <span id="provider-hint" class="text-sm text-muted" style="margin-left:10px;">
+            All connected providers are selected.
+          </span>
+        </fieldset>
       </div>
 
       <div class="card">
@@ -243,6 +278,109 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
         var agentModelsState = ${json};
         var editAgentName = null;
         var pending = new Map();
+
+        function selectedProviders() {
+          var options = Array.from(document.querySelectorAll('.provider-option'));
+          var selected = options.filter(function (option) { return option.checked; }).map(function (option) { return option.value; });
+          return selected.length === options.length ? null : selected;
+        }
+
+        function syncProviderSelection() {
+          var all = document.getElementById('provider-all');
+          var options = Array.from(document.querySelectorAll('.provider-option'));
+          var selectedCount = options.filter(function (option) { return option.checked; }).length;
+          if (options.length > 0 && selectedCount === 0) {
+            options.forEach(function (option) { option.checked = true; });
+            selectedCount = options.length;
+          }
+          all.checked = selectedCount === options.length;
+          all.indeterminate = selectedCount > 0 && selectedCount < options.length;
+          document.getElementById('provider-hint').textContent = all.checked
+            ? 'All connected providers are selected.'
+            : selectedCount + ' provider' + (selectedCount === 1 ? '' : 's') + ' selected.';
+        }
+
+        function configureProviderSelection() {
+          var all = document.getElementById('provider-all');
+          all.addEventListener('change', function () {
+            document.querySelectorAll('.provider-option').forEach(function (option) { option.checked = all.checked; });
+            syncProviderSelection();
+          });
+          document.querySelectorAll('.provider-option').forEach(function (option) {
+            option.addEventListener('change', syncProviderSelection);
+          });
+          syncProviderSelection();
+        }
+
+        async function generateSuggestions() {
+          var button = document.getElementById('btn-generate');
+          var status = document.getElementById('batch-status');
+          var restartStatus = document.getElementById('restart-status');
+          var providerInputs = document.querySelectorAll('#provider-filter input');
+          var banner = document.createElement('div');
+          var elapsed = 0;
+          var timer;
+          if (button.disabled) return;
+          button.disabled = true;
+          button.setAttribute('aria-busy', 'true');
+          button.textContent = 'Generating…';
+          providerInputs.forEach(function (input) { input.disabled = true; });
+          banner.className = 'restart-banner';
+          banner.innerHTML = '<span class="spinner"></span> Generating model suggestions… Checking provider models and preparing pending changes. <span class="probe-elapsed">0s</span>';
+          document.body.appendChild(banner);
+          restartStatus.innerHTML = '<span class="spinner"></span> Generating suggestions… <span class="probe-elapsed">0s</span>';
+          status.style.color = '';
+          status.textContent = 'Generating suggestions… The system is checking the selected providers.';
+          timer = setInterval(function () {
+            elapsed += 1;
+            document.querySelectorAll('.probe-elapsed').forEach(function (element) { element.textContent = elapsed + 's'; });
+          }, 1000);
+          try {
+            var providers = selectedProviders();
+            var res = await fetch('/api/agent-models/suggestions', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(providers === null ? {} : { providers: providers }),
+            });
+            var data = await res.json();
+            if (!res.ok) {
+              status.style.color = 'var(--danger)';
+              status.textContent = data.error || ('HTTP ' + res.status);
+              banner.remove();
+              restartStatus.textContent = '';
+              return;
+            }
+            var added = 0;
+            Object.keys(data.suggestions || {}).forEach(function (agent) {
+              if (!pending.has(agent)) {
+                pending.set(agent, data.suggestions[agent]);
+                added += 1;
+              }
+            });
+            updateRowDirtyState();
+            updateBatchBar();
+            status.style.color = '#22c55e';
+            status.textContent = 'Added ' + added + ' suggestions. Review them, then Apply.';
+            banner.innerHTML = '<span class="spinner"></span> Suggestions ready. Review the pending changes before Apply.';
+            restartStatus.textContent = 'Suggestions ready ✔';
+            setTimeout(function () { banner.remove(); restartStatus.textContent = ''; }, 1800);
+          } catch (e) {
+            status.style.color = 'var(--danger)';
+            status.textContent = e instanceof Error ? e.message : 'Could not generate suggestions';
+            banner.remove();
+            restartStatus.textContent = '';
+          } finally {
+            clearInterval(timer);
+            button.disabled = false;
+            button.removeAttribute('aria-busy');
+            button.textContent = 'Generate suggestions';
+            providerInputs.forEach(function (input) {
+              input.disabled = !agentModelsState.catalogAvailable || !agentModelsState.hasPassword;
+            });
+          }
+        }
+
+        configureProviderSelection();
 
         function rowTemplate(model, variant) {
           var modelOpts = agentModelsState.catalog.map(function (m) {
