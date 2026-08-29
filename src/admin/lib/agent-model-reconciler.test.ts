@@ -164,4 +164,22 @@ describe("agent model reconciler", () => {
     }]);
     ctx.cleanup();
   });
+
+  test("filters generated suggestions before probing by provider", async () => {
+    const ctx = fixture(
+      JSON.stringify({ general: {}, plan: {} }),
+      JSON.stringify({ connected: ["p", "q"], all: [
+        { id: "p", models: { alpha: { capabilities: { toolcall: true } } } },
+        { id: "q", models: { beta: { capabilities: { toolcall: true } } } },
+      ] }),
+      liveAgents,
+      { 'title:"model availability probe"': healthy("q", "beta") },
+    );
+    const suggestions = await createAgentModelReconciler(ctx.deps).suggest(["q"]);
+    expect(suggestions.get("general")).toEqual([{ model: "q/beta" }]);
+    expect(suggestions.get("plan")).toEqual([{ model: "q/beta" }]);
+    expect(ctx.calls.some((call) => call.includes("p/alpha"))).toBe(false);
+    expect(ctx.calls.some((call) => call.includes(".agents[$agent]"))).toBe(false);
+    ctx.cleanup();
+  });
 });

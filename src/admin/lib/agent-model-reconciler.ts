@@ -259,6 +259,41 @@ export function createAgentModelReconciler(deps: AgentModelsDeps) {
     };
   }
 
+  async function suggest(providers: readonly string[] | null = null): Promise<ReadonlyMap<string, readonly FallbackModelEntry[]>> {
+    const password = lib.getServerPassword();
+    if (password === null) return new Map();
+    probes.clear();
+    probeCount = 0;
+    const config = await lib.readAgentModelsConfig();
+    const [snapshot, state] = await Promise.all([
+      lib.fetchProviderSnapshot(password),
+      namesAndResolved(password, config),
+    ]);
+    const allowed = providers === null ? null : new Set(providers);
+    const capabilities = await fetchCapabilityCatalog(deps, password);
+    const suggestions = new Map<string, readonly FallbackModelEntry[]>();
+    const candidatesFor = (agent: string): readonly string[] => snapshot.catalog
+      .filter((ref) => {
+        const parsed = parseModelReference(ref);
+        return parsed !== null && (allowed === null || allowed.has(parsed.providerID));
+      })
+      .sort((left, right) => score(agent, capabilities.get(right)) - score(agent, capabilities.get(left)) || left.localeCompare(right));
+    for (const agent of state.names) {
+      const candidates = candidatesFor(agent);
+      for (let offset = 0; offset < candidates.length; offset += PROBE_CONCURRENCY) {
+        const batch = candidates.slice(offset, offset + PROBE_CONCURRENCY);
+        const results = await Promise.all(batch.map((ref) => probe(ref)));
+        const healthyIndex = results.findIndex((result) => result.status === "healthy");
+        const selected = healthyIndex < 0 ? undefined : batch[healthyIndex];
+        if (selected !== undefined) {
+          suggestions.set(agent, [{ model: selected }]);
+          break;
+        }
+      }
+    }
+    return suggestions;
+  }
+
   async function withLock<T>(work: () => Promise<T>, fallback: T): Promise<T> {
     if (active) { pending = true; return fallback; }
     try {
@@ -296,5 +331,5 @@ export function createAgentModelReconciler(deps: AgentModelsDeps) {
     }, resultForNoop(entries));
   }
 
-  return { reconcileAll, applyAgent };
+  return { reconcileAll, applyAgent, suggest };
 }
