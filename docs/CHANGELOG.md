@@ -1,7 +1,13 @@
 ## [Unreleased]
 
+
+## [1.16.4] - 2026-08-29
+
 ### Changed
 - Simplify LeanCTX Admin configuration around the Docker image baseline, global persisted config, structured Save/Reset/Validate, and `lean-ctx config apply` without container recreation.
+- Upgrade OpenCode from 1.18.23 to 1.18.25.
+- Upgrade OpenChamber from 1.21.0 to 1.21.1.
+- Upgrade lean-ctx from 3.9.20 to 3.10.0.
 
 ### Removed
 - Remove Admin drift/status/doctor/set/delete routes, lifecycle drift UI, and the reliability gate from the `leanctx-admin-config` capability contract.
@@ -1840,3 +1846,5 @@
 [1.16.1]: https://github.com/tryweb/ai-engkit/compare/v1.16.0...v1.16.1
 [1.16.2]: https://github.com/tryweb/ai-engkit/compare/v1.16.1...v1.16.2
 [1.16.3]: https://github.com/tryweb/ai-engkit/compare/v1.16.2...v1.16.3
+[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.16.4...HEAD
+[1.16.4]: https://github.com/tryweb/ai-engkit/compare/v1.16.3...v1.16.4
