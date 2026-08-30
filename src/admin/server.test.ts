@@ -1,4 +1,5 @@
 import { afterAll, expect, test } from "bun:test";
+import { createSessionCookie } from "./lib/auth";
 
 const originalAdminPassword = process.env.ADMIN_PASSWORD;
 process.env.ADMIN_PASSWORD = "test-admin-password";
@@ -35,4 +36,27 @@ test("OpenChamber settings page redirects unauthenticated users", async () => {
 
   expect(response.status).toBe(302);
   expect(response.headers.get("location")).toBe("/login");
+});
+
+test("session cookie is matched by exact name, not substring (oc_ui_session shadowing)", async () => {
+  // Security regression: unanchored /session=([^;]+)/ matched the first "session="
+  // substring, so a sibling cookie (oc_ui_session) could shadow the real session.
+  const cookie = createSessionCookie();
+  const token = cookie.split(";")[0].split("=")[1];
+
+  const response = await app.request("http://localhost/api/openchamber/settings", {
+    headers: { Cookie: `oc_ui_session=stale.junk; session=${token}` },
+  });
+
+  expect(response.status).toBe(200);
+});
+
+test("malformed session signature is rejected, not a server error", async () => {
+  // Security regression: crypto.timingSafeEqual throws on length mismatch, so a
+  // crafted short signature decoded into a 500 instead of a clean 401/redirect.
+  const response = await app.request("http://localhost/api/openchamber/settings", {
+    headers: { Cookie: "session=abc.def" },
+  });
+
+  expect(response.status).toBe(401);
 });

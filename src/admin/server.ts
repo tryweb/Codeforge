@@ -91,7 +91,7 @@ async function authGuard(c: any, next: any) {
 
   // Validate session
   const cookie = c.req.header("cookie") || "";
-  const sessionMatch = cookie.match(/session=([^;]+)/);
+  const sessionMatch = cookie.match(/(?:^|;\s*)session=([^;]+)/);
   const token = sessionMatch ? sessionMatch[1] : "";
 
   if (!validateSession(token)) {

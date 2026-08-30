@@ -34,6 +34,7 @@ function verify(token: string, secret: string): SessionPayload | null {
   const data = Buffer.from(encoded, "base64url").toString("utf-8");
   const checkData = data + "." + SALT;
   const expected = createHmac(HMAC_ALGO, secret).update(checkData).digest("hex");
+  if (signature.length !== expected.length) return null;
   if (!timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) return null;
   return JSON.parse(data) as SessionPayload;
 }
