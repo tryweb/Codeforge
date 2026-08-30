@@ -265,6 +265,9 @@ export function createAgentRuntime(overrides: Partial<AgentRuntimeDeps> = {}): A
 
       const tlsEnv = resolveTlsConfig(configuredEnv);
       const tlsFromUrl = extractCaFromUrl(url.toString());
+      if (tlsEnv.partial) {
+        log("warn", "Agent: partial mTLS configuration detected (set all three of CENTER_CA_CERT, CENTER_CLIENT_CERT, CENTER_CLIENT_KEY, or none); mTLS is disabled");
+      }
       if (tlsEnv.configured) {
         const tls = await readTlsFiles(tlsEnv);
         if (tls.ca === null || tls.clientCert === null || tls.clientKey === null) {

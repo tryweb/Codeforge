@@ -244,6 +244,46 @@ describe("agent WebSocket runtime", () => {
     expect(logs.some((message) => message.includes(pem))).toBe(false);
   });
 
+  test("logs a warning when only some certificate env vars are set", () => {
+    const logs: string[] = [];
+    const runtime = makeRuntime(logs);
+
+    runtime.start({
+      centerUrl: "ws://center.test/agent",
+      env: { CENTER_CA_CERT: "/path/to/ca.pem" },
+    });
+
+    expect(logs.some((m) => m.includes("partial mTLS"))).toBe(true);
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    expect(FakeWebSocket.instances[0]!.options).toBeUndefined();
+  });
+
+  test("does not log a partial mTLS warning when no certificate env vars are set", () => {
+    const logs: string[] = [];
+    const runtime = makeRuntime(logs);
+
+    runtime.start({ centerUrl: "ws://center.test/agent", env: {} });
+
+    expect(logs.some((m) => m.includes("partial mTLS"))).toBe(false);
+    expect(FakeWebSocket.instances).toHaveLength(1);
+  });
+
+  test("does not log a partial mTLS warning when URL ca= is used instead of env vars", () => {
+    const logs: string[] = [];
+    const runtime = makeRuntime(logs);
+    const pem = "-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----";
+    const encoded = Buffer.from(pem, "utf-8").toString("base64url");
+
+    runtime.start({
+      centerUrl: `ws://center.test/agent?token=abc&ca=${encoded}`,
+      env: {},
+    });
+
+    expect(logs.some((m) => m.includes("partial mTLS"))).toBe(false);
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    expect(FakeWebSocket.instances[0]!.options).toEqual({ tls: { ca: pem } });
+  });
+
   test("sends hello with the configured agent identity on open", () => {
     const runtime = makeRuntime([]);
     runtime.start({ centerUrl: "ws://center.test/agent", env: { AGENT_ID: "agent-7" } });
