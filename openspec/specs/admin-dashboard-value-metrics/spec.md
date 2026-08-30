@@ -1,17 +1,17 @@
 ## Purpose
 
-Surfaces lean-ctx Decision Loop metrics — task value assessments, evidence chain audits, and savings breakdowns by tool — through the Admin Dashboard, so an administrator can monitor whether the system is making good decisions and where context-engineering value is concentrated.
+Adds optional lean-ctx Decision Loop summary metrics to the Admin Dashboard, alongside the dashboard's other operational information, so an administrator can monitor high-level value and savings signals without requiring the dashboard to be a full LeanCTX analytics view.
 
 ## Requirements
 
-### Requirement: Dashboard displays Decision Loop value metrics
+### Requirement: Dashboard displays Decision Loop summary metrics
 
-The Admin Dashboard SHALL present a "Decision Loop" panel showing aggregate value-gate data derived from `lean-ctx value-report --live --format json`: total tasks assessed, acceptance rate (percentage of tasks accepted by the value gate), CPAO (cost-per-accepted-outcome) in microseconds, ETPAO (effective tokens-per-accepted-outcome), total cost in microseconds, and estimated USD savings. The panel SHALL also include a per-task breakdown table showing each task's model, total tokens, cost, acceptance status, and evidence strings. When the value-report probe fails or returns no data, the panel SHALL render as unavailable without failing the Dashboard page.
+The Admin Dashboard SHALL present a "Decision Loop" panel showing high-level value-gate data derived from `lean-ctx value-report --live --format json`: total tasks assessed, acceptance rate, CPAO (cost-per-accepted-outcome) in microseconds, ETPAO (effective tokens-per-accepted-outcome), and estimated USD savings. The panel SHALL remain a summary view and SHALL NOT require per-task details. When the value-report probe fails or returns no data, the panel SHALL render as unavailable without failing the Dashboard page.
 
 #### Scenario: Value report data renders successfully
 
 - **WHEN** the `value-report --live --format json` probe succeeds and returns task data
-- **THEN** the Dashboard shows a "Decision Loop" panel with aggregate metrics (total tasks, acceptance rate, CPAO, ETPAO, cost, USD savings) and a per-task breakdown table
+- **THEN** the Dashboard shows a "Decision Loop" panel with summary metrics (total tasks, acceptance rate, CPAO, ETPAO, and USD savings)
 
 #### Scenario: Value report probe fails
 
@@ -23,14 +23,14 @@ The Admin Dashboard SHALL present a "Decision Loop" panel showing aggregate valu
 - **WHEN** the value-report probe succeeds but reports zero tasks assessed
 - **THEN** the Decision Loop panel shows "No assessments recorded yet" and the page still loads
 
-### Requirement: Dashboard displays evidence chain status
+### Requirement: Dashboard displays evidence chain summary status
 
-The Admin Dashboard SHALL present an "Evidence Chain" panel showing Decision Loop evidence data derived from `lean-ctx prove --format json`: overall acceptance rate, aggregate CPAO, evidence chain completeness (boolean), ledger metadata (created_at, updated_at, schema_version, item count), and total task count. The panel SHALL also include a per-task summary showing each task's query, profile intent, profile complexity, envelope status, reference count, receipt source count, cost, acceptance status, and evidence stages. When the prove probe fails, the panel SHALL render as unavailable without failing the page.
+The Admin Dashboard SHALL present an "Evidence Chain" panel showing high-level Decision Loop evidence data derived from `lean-ctx prove --format json`: total task count, overall acceptance rate, evidence chain completeness (boolean), and the ledger item count. The panel SHALL remain a summary view and SHALL NOT require per-task details or full ledger metadata. When the prove probe fails, the panel SHALL render as unavailable without failing the page.
 
 #### Scenario: Prove report data renders successfully
 
 - **WHEN** the `prove --format json` probe succeeds and returns task data
-- **THEN** the Dashboard shows an "Evidence Chain" panel with aggregate metrics (acceptance rate, CPAO, chain completeness, ledger info, task count) and a per-task summary table
+- **THEN** the Dashboard shows an "Evidence Chain" panel with summary metrics (acceptance rate, chain completeness, ledger item count, and task count)
 
 #### Scenario: Prove probe fails
 
@@ -42,14 +42,14 @@ The Admin Dashboard SHALL present an "Evidence Chain" panel showing Decision Loo
 - **WHEN** the prove probe succeeds but reports zero tasks
 - **THEN** the panel shows "No evidence data" and the page still loads
 
-### Requirement: Dashboard displays savings breakdown by tool
+### Requirement: Dashboard displays a savings-by-tool summary
 
-The Admin Dashboard SHALL present a "Savings by Tool" panel showing savings data derived from `lean-ctx savings --format json`: period (default "week"), total tasks, accepted tasks, tokens processed, tokens saved, compression percentage, estimated USD, actual USD, total savings USD, savings percentage, CPAO USD, ETPAO, and a ranked list of the top tools by tokens saved. The existing Token Savings card (derived from `gain --json`) SHALL remain unchanged. When the savings-report probe fails, the panel SHALL render as unavailable without failing the page.
+The Admin Dashboard SHALL present a "Savings by Tool" panel showing a ranked list of top tools by tokens saved, derived from `lean-ctx savings --format json`. The existing Token Savings card (derived from `gain --json`) SHALL remain unchanged. When the savings-report probe fails, the panel SHALL render as unavailable without failing the page.
 
 #### Scenario: Savings report data renders successfully
 
 - **WHEN** the `savings --format json` probe succeeds and returns data
-- **THEN** the Dashboard shows a "Savings by Tool" panel with period-scoped aggregates and a ranked tool breakdown table
+- **THEN** the Dashboard shows a "Savings by Tool" panel with a ranked tool breakdown table
 
 #### Scenario: Savings report probe fails
 
