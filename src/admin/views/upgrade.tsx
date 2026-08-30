@@ -12,12 +12,34 @@ const UpgradeContent: FC<{ devBuild?: boolean }> = ({ devBuild }) => (
         <p class="text-sm text-muted">This environment is a locally-built dev image. Upgrade is only available for production releases pulled from <code>ghcr.io/tryweb/ai-engkit:latest</code>.</p>
       </div>
     ) : (
-    <div class="card">
-      <h3>Upgrade ai-dev Container</h3>
-      <p class="text-sm text-muted mb-4">Pulls the latest image, backs up config, recreates the ai-dev container.</p>
-      <button id="start-upgrade" onclick="startUpgrade()">▲ Start Upgrade</button>
-      <button id="cancel-upgrade" class="btn-danger" style="display:none;margin-left:8px;" onclick="cancelUpgrade()">Cancel</button>
-    </div>
+      <>
+        <div class="card" id="version-selector-card">
+          <h3>Select Upgrade Target</h3>
+          <div id="versions-loading" class="text-sm text-muted">Loading available versions…</div>
+          <div id="versions-error" class="text-sm" style="display:none;color:var(--danger);" role="alert" />
+          <div id="versions-empty" class="text-sm text-muted" style="display:none;">No formal releases available.</div>
+          <div id="version-controls" style="display:none;">
+            <label style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+              <input type="radio" name="upgrade-target" id="target-official" value="official" />
+              <span id="official-label">Official release</span>
+            </label>
+            <div id="official-warning" class="text-sm" style="display:none;color:var(--warning);margin-bottom:12px;" role="alert" />
+            <label style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+              <input type="radio" name="upgrade-target" id="target-specified" value="specified" />
+              <span>Specified version</span>
+              <select id="specified-select" style="margin-left:8px;min-width:140px;" aria-label="Specified version"></select>
+              <button id="more-versions" type="button" class="btn-outline" style="display:none;margin-left:8px;">More</button>
+            </label>
+          </div>
+          <div id="no-target-warning" class="text-sm" style="display:none;color:var(--warning);" role="alert">No version selected.</div>
+        </div>
+        <div class="card">
+          <h3>Upgrade ai-dev Container</h3>
+          <p class="text-sm text-muted mb-4">Pulls the selected image, backs up config, recreates the ai-dev container.</p>
+          <button id="start-upgrade" onclick="startUpgrade()" disabled>Start Upgrade</button>
+          <button id="cancel-upgrade" class="btn-danger" style="display:none;margin-left:8px;" onclick="cancelUpgrade()">Cancel</button>
+        </div>
+      </>
     )}
     <div class="card" id="progress-card" style="display:none;">
       <h3>Progress</h3>
@@ -27,28 +49,139 @@ const UpgradeContent: FC<{ devBuild?: boolean }> = ({ devBuild }) => (
     <script>{html`
       let eventSource = null;
       let lastEventId = 0;
+      let fullVersions = [];
+      let displayedCount = 0;
+      let officialVersion = null;
+      let versionsWarning = null;
+      const BATCH = 10;
+      function getSelectedVersion() {
+        const official = document.getElementById("target-official");
+        const specified = document.getElementById("target-specified");
+        if (official && official.checked && !official.disabled && officialVersion) return officialVersion;
+        if (specified && specified.checked) {
+          const sel = document.getElementById("specified-select");
+          return sel ? sel.value : null;
+        }
+        return null;
+      }
+      function updateStartButton() {
+        const btn = document.getElementById("start-upgrade");
+        if (!btn) return;
+        const sel = getSelectedVersion();
+        const hasVersions = fullVersions.length > 0;
+        const errEl = document.getElementById("versions-error");
+        const hasError = errEl && errEl.style.display !== "none";
+        btn.disabled = !sel || !hasVersions || hasError;
+        const warn = document.getElementById("no-target-warning");
+        if (warn) warn.style.display = (!sel && hasVersions && !hasError) ? "block" : "none";
+      }
+      function renderSelect() {
+        const sel = document.getElementById("specified-select");
+        if (!sel) return;
+        const toShow = fullVersions.slice(0, displayedCount);
+        sel.innerHTML = "";
+        for (const v of toShow) {
+          const opt = document.createElement("option");
+          opt.value = v; opt.textContent = v; sel.appendChild(opt);
+        }
+        const more = document.getElementById("more-versions");
+        if (more) {
+          const hasMore = displayedCount < fullVersions.length;
+          more.style.display = hasMore ? "inline-flex" : "none";
+          more.disabled = !hasMore;
+        }
+        updateStartButton();
+      }
+      function onMore() {
+        const next = Math.min(fullVersions.length, displayedCount + BATCH);
+        if (next === displayedCount) return;
+        displayedCount = next;
+        renderSelect();
+      }
+      async function loadVersions() {
+        const loading = document.getElementById("versions-loading");
+        const errorEl = document.getElementById("versions-error");
+        const emptyEl = document.getElementById("versions-empty");
+        const controls = document.getElementById("version-controls");
+        try {
+          const res = await fetch("/api/upgrade/versions");
+          const data = await res.json();
+          if (loading) loading.style.display = "none";
+          if (!res.ok) {
+            if (errorEl) { errorEl.textContent = data.error || "Failed to load versions"; errorEl.style.display = "block"; }
+            updateStartButton(); return;
+          }
+          fullVersions = Array.isArray(data.versions) ? data.versions : [];
+          officialVersion = data.official_version || null;
+          versionsWarning = data.warning || null;
+          if (data.error) {
+            if (errorEl) { errorEl.textContent = data.error; errorEl.style.display = "block"; }
+            updateStartButton(); return;
+          }
+          if (fullVersions.length === 0) {
+            if (emptyEl) emptyEl.style.display = "block";
+            updateStartButton(); return;
+          }
+          if (controls) controls.style.display = "block";
+          const officialRadio = document.getElementById("target-official");
+          const officialLabel = document.getElementById("official-label");
+          const officialWarn = document.getElementById("official-warning");
+          const specifiedRadio = document.getElementById("target-specified");
+          if (officialRadio && officialLabel) {
+            if (officialVersion) {
+              officialLabel.textContent = "Official release — " + officialVersion + " (latest)";
+              officialRadio.disabled = false;
+              if (officialWarn) officialWarn.style.display = "none";
+              officialRadio.checked = true;
+            } else {
+              officialLabel.textContent = "Official release — unavailable";
+              officialRadio.disabled = true;
+              officialRadio.checked = false;
+              if (officialWarn && versionsWarning) { officialWarn.textContent = versionsWarning; officialWarn.style.display = "block"; }
+              else if (officialWarn) { officialWarn.textContent = "latest does not match any formal release"; officialWarn.style.display = "block"; }
+              if (specifiedRadio) specifiedRadio.checked = false;
+            }
+          }
+          if (!officialVersion && specifiedRadio && fullVersions.length > 0) {
+            if (officialRadio) officialRadio.checked = false;
+            specifiedRadio.checked = false;
+          }
+          displayedCount = Math.min(BATCH, fullVersions.length);
+          renderSelect();
+          const moreBtn = document.getElementById("more-versions");
+          if (moreBtn) moreBtn.addEventListener("click", onMore);
+          const sel = document.getElementById("specified-select");
+          if (officialRadio) officialRadio.addEventListener("change", updateStartButton);
+          if (specifiedRadio) specifiedRadio.addEventListener("change", function(){ updateStartButton(); });
+          if (sel) sel.addEventListener("change", function(){ const sr=document.getElementById("target-specified"); if(sr) sr.checked=true; updateStartButton(); });
+          updateStartButton();
+        } catch (e) {
+          if (loading) loading.style.display = "none";
+          if (errorEl) { errorEl.textContent = (e && e.message) || "Failed to load versions"; errorEl.style.display = "block"; }
+          updateStartButton();
+        }
+      }
       async function startUpgrade() {
+        const sel = getSelectedVersion();
+        if (!sel) { alert("Please select a version to upgrade to."); return; }
         document.getElementById("start-upgrade").disabled = true;
         document.getElementById("start-upgrade").textContent = "Running...";
         document.getElementById("progress-card").style.display = "block";
-        const res = await fetch("/api/upgrade", { method: "POST" });
+        const res = await fetch("/api/upgrade", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ version: sel }) });
         if (res.status === 409) {
           const data = await res.json();
-          if (data.status && data.status.state === "running") {
-            connectLog();
-            return;
-          }
+          if (data.status && data.status.state === "running") { connectLog(); return; }
           alert("Upgrade already in progress");
           document.getElementById("start-upgrade").disabled = false;
-          document.getElementById("start-upgrade").textContent = "▲ Start Upgrade";
-          return;
+          document.getElementById("start-upgrade").textContent = "Start Upgrade";
+          updateStartButton(); return;
         }
         if (!res.ok) {
-          const data = await res.json();
+          const data = await res.json().catch(() => ({}));
           alert(data.error || "Failed to start upgrade");
           document.getElementById("start-upgrade").disabled = false;
-          document.getElementById("start-upgrade").textContent = "▲ Start Upgrade";
-          return;
+          document.getElementById("start-upgrade").textContent = "Start Upgrade";
+          updateStartButton(); return;
         }
         connectLog();
       }
@@ -81,14 +214,14 @@ const UpgradeContent: FC<{ devBuild?: boolean }> = ({ devBuild }) => (
           }
           if (ev.status === "failure") {
             document.getElementById("start-upgrade").disabled = false;
-            document.getElementById("start-upgrade").textContent = "▲ Retry Upgrade";
-            eventSource.close();
+            document.getElementById("start-upgrade").textContent = "Retry Upgrade";
+            updateStartButton(); eventSource.close();
           }
           if (ev.step === "cleanup" && ev.status === "success") {
             document.getElementById("start-upgrade").disabled = false;
-            document.getElementById("start-upgrade").textContent = "▲ Start Upgrade";
+            document.getElementById("start-upgrade").textContent = "Start Upgrade";
             document.getElementById("status-banner").innerHTML =
-              '<div class="card" style="border-color:var(--success);"><strong class="text-success">✓ Upgrade completed successfully</strong></div>';
+              '<div class="card" style="border-color:var(--success);"><strong class="text-success">Upgrade completed successfully</strong></div>';
             eventSource.close();
           }
         };
@@ -97,16 +230,14 @@ const UpgradeContent: FC<{ devBuild?: boolean }> = ({ devBuild }) => (
       function cancelUpgrade() {
         if (eventSource) eventSource.close();
         document.getElementById("start-upgrade").disabled = false;
-        document.getElementById("start-upgrade").textContent = "▲ Start Upgrade";
+        document.getElementById("start-upgrade").textContent = "Start Upgrade";
+        updateStartButton();
       }
-      // Auto-connect if upgrade is already running on page load
-      fetch("/api/upgrade/status").then(r => r.json()).then(s => {
-        if (s.state === "running") connectLog();
-      });
+      fetch("/api/upgrade/status").then(r => r.json()).then(s => { if (s.state === "running") connectLog(); });
+      loadVersions();
     `}</script>
   </div>
 );
-
 export function UpgradePage({ devBuild }: { devBuild?: boolean }) {
   return (
     <Layout title="Upgrade" currentPath="/upgrade">
