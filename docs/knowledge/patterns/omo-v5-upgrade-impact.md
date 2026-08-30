@@ -1,4 +1,4 @@
-# OMO v5.x Upgrade Impact (assessed at 5.0.0-beta.17)
+# OMO v5.x Upgrade Impact (assessed at 5.0.0-beta.30)
 
 ## Context
 
@@ -8,7 +8,7 @@ ai-engkit consumes oh-my-openagent (OMO) exclusively as an **OpenCode npm plugin
 - Config: `.opencode/omo.jsonc.default` (11 agents) baked to `/etc/opencode/omo.jsonc.default`, merged into `~/.omo/omo.jsonc` at startup by `entrypoint.d/02-init-config.sh`.
 - Version pipeline: `.opencode/scripts/check-versions.sh` + `.github/workflows/dependency-update.yml` compare against the npm `latest` dist-tag and sync the `$schema` tag in `omo.jsonc.default` (also in `check-updates` SKILL).
 
-OMO v5.0.0 (beta line `5.0.0-beta.1` → `5.0.0-beta.17`, published 2026-08-09–22) is a major rewrite: native CLI `omo-agent-toolkit`, Senpi edition (`omo-ai`, `omo` command), unified config `~/.omo/agent` (previously `~/.omo/omo.jsonc`), one-way legacy-config migration, `omo` bin removed, `shared/<name>` skill names → bare names, reasoning/model config standardization.
+OMO v5.0.0 (beta line `5.0.0-beta.1` → `5.0.0-beta.30`, published 2026-08-09–30) is a major rewrite: native CLI `omo-agent-toolkit`, Senpi edition (`omo-ai`, `omo` command), unified config `~/.omo/agent` (previously `~/.omo/omo.jsonc`), one-way legacy-config migration, `omo` bin removed, `shared/<name>` skill names → bare names, reasoning/model config standardization.
 
 ## Problem
 
@@ -16,7 +16,7 @@ Does upgrading to omo v5 break AI-EngKit's plugin-based consumption? Which movin
 
 ## Solution
 
-Verified upgrade facts (2026-08-22, npm + v5.0.0-beta.17 source):
+Verified upgrade facts (2026-08-30, npm + v5.0.0-beta.30 source):
 
 ### Structural Safety (no changes needed)
 
@@ -97,6 +97,15 @@ Verified upgrade facts (2026-08-22, npm + v5.0.0-beta.17 source):
 48. **`0` as unlimited sentinel** for task concurrency/residency caps (omo-config-core + omo-opencode).
 49. **Launcher re-exec under bun** for bun-installed users (omo-native only).
 
+### Beta.30 Senpi-Only Hotfix (no new breaking changes)
+
+50. **No omo-side commits**: beta.30 only advances Senpi from `2026.8.30-2` to `2026.8.30-3`; no `omo-opencode` logic, plugin entrypoint, agent config, schema, or CLI changes.
+51. **RPC disconnect recovery**: typed `RpcTransportGoneError`, deferred rebind, and reconnect-or-fallback behavior prevent steering messages from being lost when the interactive host socket disconnects.
+52. **PTY/terminal reliability**: serialized screen writes and bounded backlog prevent queued writes/resizes from splitting or dropping during replay.
+53. **Compaction safety**: deterministic tool admission, structured-result/lane ownership preservation, retry-safe reminders, and multipart-result caps.
+54. **Model downswitch admission**: target usable-budget checks, equal-budget provider switching, and invalid-selection rollback.
+55. **AI-EngKit impact**: all beta.30 changes are Senpi/native engine internals; AI-EngKit's OpenCode plugin integration, container startup flow, and Admin `agents.<name>.model` + `variant` write contract are unchanged.
+
 ## Why It Works
 
 - Plugin identity and entry (`main`/`exports`) are unchanged, so opencode loads v5 identically to v4.
@@ -143,8 +152,9 @@ Post-upgrade:
 - npm registry 2026-08-17: dist-tags `latest=4.19.4`, `beta=5.0.0-beta.9`.
 - npm registry 2026-08-19: dist-tags `latest=4.19.4`, `beta=5.0.0-beta.11`.
 - npm registry 2026-08-22: dist-tags `latest=4.19.4`, `beta=5.0.0-beta.17`.
-- package.json v4.19.4 vs v5.0.0-beta.17: identical `name`/`main`/`exports`; bins v4 `{lazycodex, lazycodex-ai, oh-my-openagent, oh-my-opencode, omo}` → v5 drops `omo`, adds `omo-agent-toolkit`.
-- `assets/omo.schema.json` v4.19.4 (857 825 B) vs v5.0.0-beta.17: per-agent keys identical, `additionalProperties: false`; both have top-level `agents, models, profiles, codegraph, memory`.
+- npm registry 2026-08-30: dist-tags `latest=4.19.4`, `beta=5.0.0-beta.30`.
+- package.json v4.19.4 vs v5.0.0-beta.30: beta.30 release reports no omo-side commits; plugin entrypoint/config contract is unchanged.
+- `assets/omo.schema.json` v4.19.4 vs v5.0.0-beta.30: no beta.30 omo-side schema change was reported; existing per-agent/config migration assessment remains applicable.
 - beta.3→beta.8: major feature release (parallel orchestration, Grok 4.6, memory fixes, config path change).
 - beta.8→beta.9: stability-only (Senpi engine 2026.8.17, publish flow fixes, memory reflection fixes).
 - beta.9→beta.10: reliability hardening (installer timeout, CI gate reuse, credential isolation).
@@ -152,6 +162,7 @@ Post-upgrade:
 - beta.11→beta.13: DAG recovery (`dag retry`/`send`/`amend`), `/btw` side conversations, model fallback dedupe fix, Bun 1.4 graduation started.
 - beta.13→beta.16: init-deep DAG map-reduce, ULW skill-pointers consolidation (flag rename), Senpi 2026.8.22.
 - beta.16→beta.17: `task.global_concurrency` + 0-as-unlimited sentinel; launcher bun re-exec (native only).
+- beta.17→beta.30: beta.30 is Senpi `2026.8.30-3` hotfix only; release explicitly reports `No omo-side commits`.
 - `packages/omo-opencode/src/index.ts` + `create-plugin-module.ts` (beta.17): no memory imports; memory `memory.enabled` consumed only in `packages/omo-senpi/src/components/memory/wiring.ts`.
 - beta.11 adds `permission.task` respect on OpenCode side (item 34) and LSP out-of-CWD fix (item 37) — both positive for AI-EngKit.
 - `src/admin/lib/agent-model-config.ts` `buildJqWriteCommand`: writes `model`+`variant`, deletes `models`/`fallback_models` — Admin never writes a fallback chain.
