@@ -6,6 +6,8 @@ export interface TlsConfig {
   clientCert: string | null;
   clientKey: string | null;
   configured: boolean;
+  /** True when exactly 1 or 2 of the 3 certificate env vars are set (partial mTLS intent). */
+  partial: boolean;
 }
 
 /** Resolve certificate paths and whether complete mTLS configuration exists. */
@@ -13,15 +15,15 @@ export function resolveTlsConfig(env: Record<string, string | undefined>): TlsCo
   const ca = env["CENTER_CA_CERT"] || null;
   const clientCert = env["CENTER_CLIENT_CERT"] || null;
   const clientKey = env["CENTER_CLIENT_KEY"] || null;
-  const configured =
-    ca !== null &&
-    clientCert !== null &&
-    clientKey !== null &&
-    existsSync(ca) &&
-    existsSync(clientCert) &&
-    existsSync(clientKey);
 
-  return { ca, clientCert, clientKey, configured };
+  const envVarCount = [ca, clientCert, clientKey].filter((v) => v !== null).length;
+  const configured =
+    envVarCount === 3 &&
+    existsSync(ca!) &&
+    existsSync(clientCert!) &&
+    existsSync(clientKey!);
+
+  return { ca, clientCert, clientKey, configured, partial: envVarCount > 0 && envVarCount < 3 };
 }
 
 async function readOptionalFile(path: string | null): Promise<string | null> {

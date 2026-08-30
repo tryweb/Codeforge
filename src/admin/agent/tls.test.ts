@@ -34,6 +34,7 @@ describe("agent TLS configuration", () => {
       clientCert: clientCertPath,
       clientKey: clientKeyPath,
       configured: true,
+      partial: false,
     });
   });
 
@@ -48,6 +49,7 @@ describe("agent TLS configuration", () => {
       clientCert: null,
       clientKey: null,
       configured: false,
+      partial: true,
     });
   });
 
@@ -59,6 +61,7 @@ describe("agent TLS configuration", () => {
       clientCert: null,
       clientKey: null,
       configured: false,
+      partial: false,
     });
   });
 
@@ -76,6 +79,38 @@ describe("agent TLS configuration", () => {
     });
 
     expect(config.configured).toBe(false);
+  });
+
+  it("is partial when exactly two certificate env vars are set", () => {
+    const caPath = join(temporaryDirectory, "ca.pem");
+    const clientCertPath = join(temporaryDirectory, "client.pem");
+    writeFileSync(caPath, "ca");
+    writeFileSync(clientCertPath, "client-cert");
+
+    const config = resolveTlsConfig({
+      CENTER_CA_CERT: caPath,
+      CENTER_CLIENT_CERT: clientCertPath,
+    });
+
+    expect(config.configured).toBe(false);
+    expect(config.partial).toBe(true);
+  });
+
+  it("is not partial when all three env vars are set but a file is missing", () => {
+    const caPath = join(temporaryDirectory, "ca.pem");
+    const clientCertPath = join(temporaryDirectory, "client.pem");
+    const clientKeyPath = join(temporaryDirectory, "missing-key.pem");
+    writeFileSync(caPath, "ca");
+    writeFileSync(clientCertPath, "client-cert");
+
+    const config = resolveTlsConfig({
+      CENTER_CA_CERT: caPath,
+      CENTER_CLIENT_CERT: clientCertPath,
+      CENTER_CLIENT_KEY: clientKeyPath,
+    });
+
+    expect(config.configured).toBe(false);
+    expect(config.partial).toBe(false);
   });
 
   it("reads certificate contents at call time", async () => {
