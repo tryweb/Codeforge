@@ -424,6 +424,25 @@ cleanup_images() {
     else
         info "No cleanup needed"
     fi
+
+    # Pinned installs keep every release tag forever — remove all but the active one
+    local repo
+    local keep
+    local old_tags
+    local tag
+    repo="${IMAGE_REF%%:*}"
+    keep="${IMAGE_REF##*:}"
+    old_tags=$(docker images "$repo" --format '{{.Tag}}' 2>/dev/null || true)
+    while IFS= read -r tag; do
+        [ -z "$tag" ] && continue
+        if [ "$tag" != "$keep" ]; then
+            if docker rmi "${repo}:${tag}" 2>/dev/null; then
+                ok "Old image removed: ${repo}:${tag}"
+            else
+                info "Skipping ${repo}:${tag} (in use by another stack?)"
+            fi
+        fi
+    done <<< "$old_tags"
 }
 
 # ──────────────────────────────────────────────────────────
