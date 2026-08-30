@@ -199,13 +199,13 @@ The `upgrade` command SHALL execute the existing `runUpgrade()` pipeline (pull l
 The `reconfigure` command SHALL write the supplied key/value pairs to `/opt/ai-engkit/.env` via the existing env library and restart the ai-dev container (`ai-engkit`) via the existing `restartAiDev()` flow, then report the outcome.
 
 #### Scenario: Env values are updated and the ai-dev container restarted
-- **WHEN** a `reconfigure` command with an `updates` object is received
+- **WHEN** a `reconfigure` command with an `env` object containing only string values is received
 - **THEN** each key is written to `.env`
 - **AND** the ai-dev container is restarted (compose recreate in production, plain restart in dev/DooD)
 - **AND** an `ack` message reporting success is sent
 
 #### Scenario: Invalid reconfigure payload
-- **WHEN** a `reconfigure` command lacks an `updates` object or contains non-string values
+- **WHEN** a `reconfigure` command lacks an `env` object or contains non-string values
 - **THEN** no change is made to `.env` and an `error` message is sent
 
 ### Requirement: Restart command restarts a container
