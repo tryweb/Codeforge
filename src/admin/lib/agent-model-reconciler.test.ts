@@ -43,6 +43,42 @@ function healthy(providerID: string, modelID: string): string {
   return JSON.stringify({ info: { role: "assistant", providerID, modelID } });
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function extractProbedModelId(command: string): string | null {
+  const match = command.match(/printf '%s' '([^']+)' \| base64 -d/);
+  if (match === null) return null;
+  const b64 = match[1] ?? "";
+  let decoded: string;
+  try {
+    decoded = Buffer.from(b64, "base64").toString("utf8");
+  } catch (error: unknown) {
+    void error;
+    return null;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(decoded);
+  } catch (error: unknown) {
+    void error;
+    return null;
+  }
+  if (!isRecord(parsed) || !isRecord(parsed.model)) return null;
+  const model = parsed.model;
+  if (typeof model.modelID !== "string") return null;
+  return model.modelID;
+}
+
+function probedModelIds(calls: readonly string[]): string[] {
+  return calls
+    .filter((call) => call.includes('title:"model availability probe"'))
+    .map(extractProbedModelId)
+    .filter((modelID): modelID is string => modelID !== null);
+}
+
+
 describe("agent model reconciler", () => {
   test("keeps a healthy primary and does not write", async () => {
     const ctx = fixture(
@@ -95,8 +131,7 @@ describe("agent model reconciler", () => {
     const reconciler = createAgentModelReconciler(ctx.deps);
     const result = await reconciler.reconcileAll();
     expect(result.changed).toBe(2);
-    expect(ctx.calls.some((call) => call.includes("p/alpha"))).toBe(true);
-    expect(ctx.calls.some((call) => call.includes("p/zed"))).toBe(false);
+    expect(probedModelIds(ctx.calls)).toEqual(["alpha"]);
     ctx.cleanup();
   });
 
@@ -182,4 +217,325 @@ describe("agent model reconciler", () => {
     expect(ctx.calls.some((call) => call.includes(".agents[$agent]"))).toBe(false);
     ctx.cleanup();
   });
+  test("uses the first equal-score healthy candidate for each agent via suggest", async () => {
+    const config = JSON.stringify({ general: {}, "sisyphus-junior": {} });
+    const provider = JSON.stringify({
+      connected: ["p", "q"],
+      all: [
+        { id: "p", models: { alpha: { capabilities: { toolcall: true } } } },
+        { id: "q", models: { beta: { capabilities: { toolcall: true } } } },
+      ],
+    });
+    const agents = JSON.stringify([
+      { name: "general", mode: "subagent", model: { providerID: "missing", modelID: "default" } },
+      { name: "Sisyphus-Junior", mode: "subagent", model: { providerID: "missing", modelID: "default" } },
+    ]);
+    const base = fixture(config, provider, agents, {});
+    const deps: AgentModelsDeps = {
+      ...base.deps,
+      exec: async (command: string, timeout?: number): Promise<ExecResult> => {
+        if (command.includes('title:"model availability probe"')) {
+          const modelId = extractProbedModelId(command);
+          if (modelId === "alpha") return { stdout: healthy("p", "alpha"), stderr: "", exitCode: 0 };
+          if (modelId === "beta") return { stdout: healthy("q", "beta"), stderr: "", exitCode: 0 };
+          return { stdout: healthy("p", "alpha"), stderr: "", exitCode: 0 };
+        }
+        return base.deps.exec(command, timeout);
+      },
+    };
+    const suggestions = await createAgentModelReconciler(deps).suggest();
+    expect(suggestions.get("general")).toEqual([{ model: "p/alpha" }]);
+    expect(suggestions.get("sisyphus-junior")).toEqual([{ model: "p/alpha" }]);
+    base.cleanup();
+  });
+
+  test("reuses single healthy candidate for multiple agents rather than no_usable_model via suggest", async () => {
+    const config = JSON.stringify({ general: {}, "sisyphus-junior": {} });
+    const provider = JSON.stringify({
+      connected: ["p"],
+      all: [{ id: "p", models: { alpha: { capabilities: { toolcall: true } } } }],
+    });
+    const agents = JSON.stringify([
+      { name: "general", mode: "subagent", model: { providerID: "missing", modelID: "default" } },
+      { name: "Sisyphus-Junior", mode: "subagent", model: { providerID: "missing", modelID: "default" } },
+    ]);
+    const ctx = fixture(config, provider, agents, { alpha: healthy("p", "alpha") });
+    const suggestions = await createAgentModelReconciler(ctx.deps).suggest();
+    expect(suggestions.get("general")).toEqual([{ model: "p/alpha" }]);
+    expect(suggestions.get("sisyphus-junior")).toEqual([{ model: "p/alpha" }]);
+    ctx.cleanup();
+  });
+
+  test("reuses single healthy candidate for multiple agents via reconcileAll", async () => {
+    const config = JSON.stringify({ general: {}, "sisyphus-junior": {} });
+    const provider = JSON.stringify({
+      connected: ["p"],
+      all: [{ id: "p", models: { alpha: { capabilities: { toolcall: true } } } }],
+    });
+    const agents = JSON.stringify([
+      { name: "general", mode: "subagent", model: { providerID: "missing", modelID: "default" } },
+      { name: "Sisyphus-Junior", mode: "subagent", model: { providerID: "missing", modelID: "default" } },
+    ]);
+    const ctx = fixture(config, provider, agents, { alpha: healthy("p", "alpha") });
+    const result = await createAgentModelReconciler(ctx.deps).reconcileAll();
+    expect(result.changed).toBe(2);
+    expect(result.agents.sort()).toEqual(["general", "sisyphus-junior"]);
+    ctx.cleanup();
+  });
+
+  test("probes identical candidate refs only once per suggest invocation", async () => {
+    const config = JSON.stringify({ general: {}, "sisyphus-junior": {} });
+    const provider = JSON.stringify({
+      connected: ["p"],
+      all: [{ id: "p", models: { alpha: { capabilities: {} } } }],
+    });
+    const agents = JSON.stringify([
+      { name: "general", mode: "subagent", model: { providerID: "missing", modelID: "default" } },
+      { name: "Sisyphus-Junior", mode: "subagent", model: { providerID: "missing", modelID: "default" } },
+    ]);
+    let probeCount = 0;
+    const base = fixture(config, provider, agents, {});
+    const deps: AgentModelsDeps = {
+      ...base.deps,
+      exec: async (command: string, timeout?: number): Promise<ExecResult> => {
+        if (command.includes('title:"model availability probe"')) probeCount += 1;
+        if (command.includes('title:"model availability probe"')) {
+          return { stdout: healthy("p", "alpha"), stderr: "", exitCode: 0 };
+        }
+        return base.deps.exec(command, timeout);
+      },
+    };
+    const suggestions = await createAgentModelReconciler(deps).suggest();
+    expect(suggestions.get("general")).toEqual([{ model: "p/alpha" }]);
+    expect(suggestions.get("sisyphus-junior")).toEqual([{ model: "p/alpha" }]);
+    expect(probeCount).toBe(1);
+    base.cleanup();
+  });
+
+  test("probes identical candidate refs only once per reconcileAll invocation", async () => {
+    const config = JSON.stringify({ general: {}, "sisyphus-junior": {} });
+    const provider = JSON.stringify({
+      connected: ["p"],
+      all: [{ id: "p", models: { alpha: { capabilities: {} } } }],
+    });
+    const agents = JSON.stringify([
+      { name: "general", mode: "subagent", model: { providerID: "missing", modelID: "default" } },
+      { name: "Sisyphus-Junior", mode: "subagent", model: { providerID: "missing", modelID: "default" } },
+    ]);
+    let probeCount = 0;
+    const base = fixture(config, provider, agents, {});
+    const deps: AgentModelsDeps = {
+      ...base.deps,
+      exec: async (command: string, timeout?: number): Promise<ExecResult> => {
+        if (command.includes('title:"model availability probe"')) probeCount += 1;
+        if (command.includes('title:"model availability probe"')) {
+          return { stdout: healthy("p", "alpha"), stderr: "", exitCode: 0 };
+        }
+        return base.deps.exec(command, timeout);
+      },
+    };
+    const result = await createAgentModelReconciler(deps).reconcileAll();
+    expect(result.changed).toBe(2);
+    expect(probeCount).toBe(1);
+    base.cleanup();
+  });
+
+  test("keeps healthy pinned model untouched", async () => {
+    const config = JSON.stringify({ general: { model: "p/keep" }, "sisyphus-junior": {} });
+    const provider = JSON.stringify({
+      connected: ["p", "q"],
+      all: [
+        { id: "p", models: { keep: { capabilities: {} }, other: { capabilities: { toolcall: true } } } },
+        { id: "q", models: { better: { capabilities: { toolcall: true, attachment: true } } } },
+      ],
+    });
+    const agents = JSON.stringify([
+      { name: "general", mode: "subagent", model: { providerID: "missing", modelID: "default" } },
+      { name: "Sisyphus-Junior", mode: "subagent", model: { providerID: "missing", modelID: "default" } },
+    ]);
+    const base = fixture(config, provider, agents, {});
+    const keepHealthy = healthy("p", "keep");
+    const betterHealthy = healthy("q", "better");
+    const deps: AgentModelsDeps = {
+      ...base.deps,
+      exec: async (command: string, timeout?: number): Promise<ExecResult> => {
+        if (command.includes('title:"model availability probe"')) {
+          const modelId = extractProbedModelId(command);
+          if (modelId === "keep") return { stdout: keepHealthy, stderr: "", exitCode: 0 };
+          if (modelId === "better") return { stdout: betterHealthy, stderr: "", exitCode: 0 };
+          if (modelId === "other") return { stdout: healthy("p", "other"), stderr: "", exitCode: 0 };
+          return { stdout: keepHealthy, stderr: "", exitCode: 0 };
+        }
+        return base.deps.exec(command, timeout);
+      },
+    };
+    const result = await createAgentModelReconciler(deps).reconcileAll();
+    expect(result.agents.includes("general")).toBe(false);
+    expect(result.changed).toBe(1);
+    expect(result.agents).toEqual(["sisyphus-junior"]);
+    base.cleanup();
+  });
+
+  test("falls back from unavailable pinned model", async () => {
+    const config = JSON.stringify({ general: { model: "p/bad" } });
+    const provider = JSON.stringify({
+      connected: ["p", "q"],
+      all: [
+        { id: "p", models: { bad: { capabilities: {} }, alpha: { capabilities: {} } } },
+        { id: "q", models: { good: { capabilities: {} } } },
+      ],
+    });
+    const agents = JSON.stringify([
+      { name: "general", mode: "subagent", model: { providerID: "missing", modelID: "default" } },
+    ]);
+    const badResponse = JSON.stringify({ info: { role: "assistant", error: "404 unavailable" } });
+    const ctx = fixture(config, provider, agents, { bad: badResponse, good: healthy("q", "good") });
+    const baseExec = ctx.deps.exec;
+    const deps: AgentModelsDeps = {
+      ...ctx.deps,
+      exec: async (command: string, timeout?: number): Promise<ExecResult> => {
+        if (command.includes('title:"model availability probe"')) {
+          const modelId = extractProbedModelId(command);
+          if (modelId === "bad") return { stdout: badResponse, stderr: "", exitCode: 0 };
+          if (modelId === "good") return { stdout: healthy("q", "good"), stderr: "", exitCode: 0 };
+          if (modelId === "alpha") return { stdout: healthy("p", "alpha"), stderr: "", exitCode: 0 };
+          return { stdout: healthy("p", "alpha"), stderr: "", exitCode: 0 };
+        }
+        return baseExec(command, timeout);
+      },
+    };
+    const result = await createAgentModelReconciler(deps).reconcileAll();
+    expect(result.changed).toBe(1);
+    expect(result.agents).toEqual(["general"]);
+    ctx.cleanup();
+  });
+
+  test("falls back from retired pinned model", async () => {
+    const config = JSON.stringify({ general: { model: "p/old" } });
+    const provider = JSON.stringify({
+      connected: ["p", "q"],
+      all: [
+        { id: "p", models: { old: { capabilities: {} } } },
+        { id: "q", models: { fresh: { capabilities: {} } } },
+      ],
+    });
+    const agents = JSON.stringify([
+      { name: "general", mode: "subagent", model: { providerID: "missing", modelID: "default" } },
+    ]);
+    const retiredResponse = JSON.stringify({ info: { role: "assistant", error: "410 retired" } });
+    const ctx = fixture(config, provider, agents, { old: retiredResponse, fresh: healthy("q", "fresh") });
+    const baseExec = ctx.deps.exec;
+    const deps: AgentModelsDeps = {
+      ...ctx.deps,
+      exec: async (command: string, timeout?: number): Promise<ExecResult> => {
+        if (command.includes('title:"model availability probe"')) {
+          const modelId = extractProbedModelId(command);
+          if (modelId === "old") return { stdout: retiredResponse, stderr: "", exitCode: 0 };
+          if (modelId === "fresh") return { stdout: healthy("q", "fresh"), stderr: "", exitCode: 0 };
+          return { stdout: healthy("q", "fresh"), stderr: "", exitCode: 0 };
+        }
+        return baseExec(command, timeout);
+      },
+    };
+    const result = await createAgentModelReconciler(deps).reconcileAll();
+    expect(result.changed).toBe(1);
+    expect(result.agents).toEqual(["general"]);
+    ctx.cleanup();
+  });
+
+  test("uses the first equal-score healthy candidate for each agent via reconcileAll", async () => {
+    const config = JSON.stringify({ general: {}, "sisyphus-junior": {} });
+    const provider = JSON.stringify({
+      connected: ["p", "q"],
+      all: [
+        { id: "p", models: { alpha: { capabilities: { toolcall: true } } } },
+        { id: "q", models: { beta: { capabilities: { toolcall: true } } } },
+      ],
+    });
+    const agents = JSON.stringify([
+      { name: "general", mode: "subagent", model: { providerID: "missing", modelID: "default" } },
+      { name: "Sisyphus-Junior", mode: "subagent", model: { providerID: "missing", modelID: "default" } },
+    ]);
+    const base = fixture(config, provider, agents, {});
+    const deps: AgentModelsDeps = {
+      ...base.deps,
+      exec: async (command: string, timeout?: number): Promise<ExecResult> => {
+        if (command.includes('title:"model availability probe"')) {
+          const modelId = extractProbedModelId(command);
+          if (modelId === "alpha") return { stdout: healthy("p", "alpha"), stderr: "", exitCode: 0 };
+          if (modelId === "beta") return { stdout: healthy("q", "beta"), stderr: "", exitCode: 0 };
+          return { stdout: healthy("p", "alpha"), stderr: "", exitCode: 0 };
+        }
+        return base.deps.exec(command, timeout);
+      },
+    };
+    const result = await createAgentModelReconciler(deps).reconcileAll();
+    expect(result.changed).toBe(2);
+    const suggestions = await createAgentModelReconciler(deps).suggest();
+    expect(suggestions.get("general")).toEqual([{ model: "p/alpha" }]);
+    expect(suggestions.get("sisyphus-junior")).toEqual([{ model: "p/alpha" }]);
+    base.cleanup();
+  });
+
+  test("does not select lower score merely to diversify providers", async () => {
+    const config = JSON.stringify({ general: {}, "sisyphus-junior": {} });
+    const provider = JSON.stringify({
+      connected: ["p", "q"],
+      all: [
+        { id: "p", models: { high: { capabilities: { toolcall: true, attachment: true } } } },
+        { id: "q", models: { low: { capabilities: { toolcall: true } } } },
+      ],
+    });
+    const agents = JSON.stringify([
+      { name: "general", mode: "subagent", model: { providerID: "missing", modelID: "default" } },
+      { name: "Sisyphus-Junior", mode: "subagent", model: { providerID: "missing", modelID: "default" } },
+    ]);
+    const base = fixture(config, provider, agents, {});
+    const deps: AgentModelsDeps = {
+      ...base.deps,
+      exec: async (command: string, timeout?: number): Promise<ExecResult> => {
+        if (command.includes('title:"model availability probe"')) {
+          const modelId = extractProbedModelId(command);
+          if (modelId === "high") return { stdout: healthy("p", "high"), stderr: "", exitCode: 0 };
+          if (modelId === "low") return { stdout: healthy("q", "low"), stderr: "", exitCode: 0 };
+          return { stdout: healthy("p", "high"), stderr: "", exitCode: 0 };
+        }
+        return base.deps.exec(command, timeout);
+      },
+    };
+    const suggestions = await createAgentModelReconciler(deps).suggest();
+    expect(suggestions.get("general")).toEqual([{ model: "p/high" }]);
+    expect(suggestions.get("sisyphus-junior")).toEqual([{ model: "p/high" }]);
+    base.cleanup();
+  });
+
+  test("leaves later agents unchanged after the distinct probe budget is exhausted", async () => {
+    const models = Object.fromEntries(Array.from({ length: 13 }, (_, index) => [`model-${String(index + 1).padStart(2, "0")}`, { capabilities: {} }]));
+    const config = JSON.stringify({ general: {}, plan: {} });
+    const provider = JSON.stringify({ connected: ["p"], all: [{ id: "p", models }] });
+    const agents = JSON.stringify([
+      { name: "general", mode: "subagent", model: { providerID: "missing", modelID: "default" } },
+      { name: "plan", mode: "subagent", model: { providerID: "missing", modelID: "default" } },
+    ]);
+    const base = fixture(config, provider, agents, {});
+    const calls: string[] = [];
+    const deps: AgentModelsDeps = {
+      ...base.deps,
+      exec: async (command: string, timeout?: number): Promise<ExecResult> => {
+        calls.push(command);
+        if (command.includes('title:"model availability probe"')) {
+          return { stdout: JSON.stringify({ info: { role: "assistant", error: "404 unavailable" } }), stderr: "", exitCode: 0 };
+        }
+        return base.deps.exec(command, timeout);
+      },
+    };
+
+    const result = await createAgentModelReconciler(deps).reconcileAll();
+
+    expect(result.changed).toBe(0);
+    expect(probedModelIds(calls)).toHaveLength(12);
+    expect(new Set(probedModelIds(calls)).size).toBe(12);
+    base.cleanup();
+  });
+
 });

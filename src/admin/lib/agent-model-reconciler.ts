@@ -16,8 +16,6 @@ import {
 
 // Maximum distinct provider/model probes permitted during one reconciliation.
 const MAX_PROBES = 12;
-// Maximum concurrent probes supported by the policy; probes are batched at this ceiling.
-const PROBE_CONCURRENCY = 3;
 // The lock directory is created atomically, so its existence is the lock state.
 const LOCK_SUFFIX = ".cache/openchamber/agent-model-reconcile.lock";
 let pending = false;
@@ -145,6 +143,37 @@ export function createAgentModelReconciler(deps: AgentModelsDeps) {
     return result;
   }
 
+  function sortedCandidates(
+    agent: string,
+    catalog: readonly string[],
+    capabilities: CapabilityCatalog,
+    allowed: ReadonlySet<string> | null,
+  ): readonly string[] {
+    const filtered = catalog.filter((ref) => {
+      const parsed = parseModelReference(ref);
+      if (parsed === null) return false;
+      if (allowed !== null && !allowed.has(parsed.providerID)) return false;
+      return true;
+    });
+    // deduplicate while preserving first occurrence, then sort deterministically
+    const distinct = [...new Set(filtered)];
+    distinct.sort((left, right) => {
+      const diff = score(agent, capabilities.get(right)) - score(agent, capabilities.get(left));
+      if (diff !== 0) return diff;
+      return left.localeCompare(right);
+    });
+    return distinct;
+  }
+
+  async function pickFirstHealthy(candidates: readonly string[]): Promise<string | null> {
+    for (const ref of candidates) {
+      const result = await probe(ref);
+      if (result.status === "healthy") return ref;
+      if (result.status === "retryable" && result.reason === "probe budget exhausted") return null;
+    }
+    return null;
+  }
+
   async function namesAndResolved(
     password: string,
     config: Readonly<Record<string, { readonly models?: readonly FallbackModelEntry[] }>>,
@@ -180,19 +209,6 @@ export function createAgentModelReconciler(deps: AgentModelsDeps) {
     const connected = new Set(snapshot.connectedProviders);
     const changed: AgentModelChange[] = [];
     const decisions: Array<Record<string, unknown>> = [];
-    const selectCandidate = async (agent: string): Promise<readonly FallbackModelEntry[] | null> => {
-      const candidates = snapshot.catalog
-        .filter((ref) => parseModelReference(ref) !== null)
-        .sort((left, right) => score(agent, capabilities.get(right)) - score(agent, capabilities.get(left)) || left.localeCompare(right));
-      for (let offset = 0; offset < candidates.length; offset += PROBE_CONCURRENCY) {
-        const batch = candidates.slice(offset, offset + PROBE_CONCURRENCY);
-        const results = await Promise.all(batch.map((ref) => probe(ref)));
-        const healthyIndex = results.findIndex((result) => result.status === "healthy");
-        const selected = healthyIndex < 0 ? undefined : batch[healthyIndex];
-        if (selected !== undefined) return [{ model: selected }];
-      }
-      return null;
-    };
     for (const agent of state.names) {
       const configured = config[agent]?.models ?? [];
       const primary = configured[0];
@@ -204,16 +220,27 @@ export function createAgentModelReconciler(deps: AgentModelsDeps) {
         const parsed = parseModelReference(primary.model);
         const status = parsed === null || !connected.has(parsed.providerID) ? null : await probe(primary.model);
         observedStatus = status?.status ?? "not_checked";
-        if (status?.status === "healthy" || (status !== null && !["unavailable", "retired"].includes(status.status))) desired = [primary];
-        if (desired === null) desired = await selectCandidate(agent);
+        if (status?.status === "healthy" || (status !== null && !["unavailable", "retired"].includes(status.status))) {
+          desired = [primary];
+        } else {
+          const candidates = sortedCandidates(agent, snapshot.catalog, capabilities, null);
+          const selected = await pickFirstHealthy(candidates);
+          if (selected !== null) desired = [{ model: selected }];
+          else desired = null;
+        }
       } else {
         if (resolved !== undefined && resolvedRef !== null && connected.has(resolved.providerID)) {
           const status = await probe(resolvedRef);
           observedStatus = status.status;
-          if (status.status === "healthy" || !["unavailable", "retired"].includes(status.status)) desired = [];
+          if (status.status === "healthy" || !["unavailable", "retired"].includes(status.status)) {
+            desired = [];
+          }
         }
         if (desired === null) {
-          desired = await selectCandidate(agent);
+          const candidates = sortedCandidates(agent, snapshot.catalog, capabilities, null);
+          const selected = await pickFirstHealthy(candidates);
+          if (selected !== null) desired = [{ model: selected }];
+          else desired = null;
         }
       }
       const changedForAgent = desired !== null && !sameEntries(configured, desired);
@@ -272,23 +299,11 @@ export function createAgentModelReconciler(deps: AgentModelsDeps) {
     const allowed = providers === null ? null : new Set(providers);
     const capabilities = await fetchCapabilityCatalog(deps, password);
     const suggestions = new Map<string, readonly FallbackModelEntry[]>();
-    const candidatesFor = (agent: string): readonly string[] => snapshot.catalog
-      .filter((ref) => {
-        const parsed = parseModelReference(ref);
-        return parsed !== null && (allowed === null || allowed.has(parsed.providerID));
-      })
-      .sort((left, right) => score(agent, capabilities.get(right)) - score(agent, capabilities.get(left)) || left.localeCompare(right));
     for (const agent of state.names) {
-      const candidates = candidatesFor(agent);
-      for (let offset = 0; offset < candidates.length; offset += PROBE_CONCURRENCY) {
-        const batch = candidates.slice(offset, offset + PROBE_CONCURRENCY);
-        const results = await Promise.all(batch.map((ref) => probe(ref)));
-        const healthyIndex = results.findIndex((result) => result.status === "healthy");
-        const selected = healthyIndex < 0 ? undefined : batch[healthyIndex];
-        if (selected !== undefined) {
-          suggestions.set(agent, [{ model: selected }]);
-          break;
-        }
+      const candidates = sortedCandidates(agent, snapshot.catalog, capabilities, allowed);
+      const selected = await pickFirstHealthy(candidates);
+      if (selected !== null) {
+        suggestions.set(agent, [{ model: selected }]);
       }
     }
     return suggestions;
