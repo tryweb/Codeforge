@@ -18,7 +18,7 @@ When `CENTER_CA_CERT`, `CENTER_CLIENT_CERT`, and `CENTER_CLIENT_KEY` are set to 
 
 #### Scenario: Partial mTLS configuration
 - **WHEN** only some of the three certificate env vars are set
-- **THEN** mTLS is treated as not configured and a warning is logged
+- **THEN** mTLS is treated as not configured and the agent SHOULD log a diagnostic warning
 
 #### Scenario: Center certificate fails CA validation
 - **WHEN** the Center Server presents a certificate that does not chain to the configured CA
