@@ -169,6 +169,26 @@ describe("agent model reconciler", () => {
     ctx.cleanup();
   });
 
+  test("keeps an invalid configured primary fail-open", async () => {
+    const ctx = fixture(
+      JSON.stringify({ general: { model: "invalid-primary" } }),
+      JSON.stringify({ connected: ["p"], all: [{ id: "p", models: { other: { capabilities: {} } } }] }),
+      liveAgents,
+      { other: healthy("p", "other") },
+    );
+    const logs: string[] = [];
+    const originalError = console.error;
+    console.error = (...args: unknown[]) => logs.push(args.map(String).join(" "));
+    try {
+      const result = await createAgentModelReconciler(ctx.deps).reconcileAll();
+      expect(result.changed).toBe(0);
+      expect(logs.some((line) => line.includes('"probe":"mismatch"') && line.includes('"desired":"invalid-primary"'))).toBe(true);
+    } finally {
+      console.error = originalError;
+      ctx.cleanup();
+    }
+  });
+
   test("counts probe_failed from applyAndVerify as a reconciliation failure", async () => {
     const ctx = fixture(
       JSON.stringify({ general: { model: "p/bad" } }),
@@ -440,6 +460,36 @@ describe("agent model reconciler", () => {
     const result = await createAgentModelReconciler(deps).reconcileAll();
     expect(result.changed).toBe(1);
     expect(result.agents).toEqual(["general"]);
+    ctx.cleanup();
+  });
+
+  test("falls back from a pinned model with a disconnected provider", async () => {
+    const config = JSON.stringify({ general: { model: "missing/old" } });
+    const provider = JSON.stringify({
+      connected: ["p"],
+      all: [{ id: "p", models: { alpha: { capabilities: {} } } }],
+    });
+    const agents = JSON.stringify([
+      { name: "general", mode: "subagent", model: { providerID: "missing", modelID: "old" } },
+    ]);
+    const ctx = fixture(config, provider, agents);
+    const baseExec = ctx.deps.exec;
+    const probed: string[] = [];
+    const deps: AgentModelsDeps = {
+      ...ctx.deps,
+      exec: async (command: string, timeout?: number): Promise<ExecResult> => {
+        if (command.includes('title:"model availability probe"')) {
+          const modelId = extractProbedModelId(command);
+          if (modelId !== null) probed.push(modelId);
+          if (modelId === "alpha") return { stdout: healthy("p", "alpha"), stderr: "", exitCode: 0 };
+        }
+        return baseExec(command, timeout);
+      },
+    };
+    const result = await createAgentModelReconciler(deps).reconcileAll();
+    expect(result.changed).toBe(1);
+    expect(result.agents).toEqual(["general"]);
+    expect(probed).toEqual(["alpha"]);
     ctx.cleanup();
   });
 

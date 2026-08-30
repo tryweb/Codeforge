@@ -218,7 +218,9 @@ export function createAgentModelReconciler(deps: AgentModelsDeps) {
       let desired: readonly FallbackModelEntry[] | null = null;
       if (primary !== undefined) {
         const parsed = parseModelReference(primary.model);
-        const status = parsed === null || !connected.has(parsed.providerID) ? null : await probe(primary.model);
+        const status = parsed === null
+          ? await probe(primary.model)
+          : !connected.has(parsed.providerID) ? null : await probe(primary.model);
         observedStatus = status?.status ?? "not_checked";
         if (status?.status === "healthy" || (status !== null && !["unavailable", "retired"].includes(status.status))) {
           desired = [primary];
