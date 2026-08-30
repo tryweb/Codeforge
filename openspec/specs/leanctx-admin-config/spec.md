@@ -81,16 +81,16 @@ The Admin UI SHALL track edits locally: Apply SHALL be unavailable while there a
 - **WHEN** a Save succeeds
 - **THEN** Apply becomes enabled and the status text confirms the saved state
 
-### Requirement: Explicit compression-off migration
+### Requirement: Explicit compression restore migration
 
-The system MUST support a one-time, versioned migration that creates a backup before changing compression. The migration MUST run only when the current value is `lite`, `standard`, or `max`, MUST set compression explicitly to `off`, and MUST preserve unrelated configuration values. It MUST NOT auto-apply or restart services.
+The system MUST support a one-time, versioned migration that restores the default compression level after an upstream LeanCTX defect is fixed. The migration MUST run only when the current value is `off`, MUST set compression explicitly to `lite` (the packaged baseline default), MUST create a versioned backup before changing the value, and MUST preserve unrelated configuration values. It MUST NOT auto-apply or restart services.
 
 #### Scenario: Eligible migration
 
-- **WHEN** the versioned migration marker is absent and compression is `lite`, `standard`, or `max`
-- **THEN** a versioned backup is created, compression becomes `off`, unrelated values remain unchanged, and apply or restart remains administrator initiated
+- **WHEN** the versioned migration marker is absent and compression is `off`
+- **THEN** a versioned backup is created, compression becomes `lite`, unrelated values remain unchanged, and apply or restart remains administrator initiated
 
 #### Scenario: Migration is already complete or ineligible
 
-- **WHEN** the marker exists or compression is already `off` or another value
+- **WHEN** the marker exists or compression is already `lite`, `standard`, or `max`
 - **THEN** no migration or backup is performed
