@@ -2,7 +2,6 @@ import { readFileSync } from "fs";
 import { Hono } from "hono";
 import { execInAiDev, dockerCommand, getAiDevContainerRef, getSelfContainerRef } from "../lib/docker";
 import { VersionsPage } from "../views/versions";
-import { resolveImageRef } from "../lib/image-ref";
 
 export interface UpdateCheckResult {
   current: string;
@@ -16,9 +15,15 @@ export interface UpdateCheckResult {
 let cachedCheck: { result: UpdateCheckResult; expiresAt: number } | null = null;
 let inFlightCheck: Promise<UpdateCheckResult> | null = null;
 
+export const LITERAL_LATEST_REF = "ghcr.io/tryweb/ai-engkit:latest";
+
+export function buildLatestManifestCommand(): string {
+  return `manifest inspect ${LITERAL_LATEST_REF} | jq -r '.config.digest'`;
+}
+
 async function getRemoteDigest(): Promise<string | null> {
   const result = await dockerCommand(
-    `manifest inspect ${resolveImageRef()} | jq -r '.config.digest'`,
+    buildLatestManifestCommand(),
     15_000,
   );
   if (result.exitCode !== 0 || !result.stdout) return null;
