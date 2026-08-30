@@ -1,6 +1,19 @@
 ## [Unreleased]
 
 
+## [1.16.5] - 2026-08-30
+
+### Fixed
+- Make Agent Models table mobile-friendly
+- Make reconciliation deterministic
+- Anchor session cookie match and guard signature length
+
+### Documentation
+- Record cookie substring session shadowing fix
+
+### Changed
+- Add responsive Agent Models table layout
+
 ## [1.16.4] - 2026-08-29
 
 ### Changed
@@ -1690,7 +1703,7 @@
 
 ## Format
 
-[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.16.3...HEAD
+[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.16.5...HEAD
 [0.3.0]: https://github.com/tryweb/ai-engkit/releases/tag/v0.3.0
 [0.3.3]: https://github.com/tryweb/ai-engkit/compare/v0.3.0...v0.3.3
 [0.5.0]: https://github.com/tryweb/ai-engkit/compare/v0.3.3...v0.5.0
@@ -1846,5 +1859,5 @@
 [1.16.1]: https://github.com/tryweb/ai-engkit/compare/v1.16.0...v1.16.1
 [1.16.2]: https://github.com/tryweb/ai-engkit/compare/v1.16.1...v1.16.2
 [1.16.3]: https://github.com/tryweb/ai-engkit/compare/v1.16.2...v1.16.3
-[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.16.4...HEAD
 [1.16.4]: https://github.com/tryweb/ai-engkit/compare/v1.16.3...v1.16.4
+[1.16.5]: https://github.com/tryweb/ai-engkit/compare/v1.16.4...v1.16.5
