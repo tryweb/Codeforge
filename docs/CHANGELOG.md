@@ -1,6 +1,21 @@
 ## [Unreleased]
 
 
+## [1.16.6] - 2026-08-30
+
+### Fixed
+- Warn on partial mTLS configuration
+- Track partial mTLS configuration
+- Preserve invalid primaries during reconciliation
+- Reclaim old release-tag images in pinned installs
+
+### Documentation
+- Make partial mTLS warning advisory
+- Define invalid configured model preservation
+- Simplify dashboard metrics scope
+- Align reconfigure payload field
+- Correct leanctx and superpowers specifications
+
 ## [1.16.5] - 2026-08-30
 
 ### Fixed
@@ -1703,7 +1718,7 @@
 
 ## Format
 
-[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.16.5...HEAD
+[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.16.6...HEAD
 [0.3.0]: https://github.com/tryweb/ai-engkit/releases/tag/v0.3.0
 [0.3.3]: https://github.com/tryweb/ai-engkit/compare/v0.3.0...v0.3.3
 [0.5.0]: https://github.com/tryweb/ai-engkit/compare/v0.3.3...v0.5.0
@@ -1861,3 +1876,4 @@
 [1.16.3]: https://github.com/tryweb/ai-engkit/compare/v1.16.2...v1.16.3
 [1.16.4]: https://github.com/tryweb/ai-engkit/compare/v1.16.3...v1.16.4
 [1.16.5]: https://github.com/tryweb/ai-engkit/compare/v1.16.4...v1.16.5
+[1.16.6]: https://github.com/tryweb/ai-engkit/compare/v1.16.5...v1.16.6
