@@ -2,7 +2,7 @@
 
 Keep Agent Model assignments usable at startup, after provider credential changes, and after an Admin model save by combining deterministic selection with real inference proof and provider-scoped health caching.
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Reconciliation triggers
 The system SHALL trigger Agent Model reconciliation only when managed OpenCode becomes ready during startup, after a successful provider credential mutation, or when an Admin saves an Agent Model. Provider credential mutations SHALL include API-key add, activate, and delete, plus OAuth apply and disconnect. Provider-definition edits and runtime request errors SHALL NOT trigger reconciliation under this capability.
@@ -97,6 +97,10 @@ The system SHALL replace a configured primary automatically only when its provid
 #### Scenario: Inconclusive current-model probe preserves configuration
 - **WHEN** an Agent's current-model probe reports `retryable`, `unreachable`, or `mismatch`
 - **THEN** reconciliation leaves that Agent's configuration unchanged
+
+#### Scenario: Invalid configured reference preserves configuration
+- **WHEN** an Agent's configured primary is not a valid provider/model reference
+- **THEN** reconciliation classifies it as `mismatch`, leaves the configured reference unchanged, and does not replace it with a healthy candidate
 
 #### Scenario: No healthy candidate preserves configuration
 - **WHEN** candidate selection finds no proven-healthy model within the run budget
