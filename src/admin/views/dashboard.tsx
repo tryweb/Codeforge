@@ -344,7 +344,23 @@ const DashboardContent: FC<{ data: DashboardData }> = ({ data }) => {
         let lastEventId = 0;
         async function startUpgrade() {
           if (!confirm("ai-dev will restart during this upgrade (2-3s downtime). Proceed?")) return;
-          const res = await fetch("/api/upgrade", { method: "POST" });
+          let versions;
+          try {
+            const versionsRes = await fetch("/api/upgrade/versions");
+            versions = await versionsRes.json();
+            if (!versionsRes.ok || !versions.official_version) {
+              alert(versions.error || versions.warning || "No official release is available");
+              return;
+            }
+          } catch (e) {
+            alert("Failed to load the official release: " + (e instanceof Error ? e.message : String(e)));
+            return;
+          }
+          const res = await fetch("/api/upgrade", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ version: versions.official_version }),
+          });
           if (res.status === 409) {
             const data = await res.json();
             if (data.status && data.status.state === "running") {
