@@ -161,7 +161,8 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
             vertical-align: middle;
           }
         `}</style>
-        <table id="agent-models-table">
+        <div class="agent-models-table-wrap">
+          <table id="agent-models-table">
           <tr>
             <th>Subagent</th>
             <th>Configured model</th>
@@ -172,8 +173,8 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
           </tr>
           {state.agents.map((a) => (
             <tr data-agent={a.name}>
-              <td><code>{a.name}</code></td>
-              <td>
+              <td data-label="Subagent"><code>{a.name}</code></td>
+              <td data-label="Configured model">
                 <span class="configured-value">
                   {a.configured.length === 0 ? (
                     <span class="text-muted">—</span>
@@ -189,7 +190,7 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
                 <div class="pending-value text-sm" style="display:none; color:#f59e0b;"></div>
                 <div class="batch-result text-sm" style="display:none;"></div>
               </td>
-              <td>
+              <td data-label="Assigned model">
                 {a.resolved ? (
                   <code>
                     {a.resolved.modelID} @ {a.resolved.providerID}
@@ -198,7 +199,7 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
                   <span class="text-muted">n/a</span>
                 )}
               </td>
-              <td>
+              <td data-label="Last successful request">
                 {a.requestVerified ? (
                   <code>
                     {a.requestVerified.modelID} @ {a.requestVerified.providerID}
@@ -207,7 +208,7 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
                   <span class="text-muted">not verified</span>
                 )}
               </td>
-              <td>
+              <td data-label="Source / status">
                 {a.invalid && (
                   <span
                     title="Config has keys the OMO plugin no longer recognizes (e.g. permission). Fix or remove them for overrides to take effect."
@@ -236,7 +237,7 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
                   {a.effectiveness}
                 </span>
               </td>
-              <td>
+              <td data-label="Actions">
                 <button
                   class="btn-outline"
                   style={{
@@ -254,7 +255,8 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
               </td>
             </tr>
           ))}
-        </table>
+          </table>
+        </div>
       </div>
 
       <div id="edit-modal" class="modal-overlay" style="display:none;">
@@ -283,6 +285,14 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
           var options = Array.from(document.querySelectorAll('.provider-option'));
           var selected = options.filter(function (option) { return option.checked; }).map(function (option) { return option.value; });
           return selected.length === options.length ? null : selected;
+        }
+
+        function sameEntries(left, right) {
+          if (left.length !== right.length) return false;
+          return left.every(function (entry, index) {
+            var other = right[index];
+            return other !== undefined && entry.model === other.model && (entry.variant || '') === (other.variant || '');
+          });
         }
 
         function syncProviderSelection() {
@@ -352,8 +362,11 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
             }
             var added = 0;
             Object.keys(data.suggestions || {}).forEach(function (agent) {
-              if (!pending.has(agent)) {
-                pending.set(agent, data.suggestions[agent]);
+              var suggestion = data.suggestions[agent] || [];
+              var current = agentModelsState.agents.filter(function (item) { return item.name === agent; })[0];
+              var configured = current ? current.configured : [];
+              if (!pending.has(agent) && !sameEntries(configured, suggestion)) {
+                pending.set(agent, suggestion);
                 added += 1;
               }
             });
