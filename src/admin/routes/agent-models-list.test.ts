@@ -83,6 +83,41 @@ describe("createAgentModelsRoutes — GET /api/agent-models", () => {
     cleanup();
   });
 
+
+  test("reports awaiting request when assignment matches but recent request metadata is stale", async () => {
+    // Given: the runtime assignment matches config, while the latest retained request used an older model.
+    const { deps, cleanup } = stubDeps([
+      { match: /jq -c '\.agents/, stdout: '{"momus":{"model":"opencode/big-pickle"}}' },
+      {
+        match: /\/provider\b/,
+        stdout: JSON.stringify({
+          connected: ["opencode"],
+          all: [{ id: "opencode", models: { "big-pickle": {} } }],
+        }),
+      },
+      {
+        match: /\/agent\b/,
+        stdout: JSON.stringify([
+          { name: "Momus - Plan Reviewer", mode: "subagent", model: { modelID: "big-pickle", providerID: "opencode" } },
+        ]),
+      },
+      {
+        match: /\/session/,
+        stdout: JSON.stringify({ info: { role: "assistant", modelID: "nemotron-old", providerID: "nvidia" } }),
+      },
+    ]);
+
+    // When: the list endpoint reconciles configured, assigned, and retained request state.
+    const response = await createAgentModelsRoutes(deps).request("http://localhost/api/agent-models");
+    const data = await response.json();
+    const momus = data.agents.find((agent: { name: string }) => agent.name === "momus");
+
+    // Then: stale history does not turn a confirmed assignment into a mismatch.
+    expect(momus.effectiveness).toBe("awaiting_request");
+    expect(momus.providerConnected).toBe(true);
+    cleanup();
+  });
+
   test("maps display names back to config keys", async () => {
     const { deps, cleanup } = stubDeps([
       { match: /jq -c '\.agents/, stdout: '{"sisyphus":{},"atlas":{}}' },

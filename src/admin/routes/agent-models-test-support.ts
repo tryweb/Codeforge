@@ -22,6 +22,9 @@ export function stubDeps(handlers: readonly ExecHandler[], password: string | nu
           };
         }
       }
+      if (command.includes(".native-agent-overrides.tmp")) {
+        return { stdout: "", stderr: "", exitCode: 0 };
+      }
       if (command.includes("/provider")) {
         return {
           stdout: JSON.stringify({
