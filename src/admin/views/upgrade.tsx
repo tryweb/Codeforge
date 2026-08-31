@@ -6,6 +6,10 @@ const UpgradeContent: FC<{ devBuild?: boolean }> = ({ devBuild }) => (
   <div>
     <h2 style="margin-bottom:24px;">Upgrade Engine</h2>
     <div id="status-banner" />
+    <div class="card">
+      <h3>Current Version</h3>
+      <p id="current-version-display" class="text-sm" style="margin-top:8px;">Loading…</p>
+    </div>
     {devBuild ? (
       <div class="card" style="border-color:var(--accent);">
         <h3>Not Available in Dev Build</h3>
@@ -32,6 +36,7 @@ const UpgradeContent: FC<{ devBuild?: boolean }> = ({ devBuild }) => (
             </label>
           </div>
           <div id="no-target-warning" class="text-sm" style="display:none;color:var(--warning);" role="alert">No version selected.</div>
+          <div id="configured-version-warning" class="text-sm" style="display:none;color:var(--warning);margin-top:8px;" role="alert" />
         </div>
         <div class="card">
           <h3>Upgrade ai-dev Container</h3>
@@ -52,6 +57,8 @@ const UpgradeContent: FC<{ devBuild?: boolean }> = ({ devBuild }) => (
       let fullVersions = [];
       let displayedCount = 0;
       let officialVersion = null;
+      let configuredVersion = null;
+      let configuredVersionUnavailable = false;
       let versionsWarning = null;
       const BATCH = 10;
       function getSelectedVersion() {
@@ -71,7 +78,7 @@ const UpgradeContent: FC<{ devBuild?: boolean }> = ({ devBuild }) => (
         const hasVersions = fullVersions.length > 0;
         const errEl = document.getElementById("versions-error");
         const hasError = errEl && errEl.style.display !== "none";
-        btn.disabled = !sel || !hasVersions || hasError;
+        btn.disabled = !sel || !hasVersions || hasError || configuredVersionUnavailable;
         const warn = document.getElementById("no-target-warning");
         if (warn) warn.style.display = (!sel && hasVersions && !hasError) ? "block" : "none";
       }
@@ -107,12 +114,18 @@ const UpgradeContent: FC<{ devBuild?: boolean }> = ({ devBuild }) => (
           const res = await fetch("/api/upgrade/versions");
           const data = await res.json();
           if (loading) loading.style.display = "none";
+          const versionDisplay = document.getElementById("current-version-display");
+          if (versionDisplay) {
+            versionDisplay.textContent = data.current_version || "unknown";
+          }
           if (!res.ok) {
             if (errorEl) { errorEl.textContent = data.error || "Failed to load versions"; errorEl.style.display = "block"; }
             updateStartButton(); return;
           }
           fullVersions = Array.isArray(data.versions) ? data.versions : [];
           officialVersion = data.official_version || null;
+          configuredVersion = data.configured_version || null;
+          configuredVersionUnavailable = false;
           versionsWarning = data.warning || null;
           if (data.error) {
             if (errorEl) { errorEl.textContent = data.error; errorEl.style.display = "block"; }
@@ -132,7 +145,9 @@ const UpgradeContent: FC<{ devBuild?: boolean }> = ({ devBuild }) => (
               officialLabel.textContent = "Official release — " + officialVersion + " (latest)";
               officialRadio.disabled = false;
               if (officialWarn) officialWarn.style.display = "none";
-              officialRadio.checked = true;
+              if (!configuredVersion) {
+                officialRadio.checked = true;
+              }
             } else {
               officialLabel.textContent = "Official release — unavailable";
               officialRadio.disabled = true;
@@ -142,18 +157,33 @@ const UpgradeContent: FC<{ devBuild?: boolean }> = ({ devBuild }) => (
               if (specifiedRadio) specifiedRadio.checked = false;
             }
           }
-          if (!officialVersion && specifiedRadio && fullVersions.length > 0) {
+          const configuredWarn = document.getElementById("configured-version-warning");
+          if (configuredVersion && fullVersions.includes(configuredVersion)) {
+            if (specifiedRadio) {
+              specifiedRadio.checked = true;
+              if (officialRadio) officialRadio.checked = false;
+            }
+          } else if (configuredVersion && !fullVersions.includes(configuredVersion)) {
+            configuredVersionUnavailable = true;
+            if (specifiedRadio) specifiedRadio.checked = true;
             if (officialRadio) officialRadio.checked = false;
-            specifiedRadio.checked = false;
+            if (configuredWarn) {
+              configuredWarn.textContent = "Configured version " + configuredVersion + " is not in the discovered release list. Please select a different version.";
+              configuredWarn.style.display = "block";
+            }
           }
           displayedCount = Math.min(BATCH, fullVersions.length);
           renderSelect();
+          if (configuredVersion && fullVersions.includes(configuredVersion)) {
+            const sel = document.getElementById("specified-select");
+            if (sel) sel.value = configuredVersion;
+          }
           const moreBtn = document.getElementById("more-versions");
           if (moreBtn) moreBtn.addEventListener("click", onMore);
           const sel = document.getElementById("specified-select");
-          if (officialRadio) officialRadio.addEventListener("change", updateStartButton);
-          if (specifiedRadio) specifiedRadio.addEventListener("change", function(){ updateStartButton(); });
-          if (sel) sel.addEventListener("change", function(){ const sr=document.getElementById("target-specified"); if(sr) sr.checked=true; updateStartButton(); });
+          if (officialRadio) officialRadio.addEventListener("change", function(){ configuredVersionUnavailable = false; updateStartButton(); });
+          if (specifiedRadio) specifiedRadio.addEventListener("change", function(){ configuredVersionUnavailable = false; updateStartButton(); });
+          if (sel) sel.addEventListener("change", function(){ const sr=document.getElementById("target-specified"); if(sr) sr.checked=true; configuredVersionUnavailable = false; updateStartButton(); });
           updateStartButton();
         } catch (e) {
           if (loading) loading.style.display = "none";
@@ -164,10 +194,12 @@ const UpgradeContent: FC<{ devBuild?: boolean }> = ({ devBuild }) => (
       async function startUpgrade() {
         const sel = getSelectedVersion();
         if (!sel) { alert("Please select a version to upgrade to."); return; }
+        const official = document.getElementById("target-official");
+        const targetType = (official && official.checked) ? "official" : "specified";
         document.getElementById("start-upgrade").disabled = true;
         document.getElementById("start-upgrade").textContent = "Running...";
         document.getElementById("progress-card").style.display = "block";
-        const res = await fetch("/api/upgrade", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ version: sel }) });
+        const res = await fetch("/api/upgrade", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ version: sel, target_type: targetType }) });
         if (res.status === 409) {
           const data = await res.json();
           if (data.status && data.status.state === "running") { connectLog(); return; }

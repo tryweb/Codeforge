@@ -41,4 +41,50 @@ describe("UpgradePage view", () => {
     expect(html).toContain("getSelectedVersion");
     expect(html).toContain("BATCH");
   });
+
+  test("prod build shows current-version-display element", async () => {
+    const html = UpgradePage({ devBuild: false }).toString();
+    expect(html).toContain('id="current-version-display"');
+    expect(html).toContain("Current Version");
+  });
+
+  test("dev build shows current-version-display", async () => {
+    const html = UpgradePage({ devBuild: true }).toString();
+    expect(html).toContain('id="current-version-display"');
+  });
+
+  test("prod build shows configured-version-warning element", async () => {
+    const html = UpgradePage({ devBuild: false }).toString();
+    expect(html).toContain('id="configured-version-warning"');
+  });
+
+  test("script reads configured_version from API response", async () => {
+    const html = UpgradePage({ devBuild: false }).toString();
+    expect(html).toContain("configured_version");
+    expect(html).toContain("configuredVersion");
+  });
+
+  test("script reads current_version and displays via textContent", async () => {
+    const html = UpgradePage({ devBuild: false }).toString();
+    expect(html).toContain("current_version");
+    expect(html).toContain("current-version-display");
+    expect(html).toContain("textContent");
+  });
+
+  test("script posts target_type in upgrade request", async () => {
+    const html = UpgradePage({ devBuild: false }).toString();
+    expect(html).toContain("target_type");
+    expect(html).toContain("targetType");
+  });
+
+  test("script defaults to official when configuredVersion is null", async () => {
+    const html = UpgradePage({ devBuild: false }).toString();
+    expect(html).toContain("!configuredVersion");
+  });
+
+  test("script shows configured-version-warning when configured version not in discovered list", async () => {
+    const html = UpgradePage({ devBuild: false }).toString();
+    expect(html).toContain("configured-version-warning");
+    expect(html).toContain("is not in the discovered release list");
+  });
 });
