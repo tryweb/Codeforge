@@ -26,13 +26,15 @@ Reproduces reliably in CI because `.github/workflows/ci.yml` override mounts onl
 
 Same divergence occurs on Admin UI apply: OMO is updated and server restarted, but `opencode.json` native section was never updated, requiring a second manual restart to become effective.
 
+A later Admin implementation added the pre-restart sync but still produced a misleading failure. Its source path was `"~/.omo/omo.jsonc"`; POSIX shells do not expand `~` inside double quotes. The command then ended with `|| rm -f "$tmp"`, so a successful cleanup replaced the failed `jq` exit status with zero. Apply continued to restart and verify, even though the native override was stale, and returned `unverified` or `runtime_mismatch` after the OMO write had succeeded.
+
 ## Solution
 
 Make every OMO write a single-source sync point, reuse the existing bridge implementation:
 
 1. **`scripts/reconcile-agent-models.sh`** — add `sync_native_overrides()` that sources `lib-native-agent-overrides.bash` (probing `/entrypoint.d/`, `../entrypoint.d/`, `/opt/ai-engkit/entrypoint.d/`) and calls `merge_native_agent_overrides "$HOME/.config/opencode/opencode.json" "$HOME/.omo/omo.jsonc"`. Call it immediately after a successful `RECONCILE_STARTUP_NO_RESTART=1 bun run ...` in the main retry loop and in the deferred 60s background retry.
 
-2. **`src/admin/lib/agent-models.ts`** — add `syncNativeAgentOverrides()` that executes the same `jq -s '.[0] as $opencode | .[1] as $omo | reduce ["general","plan"][] ...'` via `deps.exec` (executes inside `ai-dev` via `execInAiDev`). Call it once at the end of `applyAndVerifyBatch` after the final decision (including rollback), so Admin apply and reconciler CLI share the same post-write sync. Failure to sync is non-blocking (`try/catch`).
+2. **`src/admin/lib/agent-models.ts`** — `syncNativeAgentOverrides()` executes the same `jq -s '.[0] as $opencode | .[1] as $omo | reduce ["general","plan"][] ...'` via `deps.exec` (inside `ai-dev` via `execInAiDev`). Use `"$HOME/.omo/omo.jsonc"`, never a quoted `~`, and preserve the failing command status across cleanup (`code=$?; rm -f "$tmp"; exit "$code"`). Call it after the OMO write and before restart. If sync fails, restore the OMO snapshot, skip restart, and return `write_failed` or `rollback_failed`; do not continue into runtime verification with divergent files.
 
 3. **`test/run-tests.sh:631`** — make `G1` eventual-consistent: retry 60×5s (300s, `for _ in $(seq 1 60); do ... [ "$OMO" = "$OPCODE" ] && break; sleep 5; done`, logging `waiting for native bridge sync: OMO='...' OPCODE='...' (attempt $_/60)`) before `assert_eq`, documenting `provider 120s + lifecycle 120s + 3×30s retry + deferred 60s = 9m43s observed in CI (33217760918: OMO ready 22:48:32, reconciled 22:51:16, 150s window missed by 15s)` vs startup race. Initially 6×5s then 30×5s (150s) still failed; 60×5s (300s) finally covered the 9m43s total from container start (22:41:33) to reconciled.
 
@@ -48,8 +50,10 @@ Do not add new allowlists, new env vars, or new config keys. Keep the bridge jq 
 
 * File sync without restart means `G1` passes but managed server still serves the previous native model until next restart. This is intentional for `NO_RESTART` startup; document as `G1 ≠ G2`.
 * Double sync (TS `deps.exec` + shell `sync_native_overrides`) is idempotent; no harm if CLI is invoked outside the shell wrapper.
+* Native sync failure is now blocking for Admin Apply. This avoids false verification results but means a missing/corrupt native config prevents Apply until the bridge can complete.
+* Restart or probe-recovery rollback currently restores OMO but does not immediately re-sync the native file. This is not a false success—the result remains failed—but can leave transient OMO/native divergence until the next successful apply or startup bridge.
 * Test retry masks a 0-300s window where OMO has been written but shell sync hasn't yet run. If retry still fails after 300s, the sync itself has failed or provider wait exceeded 300s, not the race. 30×5s (150s) was still 15s short of the 9m43s total (22:48:32→22:51:16) in 33217760918.
-* `jq` failure remains soft-fail (`rm -f tmp` / `Warning: Native agent overrides skipped`) — same behavior as ENTRYPOINT bridge. Loop variable `$_` in `for _ in $(seq ...)` expands to last arg, so log shows `attempt ]/60` — harmless, but prefer `i` for readability.
+* The startup shell bridge still soft-fails with a warning. Admin Apply deliberately differs: its API result must reflect native sync failure. Loop variable `$_` in `for _ in $(seq ...)` expands to last arg, so log shows `attempt ]/60` — harmless, but prefer `i` for readability.
 
 ## Evidence
 
@@ -60,6 +64,8 @@ Do not add new allowlists, new env vars, or new config keys. Keep the bridge jq 
 * `entrypoint.d/02-init-config.test.sh` — `AGENTS sync tests passed`, `exit 0` after change (lite migration tests also pass).
 * `bun test src/admin/lib/agent-models.test.ts` — 31 pass, 0 fail.
 * `bun test src/admin/lib/agent-model-reconciler.test.ts` — 6 pass, 0 fail (decisions: `configure_candidate` for `general`/`plan` when catalog `opencode/mimo-v2.5-free` healthy).
+* Regression verification after making Admin sync failure blocking: 70 pass, 0 fail across `src/admin/lib/agent-model-config.test.ts`, `src/admin/lib/agent-models.test.ts`, `src/admin/routes/agent-models.test.ts`, and `src/admin/routes/agent-models-list.test.ts`. The failure-path test asserts `write_failed`, no restart, and snapshot restore when native sync fails.
+* Authenticated dev batch Apply for `general → opencode/mimo-v2.5-free` returned `status: "verified"`; both `resolved` and `requestVerified` were `opencode/mimo-v2.5-free`. `docker exec` confirmed the same model in `~/.omo/omo.jsonc:agents.general` and `~/.config/opencode/opencode.json:agent.general`.
 * `git show 0824697` — prior fix moved merge after `lean-ctx init`; `git show e08fc5d` — added `RECONCILE_STARTUP_NO_RESTART=1` + 3×30s retry + deferred 60s retry.
 * New diffs: `7c525c2` (+23/+10/+9) then `c14a6bf` (6→30×5s) then `aef82be` (30→60×5s=300s) — final `test/run-tests.sh` 60×5s window covers observed 9m43s total (22:41:33 start → 22:51:16 reconciled).
 
@@ -68,7 +74,9 @@ Do not add new allowlists, new env vars, or new config keys. Keep the bridge jq 
 * `entrypoint.d/lib-native-agent-overrides.bash` — single-source `merge_native_agent_overrides` (allowlist `["general","plan"]`, `provider/model` regex, variant handling).
 * `entrypoint.d/02-init-config.sh:338` — ENTRYPOINT bridge call site (now correctly after `lean-ctx init` per 0824697).
 * `scripts/reconcile-agent-models.sh:10-27` — `sync_native_overrides()` helper and post-CLI calls.
-* `src/admin/lib/agent-models.ts:165` — `syncNativeAgentOverrides()` + call in `applyAndVerifyBatch`.
+* `src/admin/lib/agent-models.ts` — checked `syncNativeAgentOverrides()` and the snapshot/write/sync/restart/verify flow in `applyAndVerifyBatch`.
+* `src/admin/lib/agent-models.test.ts` — quoted-tilde and native-sync failure regressions.
+* `src/admin/routes/agent-models-test-support.ts` — route fixture support for the native sync command.
 * `src/admin/lib/agent-model-types.ts:59` — `OMO_CONFIG="~/.omo/omo.jsonc"`, `CONFIGURABLE_NATIVE_AGENTS=["general","plan"]`.
 * `src/admin/lib/agent-model-reconciler.ts:183` — `selectCandidate` capability scoring for `general`.
 * `test/run-tests.sh:631` — eventual-consistency retry for `general native model` assertion.
