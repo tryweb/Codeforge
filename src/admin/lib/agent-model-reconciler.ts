@@ -3,6 +3,8 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { displayNameToKey } from "./agent-model-config";
 import { createAgentModelsLib, type AgentModelsLib } from "./agent-models";
+import { fetchModelMetadata } from "./model-metadata";
+import { capabilityScore, compareReferences, suggestForMode, type PolicyCapabilityCatalog, type SuggestionMode } from "./agent-model-suggestion-policy";
 import { parseModelReference, probeModel, pruneStaleProbeCacheForProvider, type ProbeResult } from "./model-probe";
 import {
   CONFIGURABLE_NATIVE_AGENTS,
@@ -68,28 +70,7 @@ function resultForNoop(entries: readonly FallbackModelEntry[]): ApplyResult {
   };
 }
 
-function category(agent: string): "reasoning" | "exploration" | "general" {
-  if (["plan", "oracle", "metis", "momus"].includes(agent)) return "reasoning";
-  if (["explore", "librarian"].includes(agent)) return "exploration";
-  return "general";
-}
-
-function score(agent: string, capability: Capability | undefined): number {
-  if (capability === undefined) return 0;
-  const inputCount = capability.input === undefined ? 0 : Object.keys(capability.input).length;
-  switch (category(agent)) {
-    case "reasoning":
-      return (capability.reasoning === true ? 100 : 0) + (capability.toolcall === true ? 20 : 0) + inputCount;
-    case "exploration":
-      return (capability.toolcall === true ? 100 : 0) + (capability.reasoning === false ? 20 : 0) + (capability.attachment === true ? 10 : 0);
-    case "general":
-      return (capability.toolcall === true ? 100 : 0) + (capability.attachment === true ? 20 : 0) + (capability.reasoning === true ? 10 : 0);
-    default:
-      return 0;
-  }
-}
-
-function parseCapabilities(stdout: string): CapabilityCatalog {
+export function parseCapabilities(stdout: string): CapabilityCatalog {
   let parsed: unknown;
   try { parsed = JSON.parse(stdout); } catch { return new Map(); }
   if (!isRecord(parsed) || !Array.isArray(parsed.all)) return new Map();
@@ -111,7 +92,7 @@ function parseCapabilities(stdout: string): CapabilityCatalog {
   return capabilities;
 }
 
-async function fetchCapabilityCatalog(deps: AgentModelsDeps, password: string): Promise<CapabilityCatalog> {
+export async function fetchCapabilityCatalog(deps: AgentModelsDeps, password: string): Promise<CapabilityCatalog> {
   const auth = Buffer.from(`opencode:${password}`).toString("base64");
   const managedDir = MANAGED_OPENCODE_DIR;
   const script = `for f in ${managedDir}/*.json; do
@@ -158,9 +139,9 @@ export function createAgentModelReconciler(deps: AgentModelsDeps) {
     // deduplicate while preserving first occurrence, then sort deterministically
     const distinct = [...new Set(filtered)];
     distinct.sort((left, right) => {
-      const diff = score(agent, capabilities.get(right)) - score(agent, capabilities.get(left));
+      const diff = capabilityScore(agent, capabilities.get(right)) - capabilityScore(agent, capabilities.get(left));
       if (diff !== 0) return diff;
-      return left.localeCompare(right);
+      return compareReferences(left, right);
     });
     return distinct;
   }
@@ -288,6 +269,59 @@ export function createAgentModelReconciler(deps: AgentModelsDeps) {
     };
   }
 
+  async function suggestExplicit(
+    mode: SuggestionMode,
+    selectedProviders: readonly string[] | null,
+    metadataOptions: { readonly fetchImpl?: (input: string | URL | Request, init?: RequestInit) => Promise<Response>; readonly now?: () => number } = {},
+  ): Promise<import("./agent-model-suggestion-policy").PolicyOutput> {
+    const password = lib.getServerPassword();
+    if (password === null) {
+      return {
+        mode,
+        providers: selectedProviders === null ? [] : [...selectedProviders],
+        sourceStatus: "unavailable" as const,
+        sourceAgeMs: null,
+        warnings: ["metadata_unavailable" as const],
+        suggestions: new Map(),
+      };
+    }
+    const [metadata, snapshot, state, capabilities] = await Promise.all([
+      fetchModelMetadata(metadataOptions),
+      lib.fetchProviderSnapshot(password),
+      (async () => {
+        const cfg = await lib.readAgentModelsConfig();
+        return namesAndResolved(password, cfg);
+      })(),
+      fetchCapabilityCatalog(deps, password),
+    ]);
+    const effectiveProviders: readonly string[] =
+      selectedProviders === null || selectedProviders.length === 0
+        ? [...snapshot.connectedProviders].sort()
+        : [...selectedProviders].sort();
+    // Narrow metadata to selected scope for freshness? Policy join filters by provider set already;
+    // but we pass effective scope to policy and keep response providers as effective.
+    const policyCapabilities: PolicyCapabilityCatalog = new Map(
+      [...capabilities.entries()].map(([k, v]) => [k, v as import("./agent-model-suggestion-policy").PolicyCapability]),
+    );
+    const output = suggestForMode({
+      mode,
+      providers: selectedProviders === null || selectedProviders.length === 0 ? [] : [...selectedProviders],
+      catalog: [...snapshot.catalog],
+      metadata: metadata.models,
+      sourceStatus: metadata.sourceStatus,
+      sourceAgeMs: metadata.sourceAgeMs,
+      warnings: [...metadata.warnings],
+      capabilities: policyCapabilities,
+      agents: [...state.names],
+    });
+    // Ensure explicit path never triggers probes: assert by not calling probe helpers.
+    // Override providers to effective for response contract.
+    return {
+      ...output,
+      providers: [...effectiveProviders],
+    };
+  }
+
   async function suggest(providers: readonly string[] | null = null): Promise<ReadonlyMap<string, readonly FallbackModelEntry[]>> {
     const password = lib.getServerPassword();
     if (password === null) return new Map();
@@ -348,5 +382,5 @@ export function createAgentModelReconciler(deps: AgentModelsDeps) {
     }, resultForNoop(entries));
   }
 
-  return { reconcileAll, applyAgent, suggest };
+  return { reconcileAll, applyAgent, suggest, suggestExplicit };
 }
