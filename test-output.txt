@@ -1,0 +1,211 @@
+  [0;32mPASS[0m repository and generated AGENTS authority guidance agree
+  [0;32mPASS[0m AGENTS synchronization marker tests pass
+  [0;32mPASS[0m runtime image excludes entrypoint test helpers
+  [0;32mPASS[0m lean-ctx reliability selfcheck passes
+============================================
+ OpenChamber Test Suite
+ Container: ci-test
+ Port: 8001
+============================================
+
+--- Container Status ---
+  [0;32mPASS[0m Container exists and running
+  [0;32mPASS[0m No restarts (RestartCount=0)
+
+--- User & Environment ---
+  [0;32mPASS[0m Running as devuser
+  [0;32mPASS[0m HOME is /home/devuser
+
+--- Versions ---
+  [0;32mPASS[0m opencode version (1.18.25)
+  [0;32mPASS[0m openchamber version (1.22.0)
+  [0;32mPASS[0m openspec installed (1.11.0)
+  [0;32mPASS[0m gh CLI installed
+  [0;32mPASS[0m glab CLI installed
+
+--- Config Files ---
+  [0;32mPASS[0m opencode.json exists
+  [0;32mPASS[0m settings.json exists
+  [0;32mPASS[0m opencode.json has 2 plugin(s)
+
+--- Data Persistence ---
+  [0;32mPASS[0m opencode.db exists
+  [0;32mPASS[0m openchamber logs dir
+  [0;32mPASS[0m openchamber run dir
+  [0;32mPASS[0m models.json cache
+
+--- Web UI & Auth ---
+  [0;32mPASS[0m Web UI responds 200
+  [0;32mPASS[0m Web UI returns HTML
+
+--- OpenChamber Static Assets ---
+  [0;32mPASS[0m OpenChamber /favicon.ico served (200)
+  [0;32mPASS[0m OpenChamber /favicon.svg served (200)
+  [0;32mPASS[0m OpenChamber /favicon-32.png served (200)
+  [0;32mPASS[0m OpenChamber /site.webmanifest served (200)
+  [0;32mPASS[0m No new OpenChamber NotFoundError entries
+  [0;32mPASS[0m OPENCHAMBER_UI_PASSWORD env var is set
+  [0;32mPASS[0m UI password applied (no unsecured warning)
+
+--- Health API ---
+  [0;32mPASS[0m Health status is ok
+  [0;32mPASS[0m OpenCode running
+  [0;32mPASS[0m OpenCode ready
+
+--- Dev Tools ---
+  [0;32mPASS[0m git available
+  [0;32mPASS[0m diff available
+  [0;32mPASS[0m jq available
+  [0;32mPASS[0m tree available
+  [0;32mPASS[0m less available
+  [0;32mPASS[0m tmux available
+  [0;32mPASS[0m python3 available
+  [0;32mPASS[0m gh available
+  [0;32mPASS[0m zip available
+  [0;32mPASS[0m unzip available
+  [0;32mPASS[0m wget available
+  [0;32mPASS[0m curl available
+  [0;32mPASS[0m ssh available
+  [0;32mPASS[0m rsync available
+  [0;32mPASS[0m htop available
+  [0;32mPASS[0m nano available
+  [0;32mPASS[0m bun available
+  [0;32mPASS[0m node available
+  [0;32mPASS[0m docker CLI works
+  [0;32mPASS[0m docker daemon reachable via socket
+  [0;32mPASS[0m docker CLI can query containers
+  [0;32mPASS[0m docker compose plugin works
+  [0;32mPASS[0m docker compose can query daemon
+  [0;32mPASS[0m docker buildx plugin works
+  [0;32mPASS[0m docker buildx can list builders
+  [0;32mPASS[0m marksman CLI works
+  [0;32mPASS[0m marksman server mode initializes before EOF
+  [0;32mPASS[0m Homebrew works
+  [0;32mPASS[0m comment-checker CLI works
+  [0;32mPASS[0m comment-checker handles empty stdin gracefully
+
+--- CodeGraph (Knowledge Graph) ---
+  [0;32mPASS[0m codegraph command available at /home/devuser/.bun/bin/codegraph
+  [0;32mPASS[0m codegraph --help works
+  [0;32mPASS[0m codegraph MCP server configured in opencode.json (.mcp.codegraph)
+  [0;32mPASS[0m playwright MCP server configured in opencode.json
+  [0;32mPASS[0m playwright MCP command resolves via pw-mcp wrapper on PATH
+
+--- LeanCTX (Context Runtime) ---
+  [0;32mPASS[0m lean-ctx config.toml exists
+  [0;32mPASS[0m lean-ctx env.sh exists
+  [0;32mPASS[0m lean-ctx shell hook exists
+  [0;32mPASS[0m ~/.bashenv exists
+  [0;32mPASS[0m lean-ctx --version reports 3.10.0
+  [0;32mPASS[0m lean-ctx config enables permission inheritance
+  [0;32mPASS[0m lean-ctx config sets lite compression
+  [0;32mPASS[0m lean-ctx config enables secret detection
+  [0;32mPASS[0m lean-ctx config enables secret redaction
+  [0;32mPASS[0m lean-ctx config omits inert cognitive mode
+  [0;32mPASS[0m lean-ctx runtime config retains a graph index cap
+  [0;32mPASS[0m lean-ctx baseline caps graph index at 5000
+  [0;32mPASS[0m ~/.bashrc contains lean-ctx shell hook
+  [0;32mPASS[0m ~/.bashrc contains lean-ctx agent aliases
+  [0;32mPASS[0m ~/.bashenv contains lean-ctx shell hook
+  [0;32mPASS[0m ~/.bashenv defines _lc hook
+  [0;32mPASS[0m BASH_ENV points to lean-ctx env.sh
+  [0;32mPASS[0m CLAUDE_ENV_FILE points to lean-ctx env.sh
+  [0;32mPASS[0m non-interactive bash inherits BASH_ENV
+  [0;32mPASS[0m non-interactive bash can resolve env.sh from BASH_ENV
+  [0;32mPASS[0m lean-ctx MCP configured in opencode.json
+  [0;32mPASS[0m opencode mcp list includes lean-ctx
+  [0;32mPASS[0m opencode mcp list shows lean-ctx connected
+  [0;32mPASS[0m lean-ctx MCP exposes ctx_read
+  [0;32mPASS[0m lean-ctx MCP exposes ctx_shell
+  [0;32mPASS[0m lean-ctx MCP exposes ctx_compose
+  [0;32mPASS[0m lean-ctx config validate passes
+  [0;32mPASS[0m lean-ctx doctor sees config.toml
+  [0;32mPASS[0m lean-ctx doctor reports permission inheritance on
+  [0;32mPASS[0m lean-ctx doctor reports shell aliases
+  [0;32mPASS[0m lean-ctx doctor reports BASH_ENV set
+  [0;32mPASS[0m lean-ctx doctor reports CLAUDE_ENV_FILE set
+
+--- OMO Unified Agent Permissions ---
+  [0;32mPASS[0m omo.jsonc.default in /etc/opencode
+  [0;32mPASS[0m omo.jsonc in user OMO directory
+  [0;32mPASS[0m legacy oh-my-openagent.json is not an active config
+  [0;32mPASS[0m OMO runtime version is pinned (4.19.4)
+  [0;32mPASS[0m OMO plugin declaration matches runtime pin
+  [0;32mPASS[0m explore agent defined
+  [0;32mPASS[0m oracle agent defined
+  [0;32mPASS[0m librarian agent defined
+  [0;32mPASS[0m multimodal-looker defined
+  [0;32mPASS[0m metis agent defined
+  [0;32mPASS[0m momus agent defined
+  [0;32mPASS[0m prometheus agent defined
+  [0;32mPASS[0m sisyphus agent defined
+  [0;32mPASS[0m hephaestus agent defined
+  [0;32mPASS[0m atlas agent defined
+  [0;32mPASS[0m sisyphus-junior defined
+  [0;32mPASS[0m OMO agents contain no unsupported permission keys
+  [0;32mPASS[0m OMO config contains no stale [opencode].agents layer
+  [0;32mPASS[0m opencode.json has no unexpected inline agents
+  waiting for native bridge sync: OMO='opencode/mimo-v2.5-free' OPCODE='' (attempt ]/60)
+  waiting for native bridge sync: OMO='opencode/mimo-v2.5-free' OPCODE='' (attempt ]/60)
+  waiting for native bridge sync: OMO='opencode/mimo-v2.5-free' OPCODE='' (attempt ]/60)
+  waiting for native bridge sync: OMO='opencode/mimo-v2.5-free' OPCODE='' (attempt ]/60)
+  waiting for native bridge sync: OMO='opencode/mimo-v2.5-free' OPCODE='' (attempt ]/60)
+  waiting for native bridge sync: OMO='opencode/mimo-v2.5-free' OPCODE='' (attempt ]/60)
+  waiting for native bridge sync: OMO='opencode/mimo-v2.5-free' OPCODE='' (attempt ]/60)
+  waiting for native bridge sync: OMO='opencode/mimo-v2.5-free' OPCODE='' (attempt ]/60)
+  waiting for native bridge sync: OMO='opencode/mimo-v2.5-free' OPCODE='' (attempt ]/60)
+  waiting for native bridge sync: OMO='opencode/mimo-v2.5-free' OPCODE='' (attempt ]/60)
+  waiting for native bridge sync: OMO='opencode/mimo-v2.5-free' OPCODE='' (attempt ]/60)
+  waiting for native bridge sync: OMO='opencode/mimo-v2.5-free' OPCODE='' (attempt ]/60)
+  waiting for native bridge sync: OMO='opencode/mimo-v2.5-free' OPCODE='' (attempt ]/60)
+  waiting for native bridge sync: OMO='opencode/mimo-v2.5-free' OPCODE='' (attempt ]/60)
+  waiting for native bridge sync: OMO='opencode/mimo-v2.5-free' OPCODE='' (attempt ]/60)
+  waiting for native bridge sync: OMO='opencode/mimo-v2.5-free' OPCODE='' (attempt ]/60)
+  waiting for native bridge sync: OMO='opencode/mimo-v2.5-free' OPCODE='' (attempt ]/60)
+  waiting for native bridge sync: OMO='opencode/mimo-v2.5-free' OPCODE='' (attempt ]/60)
+  waiting for native bridge sync: OMO='opencode/mimo-v2.5-free' OPCODE='' (attempt ]/60)
+  waiting for native bridge sync: OMO='opencode/mimo-v2.5-free' OPCODE='' (attempt ]/60)
+  waiting for native bridge sync: OMO='opencode/mimo-v2.5-free' OPCODE='' (attempt ]/60)
+  waiting for native bridge sync: OMO='opencode/mimo-v2.5-free' OPCODE='' (attempt ]/60)
+  waiting for native bridge sync: OMO='opencode/mimo-v2.5-free' OPCODE='' (attempt ]/60)
+  waiting for native bridge sync: OMO='opencode/mimo-v2.5-free' OPCODE='' (attempt ]/60)
+  waiting for native bridge sync: OMO='opencode/mimo-v2.5-free' OPCODE='' (attempt ]/60)
+  waiting for native bridge sync: OMO='opencode/mimo-v2.5-free' OPCODE='' (attempt ]/60)
+  waiting for native bridge sync: OMO='opencode/mimo-v2.5-free' OPCODE='' (attempt ]/60)
+  waiting for native bridge sync: OMO='opencode/mimo-v2.5-free' OPCODE='' (attempt ]/60)
+  waiting for native bridge sync: OMO='opencode/mimo-v2.5-free' OPCODE='' (attempt ]/60)
+  waiting for native bridge sync: OMO='opencode/mimo-v2.5-free' OPCODE='' (attempt ]/60)
+  waiting for native bridge sync: OMO='opencode/mimo-v2.5-free' OPCODE='' (attempt ]/60)
+  waiting for native bridge sync: OMO='opencode/mimo-v2.5-free' OPCODE='' (attempt ]/60)
+  waiting for native bridge sync: OMO='opencode/mimo-v2.5-free' OPCODE='' (attempt ]/60)
+  waiting for native bridge sync: OMO='opencode/mimo-v2.5-free' OPCODE='' (attempt ]/60)
+  waiting for native bridge sync: OMO='opencode/mimo-v2.5-free' OPCODE='' (attempt ]/60)
+  waiting for native bridge sync: OMO='opencode/mimo-v2.5-free' OPCODE='' (attempt ]/60)
+  waiting for native bridge sync: OMO='opencode/mimo-v2.5-free' OPCODE='' (attempt ]/60)
+  [0;32mPASS[0m general native model matches persisted OMO override
+  [0;32mPASS[0m superpowers baked plugin source present for per-project enablement
+
+--- Node/Bun Compatibility ---
+  [0;32mPASS[0m node command available at /home/devuser/.bun/bin/node
+
+--- Playwright / Chromium ---
+  [0;32mPASS[0m playwright 1.62.1 CLI works
+  [0;32mPASS[0m @playwright/mcp 0.0.79 CLI works
+  [0;32mPASS[0m MCP JSON-RPC browser_navigate succeeds
+  [0;32mPASS[0m chromium binary exists at /ms-playwright/chromium-1234/chrome-linux64/chrome
+  [0;32mPASS[0m chromium launches headless successfully
+  [0;32mPASS[0m pw-mcp wrapper is installed and executable
+  [0;32mPASS[0m opencode.json mcp.playwright uses pw-mcp wrapper
+  [0;32mPASS[0m pw-mcp wrapper pins @playwright/mcp@0.0.79
+
+--- SSH Agent ---
+  [0;32mPASS[0m ssh-agent environment exists
+Agent pid 239
+  [0;32mPASS[0m ssh-agent socket is live
+Agent pid 239
+  [0;32mPASS[0m ssh-add can query agent
+  [0;32mPASS[0m startup reports SSH-agent reload
+
+============================================
+ Results: \033[0;32m133 passed\033[0m, \033[0;31m0 failed\033[0m, \033[1;33m0 skipped\033[0m
+============================================

@@ -1,5 +1,10 @@
 ## [Unreleased]
 
+## [1.16.7] - 2026-08-31
+
+### Changed
+- Upgrade OpenChamber from 1.21.1 to 1.22.0.
+- Update the Ubuntu 24.04 APT package snapshot (6 packages have updates: perl-base (5.38.2-3.2ubuntu0.3),libpam0g (1.5.3-5ubuntu5.6),libpam-modules-bin (1.5.3-5ubuntu5.6),libpam-modules (1.5.3-5ubuntu5.6),libpam-runtime (1.5.3-5ubuntu5.6),libp11-kit0 (0.25.3-4ubuntu2.1)).
 
 ## [1.16.6] - 2026-08-30
 
@@ -1714,11 +1719,13 @@
 
 ### Changed
 - Improve the `README.md` document structure.
+
+
 ---
 
 ## Format
 
-[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.16.6...HEAD
+[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.16.7...HEAD
 [0.3.0]: https://github.com/tryweb/ai-engkit/releases/tag/v0.3.0
 [0.3.3]: https://github.com/tryweb/ai-engkit/compare/v0.3.0...v0.3.3
 [0.5.0]: https://github.com/tryweb/ai-engkit/compare/v0.3.3...v0.5.0
@@ -1877,3 +1884,4 @@
 [1.16.4]: https://github.com/tryweb/ai-engkit/compare/v1.16.3...v1.16.4
 [1.16.5]: https://github.com/tryweb/ai-engkit/compare/v1.16.4...v1.16.5
 [1.16.6]: https://github.com/tryweb/ai-engkit/compare/v1.16.5...v1.16.6
+[1.16.7]: https://github.com/tryweb/ai-engkit/compare/v1.16.6...v1.16.7
