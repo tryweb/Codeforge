@@ -3,7 +3,7 @@ import { createUpgradeRoutes, type UpgradeRoutesDeps } from "./upgrade";
 import type { GhcrDiscoveryResult } from "../lib/ghcr-versions";
 import type { UpgradeEvent } from "../lib/upgrade";
 
-function depsWith(overrides: Partial<UpgradeRoutesDeps> = {}): { deps: UpgradeRoutesDeps; state: { version: string; env: Record<string, string>; discoveryResult: GhcrDiscoveryResult; discoveryError: Error | null; upgradeState: string; writeCalls: Array<Record<string, string>>; runCalls: number } } {
+function depsWith(overrides: Partial<UpgradeRoutesDeps> = {}): { deps: UpgradeRoutesDeps; state: { version: string; env: Record<string, string>; discoveryResult: GhcrDiscoveryResult; discoveryError: Error | null; upgradeState: string; writeCalls: Array<Record<string, string>>; deleteCalls: string[]; runCalls: number } } {
   const state = {
     version: "v1.2.0",
     env: {} as Record<string, string>,
@@ -11,6 +11,7 @@ function depsWith(overrides: Partial<UpgradeRoutesDeps> = {}): { deps: UpgradeRo
     discoveryError: null as Error | null,
     upgradeState: "idle",
     writeCalls: [] as Array<Record<string, string>>,
+    deleteCalls: [] as string[],
     runCalls: 0,
   };
 
@@ -29,6 +30,12 @@ function depsWith(overrides: Partial<UpgradeRoutesDeps> = {}): { deps: UpgradeRo
       state.writeCalls.push({ ...vars });
       state.env = { ...vars };
     },
+    deleteEnvVar: (key: string) => {
+      state.deleteCalls.push(key);
+      const vars = { ...state.env };
+      delete vars[key];
+      state.env = vars;
+    },
     discoverVersions: async () => {
       if (state.discoveryError) throw state.discoveryError;
       return state.discoveryResult;
@@ -40,7 +47,7 @@ function depsWith(overrides: Partial<UpgradeRoutesDeps> = {}): { deps: UpgradeRo
 }
 
 describe("GET /api/upgrade/versions", () => {
-  test("returns normalized formal list, official_version, current_version, warning", async () => {
+  test("returns normalized formal list, official_version, current_version, configured_version, warning", async () => {
     const { deps } = depsWith();
     const app = createUpgradeRoutes(deps);
     const res = await app.request("http://localhost/api/upgrade/versions");
@@ -49,6 +56,7 @@ describe("GET /api/upgrade/versions", () => {
     expect(body["versions"]).toEqual(["v1.2.0", "v1.1.0", "v1.0.1"]);
     expect(body["official_version"]).toBe("v1.2.0");
     expect(body["current_version"]).toBe("v1.2.0");
+    expect(body["configured_version"]).toBeNull();
     expect(body["warning"]).toBeNull();
     expect(body["error"]).toBeNull();
   });
@@ -285,5 +293,183 @@ describe("POST /api/upgrade", () => {
     const app = createUpgradeRoutes(deps);
     const res = await app.request("http://localhost/api/upgrade/status");
     expect(res.status).toBe(200);
+  });
+});
+
+describe("GET /api/upgrade/versions configured_version", () => {
+  test("returns null when AI_ENGKIT_VERSION not set", async () => {
+    const { deps, state } = depsWith();
+    state.env = {};
+    const app = createUpgradeRoutes(deps);
+    const res = await app.request("http://localhost/api/upgrade/versions");
+    const body = await res.json() as Record<string, unknown>;
+    expect(body["configured_version"]).toBeNull();
+  });
+
+  test("returns trimmed value when AI_ENGKIT_VERSION is set", async () => {
+    const { deps, state } = depsWith();
+    state.env = { AI_ENGKIT_VERSION: "v1.1.0" };
+    const app = createUpgradeRoutes(deps);
+    const res = await app.request("http://localhost/api/upgrade/versions");
+    const body = await res.json() as Record<string, unknown>;
+    expect(body["configured_version"]).toBe("v1.1.0");
+  });
+
+  test("treats whitespace-only AI_ENGKIT_VERSION as null", async () => {
+    const { deps, state } = depsWith();
+    state.env = { AI_ENGKIT_VERSION: "   " };
+    const app = createUpgradeRoutes(deps);
+    const res = await app.request("http://localhost/api/upgrade/versions");
+    const body = await res.json() as Record<string, unknown>;
+    expect(body["configured_version"]).toBeNull();
+  });
+
+  test("returns configured_version in dev build response", async () => {
+    const { deps, state } = depsWith({ readVersion: () => "dev" });
+    state.env = { AI_ENGKIT_VERSION: "v1.0.1" };
+    const app = createUpgradeRoutes(deps);
+    const res = await app.request("http://localhost/api/upgrade/versions");
+    const body = await res.json() as Record<string, unknown>;
+    expect(body["configured_version"]).toBe("v1.0.1");
+    expect(body["current_version"]).toBe("dev");
+  });
+
+  test("returns configured_version in error response", async () => {
+    const { deps, state } = depsWith();
+    state.env = { AI_ENGKIT_VERSION: "v1.1.0" };
+    state.discoveryError = new Error("GHCR down");
+    const app = createUpgradeRoutes(deps);
+    const res = await app.request("http://localhost/api/upgrade/versions");
+    expect(res.status).toBe(500);
+    const body = await res.json() as Record<string, unknown>;
+    expect(body["configured_version"]).toBe("v1.1.0");
+  });
+});
+
+describe("POST /api/upgrade target_type", () => {
+  test("rejects an invalid target_type", async () => {
+    const { deps, state } = depsWith();
+    const app = createUpgradeRoutes(deps);
+    const res = await app.request("http://localhost/api/upgrade", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ version: "v1.2.0", target_type: "latest" }),
+    });
+    expect(res.status).toBe(400);
+    expect(state.writeCalls.length).toBe(0);
+    expect(state.deleteCalls.length).toBe(0);
+    expect(state.runCalls).toBe(0);
+  });
+
+  test("official deletes AI_ENGKIT_VERSION and does not write", async () => {
+    const { deps, state } = depsWith();
+    state.env = { AI_ENGKIT_VERSION: "v1.0.1", OTHER: "keep" };
+    const app = createUpgradeRoutes(deps);
+    const res = await app.request("http://localhost/api/upgrade", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ version: "v1.2.0", target_type: "official" }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json() as Record<string, unknown>;
+    expect(body["version"]).toBe("v1.2.0");
+    expect(state.deleteCalls).toEqual(["AI_ENGKIT_VERSION"]);
+    expect(state.writeCalls.length).toBe(0);
+    expect(state.env["OTHER"]).toBe("keep");
+    expect(state.env["AI_ENGKIT_VERSION"]).toBeUndefined();
+    expect(state.runCalls).toBe(1);
+  });
+
+  test("specified persists AI_ENGKIT_VERSION and does not delete", async () => {
+    const { deps, state } = depsWith();
+    state.env = { OTHER: "keep" };
+    const app = createUpgradeRoutes(deps);
+    const res = await app.request("http://localhost/api/upgrade", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ version: "v1.1.0", target_type: "specified" }),
+    });
+    expect(res.status).toBe(200);
+    expect(state.writeCalls.length).toBe(1);
+    expect(state.writeCalls[0]["AI_ENGKIT_VERSION"]).toBe("v1.1.0");
+    expect(state.writeCalls[0]["OTHER"]).toBe("keep");
+    expect(state.deleteCalls.length).toBe(0);
+    expect(state.runCalls).toBe(1);
+  });
+
+  test("official rejects when officialVersion is null", async () => {
+    const { deps, state } = depsWith();
+    state.discoveryResult = { versions: ["v1.1.0"], officialVersion: null, warning: "latest missing" };
+    const app = createUpgradeRoutes(deps);
+    const res = await app.request("http://localhost/api/upgrade", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ version: "v1.1.0", target_type: "official" }),
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json() as Record<string, unknown>;
+    expect(body["error"]).toContain("Official version unavailable");
+    expect(state.writeCalls.length).toBe(0);
+    expect(state.deleteCalls.length).toBe(0);
+  });
+
+  test("official rejects when submitted version does not match officialVersion", async () => {
+    const { deps, state } = depsWith();
+    const app = createUpgradeRoutes(deps);
+    const res = await app.request("http://localhost/api/upgrade", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ version: "v1.1.0", target_type: "official" }),
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json() as Record<string, unknown>;
+    expect(body["error"]).toContain("Official target must be");
+    expect(state.writeCalls.length).toBe(0);
+    expect(state.deleteCalls.length).toBe(0);
+  });
+
+  test("backward compat: no target_type behaves as specified", async () => {
+    const { deps, state } = depsWith();
+    state.env = { OTHER: "keep" };
+    const app = createUpgradeRoutes(deps);
+    const res = await app.request("http://localhost/api/upgrade", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ version: "v1.1.0" }),
+    });
+    expect(res.status).toBe(200);
+    expect(state.writeCalls.length).toBe(1);
+    expect(state.writeCalls[0]["AI_ENGKIT_VERSION"]).toBe("v1.1.0");
+    expect(state.deleteCalls.length).toBe(0);
+    expect(state.runCalls).toBe(1);
+  });
+
+  test("official removes existing AI_ENGKIT_VERSION env var before upgrade", async () => {
+    const { deps, state } = depsWith();
+    state.env = { AI_ENGKIT_VERSION: "v1.0.1" };
+    const app = createUpgradeRoutes(deps);
+    const res = await app.request("http://localhost/api/upgrade", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ version: "v1.2.0", target_type: "official" }),
+    });
+    expect(res.status).toBe(200);
+    expect(state.deleteCalls).toEqual(["AI_ENGKIT_VERSION"]);
+    expect(state.env["AI_ENGKIT_VERSION"]).toBeUndefined();
+  });
+
+  test("specified overwrites existing AI_ENGKIT_VERSION with new target", async () => {
+    const { deps, state } = depsWith();
+    state.env = { AI_ENGKIT_VERSION: "v1.0.1" };
+    const app = createUpgradeRoutes(deps);
+    const res = await app.request("http://localhost/api/upgrade", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ version: "v1.2.0", target_type: "specified" }),
+    });
+    expect(res.status).toBe(200);
+    expect(state.writeCalls.length).toBe(1);
+    expect(state.writeCalls[0]["AI_ENGKIT_VERSION"]).toBe("v1.2.0");
+    expect(state.deleteCalls.length).toBe(0);
   });
 });

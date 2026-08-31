@@ -1,7 +1,7 @@
 import { readFileSync } from "fs";
 import { Hono } from "hono";
 import { runUpgrade, getState, getStatus, subscribe, getEventLog } from "../lib/upgrade";
-import { readEnvFile, writeEnvFile } from "../lib/env";
+import { readEnvFile, writeEnvFile, deleteEnvVar } from "../lib/env";
 import { discoverGhcrVersions, isFormalReleaseTag, type GhcrDiscoveryResult } from "../lib/ghcr-versions";
 import { UpgradePage } from "../views/upgrade";
 
@@ -26,6 +26,7 @@ export interface UpgradeRoutesDeps {
   readonly runUpgrade: typeof runUpgrade;
   readonly readEnvFile: typeof readEnvFile;
   readonly writeEnvFile: typeof writeEnvFile;
+  readonly deleteEnvVar: typeof deleteEnvVar;
   readonly discoverVersions: () => Promise<GhcrDiscoveryResult>;
 }
 
@@ -38,11 +39,19 @@ const REAL_DEPS: UpgradeRoutesDeps = {
   runUpgrade,
   readEnvFile,
   writeEnvFile,
+  deleteEnvVar,
   discoverVersions: () => discoverGhcrVersions(),
 };
 
 function isDevBuild(version: string): boolean {
   return version === "dev";
+}
+
+function resolveConfiguredVersion(env: Record<string, string>): string | null {
+  const raw = env["AI_ENGKIT_VERSION"];
+  if (typeof raw !== "string") return null;
+  const trimmed = raw.trim();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 export function createUpgradeRoutes(options: Partial<UpgradeRoutesDeps> = {}): Hono {
@@ -56,12 +65,14 @@ export function createUpgradeRoutes(options: Partial<UpgradeRoutesDeps> = {}): H
 
   upgrade.get("/api/upgrade/versions", async (c) => {
     const version = deps.readVersion();
+    const configured = resolveConfiguredVersion(deps.readEnvFile());
     if (isDevBuild(version)) {
       return c.json(
         {
           versions: [],
           official_version: null,
           current_version: version,
+          configured_version: configured,
           warning: "Dev build — version selector not available",
           error: null,
         },
@@ -74,6 +85,7 @@ export function createUpgradeRoutes(options: Partial<UpgradeRoutesDeps> = {}): H
         versions: [...discovery.versions],
         official_version: discovery.officialVersion,
         current_version: version,
+        configured_version: configured,
         warning: discovery.warning,
         error: null,
       });
@@ -84,6 +96,7 @@ export function createUpgradeRoutes(options: Partial<UpgradeRoutesDeps> = {}): H
           versions: [],
           official_version: null,
           current_version: version,
+          configured_version: configured,
           warning: null,
           error: message,
         },
@@ -122,6 +135,12 @@ export function createUpgradeRoutes(options: Partial<UpgradeRoutesDeps> = {}): H
       return c.json({ error: `Invalid version "${target}": must match v1.x.y` }, 400);
     }
 
+    const requestedTargetType = body["target_type"];
+    if (requestedTargetType !== undefined && requestedTargetType !== "official" && requestedTargetType !== "specified") {
+      return c.json({ error: "target_type must be 'official' or 'specified'" }, 400);
+    }
+    const targetType = requestedTargetType ?? "specified";
+
     let discovery: GhcrDiscoveryResult;
     try {
       discovery = await deps.discoverVersions();
@@ -134,9 +153,18 @@ export function createUpgradeRoutes(options: Partial<UpgradeRoutesDeps> = {}): H
       return c.json({ error: "No formal releases available" }, 400);
     }
 
-    const allowed = new Set(discovery.versions);
-    if (!allowed.has(target)) {
-      return c.json({ error: `Unknown version "${target}"` }, 400);
+    if (targetType === "official") {
+      if (!discovery.officialVersion) {
+        return c.json({ error: "Official version unavailable — no latest alias resolved" }, 400);
+      }
+      if (target !== discovery.officialVersion) {
+        return c.json({ error: `Official target must be the resolved official version (${discovery.officialVersion}), not "${target}"` }, 400);
+      }
+    } else {
+      const allowed = new Set(discovery.versions);
+      if (!allowed.has(target)) {
+        return c.json({ error: `Unknown version "${target}"` }, 400);
+      }
     }
 
     if (upgradeStartInFlight || deps.getState() === "running") {
@@ -145,9 +173,13 @@ export function createUpgradeRoutes(options: Partial<UpgradeRoutesDeps> = {}): H
 
     upgradeStartInFlight = true;
     try {
-      const env = deps.readEnvFile();
-      env["AI_ENGKIT_VERSION"] = target;
-      deps.writeEnvFile(env);
+      if (targetType === "official") {
+        deps.deleteEnvVar("AI_ENGKIT_VERSION");
+      } else {
+        const env = deps.readEnvFile();
+        env["AI_ENGKIT_VERSION"] = target;
+        deps.writeEnvFile(env);
+      }
     } catch (err) {
       upgradeStartInFlight = false;
       const message = err instanceof Error ? err.message : String(err);
