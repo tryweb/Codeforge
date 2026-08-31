@@ -25,7 +25,7 @@ export interface AgentModelEntry {
   readonly providerConnected: boolean;
   readonly source: "configured" | "inherited" | "plugin";
   readonly invalid: boolean;
-  readonly effectiveness: "effective" | "runtime_mismatch" | "invalid" | "plugin" | "unverified";
+  readonly effectiveness: "effective" | "runtime_mismatch" | "awaiting_request" | "invalid" | "plugin" | "unverified";
 }
 
 export interface AgentModelConfig {

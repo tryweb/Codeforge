@@ -162,13 +162,18 @@ export function createAgentModelsLib(deps: AgentModelsDeps = REAL_DEPS) {
     return { ok: false, status: "probe_failed", error: probe.reason ?? `model ${configured} is unavailable` };
   }
 
-  async function syncNativeAgentOverrides(): Promise<void> {
+  async function syncNativeAgentOverrides(): Promise<{ readonly ok: boolean; readonly error?: string }> {
     const op = "$HOME/.config/opencode/opencode.json";
-    const omo = OMO_CONFIG;
-    const cmd = `tmp="${op}.native-agent-overrides.tmp"; [ -f "${op}" ] && [ -f "${omo}" ] && jq -s '.[0] as $opencode | .[1] as $omo | reduce ["general", "plan"][] as $name ($opencode; ($omo.agents[$name] // {}) as $override | if (($override.model | type) == "string" and ($override.model | test("^[^/[:space:]]+/[^/[:space:]]+$"))) then .agent = (.agent // {}) | .agent[$name].model = $override.model | if (($override.variant | type) == "string" and ($override.variant | length) > 0) then .agent[$name].variant = $override.variant else del(.agent[$name].variant) end else del(.agent[$name]) end)' "${op}" "${omo}" > "$tmp" 2>/dev/null && mv "$tmp" "${op}" || rm -f "$tmp"`;
+    const omo = "$HOME/.omo/omo.jsonc";
+    const cmd = `tmp="${op}.native-agent-overrides.tmp"; if [ ! -f "${op}" ] || [ ! -f "${omo}" ]; then printf '%s\n' 'native override source file missing' >&2; exit 1; fi; if jq -s '.[0] as $opencode | .[1] as $omo | reduce ["general", "plan"][] as $name ($opencode; ($omo.agents[$name] // {}) as $override | if (($override.model | type) == "string" and ($override.model | test("^[^/[:space:]]+/[^/[:space:]]+$"))) then .agent = (.agent // {}) | .agent[$name].model = $override.model | if (($override.variant | type) == "string" and ($override.variant | length) > 0) then .agent[$name].variant = $override.variant else del(.agent[$name].variant) end else del(.agent[$name]) end)' "${op}" "${omo}" > "$tmp" 2>/dev/null && mv "$tmp" "${op}"; then exit 0; else code=$?; rm -f "$tmp"; exit "$code"; fi`;
     try {
-      await deps.exec(cmd, 10_000);
-    } catch {}
+      const result = await deps.exec(cmd, 10_000);
+      return result.exitCode === 0
+        ? { ok: true }
+        : { ok: false, error: result.stderr || result.stdout || "native override synchronization failed" };
+    } catch (error: unknown) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
   }
 
   async function applyAndVerifyBatch(changes: readonly AgentModelChange[]): Promise<ReadonlyMap<string, ApplyResult>> {
@@ -194,6 +199,16 @@ export function createAgentModelsLib(deps: AgentModelsDeps = REAL_DEPS) {
       return results;
     }
 
+    const nativeSync = await syncNativeAgentOverrides();
+    if (!nativeSync.ok) {
+      const rollback = await restoreAgentModelsConfig(snapshot);
+      for (const change of changes) {
+        results.set(change.agent, rollback.ok
+          ? { ok: false, status: "write_failed", error: nativeSync.error ?? "native override synchronization failed" }
+          : { ok: false, status: "rollback_failed", error: `${nativeSync.error ?? "native override synchronization failed"}; ${rollback.error ?? "rollback failed"}` });
+      }
+      return results;
+    }
     const restart = await deps.restart();
     if (!restart.ok) {
       const rollback = await restoreAgentModelsConfig(snapshot);
@@ -230,7 +245,6 @@ export function createAgentModelsLib(deps: AgentModelsDeps = REAL_DEPS) {
         }
       }
     }
-    await syncNativeAgentOverrides();
     return results;
   }
 
@@ -315,8 +329,7 @@ export async function collectAgentModelState(
       : [];
     const resolved = resolvedByKey.get(name) ?? null;
     const requestVerified = requestVerifiedByKey.get(name) ?? null;
-    const observedModel = requestVerified ?? resolved;
-    const providerConnected = observedModel !== null && providerSnapshot.connectedProviders.includes(observedModel.providerID);
+    const providerConnected = resolved !== null && providerSnapshot.connectedProviders.includes(resolved.providerID);
     let source: AgentModelEntry["source"] = "plugin";
     if (configured.length > 0) {
       source = "configured";
@@ -328,12 +341,16 @@ export async function collectAgentModelState(
       effectiveness = "invalid";
     } else if (configured.length > 0) {
       const configuredModel = configured[0]?.model;
-      if (resolved === null || requestVerified === null || configuredModel === undefined || !providerConnected) {
+      const resolvedModel = resolved === null ? null : `${resolved.providerID}/${resolved.modelID}`;
+      const requestedModel = requestVerified === null ? null : `${requestVerified.providerID}/${requestVerified.modelID}`;
+      if (resolvedModel === null || configuredModel === undefined || !providerConnected) {
         effectiveness = "unverified";
-      } else if (`${resolved.providerID}/${resolved.modelID}` === configuredModel && `${requestVerified.providerID}/${requestVerified.modelID}` === configuredModel && `${resolved.providerID}/${resolved.modelID}` === `${requestVerified.providerID}/${requestVerified.modelID}`) {
+      } else if (resolvedModel !== configuredModel) {
+        effectiveness = "runtime_mismatch";
+      } else if (requestedModel === configuredModel) {
         effectiveness = "effective";
       } else {
-        effectiveness = "runtime_mismatch";
+        effectiveness = "awaiting_request";
       }
     }
     return {

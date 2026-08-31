@@ -15,6 +15,9 @@ function stubDeps(responses: ExecResponse[] = [], options: StubOptions = {}) {
   const deps: AgentModelsDeps = {
     exec: async (command: string, _timeoutMs?: number): Promise<DockerExecResult> => {
       calls.push(command);
+      if (command.includes(".native-agent-overrides.tmp")) {
+        return { stdout: "", stderr: "", exitCode: 0 };
+      }
       const index = responses.findIndex((response) => response.match === undefined || response.match.test(command));
       const next = index >= 0 ? responses.splice(index, 1)[0] ?? { stdout: "", exitCode: 0 } : { stdout: "", exitCode: 0 };
       return { stdout: next.stdout, stderr: next.stderr ?? "", exitCode: next.exitCode ?? 0 };
@@ -511,5 +514,70 @@ describe("applyAndVerify", () => {
     });
     expect(ctx.calls.some((command) => command.includes(`cat '${SNAPSHOT_FILE}'`))).toBe(false);
     ctx.cleanup();
+  });
+
+  test("retries request verification with the runtime display name", async () => {
+    const runtimeAgents = JSON.stringify([
+      { name: "Metis - Plan Consultant", model: { modelID: "big-pickle", providerID: "opencode" } },
+    ]);
+    const requestResult = JSON.stringify({ info: { role: "assistant", modelID: "big-pickle", providerID: "opencode" } });
+    const ctx = stubDeps([
+      { stdout: "" },
+      { stdout: runtimeAgents },
+      { stdout: requestResult },
+    ]);
+
+    const result = await createAgentModelsLib(ctx.deps).fetchSuccessfulRequestModel("testpass", "metis");
+
+    expect(result).toEqual({ modelID: "big-pickle", providerID: "opencode" });
+    expect(ctx.calls).toHaveLength(3);
+    expect(ctx.calls[0]).toContain(Buffer.from("metis").toString("base64"));
+    expect(ctx.calls[2]).toContain(Buffer.from("Metis - Plan Consultant").toString("base64"));
+  });
+
+  test("syncs native overrides before restarting managed OpenCode", async () => {
+    const calls: string[] = [];
+    const deps: AgentModelsDeps = {
+      exec: async (command) => {
+        calls.push(command);
+        if (command.includes("mktemp")) return { stdout: SNAPSHOT_FILE, stderr: "", exitCode: 0 };
+        if (command.includes(".agents[$agent]")) return { stdout: "", stderr: "", exitCode: 0 };
+        if (command.includes(".native-agent-overrides.tmp")) return { stdout: "", stderr: "", exitCode: 0 };
+        return { stdout: JSON.stringify([{ name: "explore", model: { modelID: "mimo-v2.5-free", providerID: "opencode" } }]), stderr: "", exitCode: 0 };
+      },
+      restart: async () => { calls.push("RESTART"); return { ok: true }; },
+      readEnv: () => ({ OPENCODE_SERVER_PASSWORD: "testpass" }),
+    };
+    await createAgentModelsLib(deps).applyAndVerifyBatch([{ agent: "explore", entries: [] }]);
+    const restartIndex = calls.indexOf("RESTART");
+    const syncIndex = calls.findIndex((command) => command.includes(".native-agent-overrides.tmp"));
+    expect(syncIndex).toBeGreaterThanOrEqual(0);
+    expect(calls[syncIndex]).toContain('"$HOME/.omo/omo.jsonc"');
+    expect(calls[syncIndex]).not.toContain('"~/.omo/omo.jsonc"');
+    expect(calls[syncIndex]).toContain('code=$?; rm -f "$tmp"; exit "$code"');
+    expect(restartIndex).toBeGreaterThan(syncIndex);
+  });
+
+  test("does not report Apply success when native override synchronization fails", async () => {
+    const calls: string[] = [];
+    let restartCount = 0;
+    const deps: AgentModelsDeps = {
+      exec: async (command) => {
+        calls.push(command);
+        if (command.includes("mktemp")) return { stdout: SNAPSHOT_FILE, stderr: "", exitCode: 0 };
+        if (command.includes(".agents[$agent]")) return { stdout: "", stderr: "", exitCode: 0 };
+        if (command.includes(".native-agent-overrides.tmp")) return { stdout: "", stderr: "native sync failed", exitCode: 1 };
+        if (command.includes(`cat '${SNAPSHOT_FILE}'`)) return { stdout: "", stderr: "", exitCode: 0 };
+        return { stdout: "", stderr: "", exitCode: 0 };
+      },
+      restart: async () => { restartCount += 1; return { ok: true }; },
+      readEnv: () => ({ OPENCODE_SERVER_PASSWORD: "testpass" }),
+    };
+
+    const result = await createAgentModelsLib(deps).applyAndVerify("general", [{ model: "opencode/mimo-v2.5-free" }]);
+
+    expect(result).toEqual({ ok: false, status: "write_failed", error: "native sync failed" });
+    expect(restartCount).toBe(0);
+    expect(calls.some((command) => command.includes(`cat '${SNAPSHOT_FILE}'`))).toBe(true);
   });
 });

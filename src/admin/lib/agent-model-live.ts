@@ -1,4 +1,4 @@
-import { isRecord } from "./agent-model-config";
+import { displayNameToKey, isRecord } from "./agent-model-config";
 import {
   MANAGED_OPENCODE_DIR,
   type AgentModelsDeps,
@@ -178,6 +178,14 @@ export function createAgentModelLiveClient(deps: Pick<AgentModelsDeps, "exec">) 
       .filter((name): name is string => typeof name === "string");
   }
 
+  async function resolveRuntimeAgentName(password: string, agent: string): Promise<string> {
+    const resolvedMap = await fetchResolvedAgentModels(password);
+    if (resolvedMap?.has(agent)) return agent;
+    const displayName = [...(resolvedMap?.keys() ?? [])]
+      .find((name) => displayNameToKey(name, new Set([agent])) === agent);
+    return displayName ?? agent;
+  }
+
   async function fetchConnectedCatalog(password: string | null): Promise<readonly string[]> {
     const snapshot = await fetchProviderSnapshot(password);
     return snapshot.catalog;
@@ -210,13 +218,23 @@ export function createAgentModelLiveClient(deps: Pick<AgentModelsDeps, "exec">) 
   async function fetchSuccessfulRequestModel(password: string, agent: string): Promise<ResolvedModel | null> {
     const auth = Buffer.from(`opencode:${password}`).toString("base64");
     const result = await deps.exec(buildRequestVerificationScript(auth, agent), 90_000);
-    return result.exitCode === 0 ? parseSuccessfulRequestModel(result.stdout) : null;
+    const parsed = result.exitCode === 0 ? parseSuccessfulRequestModel(result.stdout) : null;
+    if (parsed !== null) return parsed;
+    const runtimeAgent = await resolveRuntimeAgentName(password, agent);
+    if (runtimeAgent === agent) return null;
+    const retry = await deps.exec(buildRequestVerificationScript(auth, runtimeAgent), 90_000);
+    return retry.exitCode === 0 ? parseSuccessfulRequestModel(retry.stdout) : null;
   }
 
   async function fetchRecentSuccessfulRequestModel(password: string, agent: string): Promise<ResolvedModel | null> {
     const auth = Buffer.from(`opencode:${password}`).toString("base64");
     const result = await deps.exec(buildRecentRequestScript(auth, agent), 90_000);
-    return result.exitCode === 0 ? parseSuccessfulRequestModel(result.stdout) : null;
+    const parsed = result.exitCode === 0 ? parseSuccessfulRequestModel(result.stdout) : null;
+    if (parsed !== null) return parsed;
+    const runtimeAgent = await resolveRuntimeAgentName(password, agent);
+    if (runtimeAgent === agent) return null;
+    const retry = await deps.exec(buildRecentRequestScript(auth, runtimeAgent), 90_000);
+    return retry.exitCode === 0 ? parseSuccessfulRequestModel(retry.stdout) : null;
   }
 
   return {
