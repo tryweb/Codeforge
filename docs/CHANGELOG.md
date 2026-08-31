@@ -1,6 +1,23 @@
 ## [Unreleased]
 
 
+## [1.16.8] - 2026-08-31
+
+### Added
+- Add agent model suggestion modes with bounded metadata catalog
+- Expose mode-aware suggestions API
+- Align upgrade target UI state
+
+### Fixed
+- Align upgrade route target modes
+
+### Changed
+- Upgrade OpenChamber from 1.21.1 to 1.22.0.
+
+### Documentation
+- Specify agent model selection modes
+- Align upgrade channel specification
+
 ## [1.16.7] - 2026-08-31
 
 ### Added
@@ -1741,7 +1758,7 @@
 
 ## Format
 
-[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.16.7...HEAD
+[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.16.8...HEAD
 [0.3.0]: https://github.com/tryweb/ai-engkit/releases/tag/v0.3.0
 [0.3.3]: https://github.com/tryweb/ai-engkit/compare/v0.3.0...v0.3.3
 [0.5.0]: https://github.com/tryweb/ai-engkit/compare/v0.3.3...v0.5.0
@@ -1901,3 +1918,4 @@
 [1.16.5]: https://github.com/tryweb/ai-engkit/compare/v1.16.4...v1.16.5
 [1.16.6]: https://github.com/tryweb/ai-engkit/compare/v1.16.5...v1.16.6
 [1.16.7]: https://github.com/tryweb/ai-engkit/compare/v1.16.6...v1.16.7
+[1.16.8]: https://github.com/tryweb/ai-engkit/compare/v1.16.7...v1.16.8
