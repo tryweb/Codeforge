@@ -83,6 +83,12 @@ describe("buildJqWriteCommand", () => {
     expect(command).not.toContain(".agents[$agent].other");
   });
 
+  test("shell-quotes model values containing apostrophes", () => {
+    const command = buildJqWriteCommand("explore", [{ model: "provider/model'; echo pwn" }]);
+
+    expect(command).toContain(`--arg model 'provider/model'"'"'; echo pwn'`);
+  });
+
   test("clear case removes all model keys without changing sibling settings", () => {
     const command = buildJqWriteCommand("explore", []);
     expect(command).toContain(

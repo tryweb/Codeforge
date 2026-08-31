@@ -53,15 +53,16 @@ export function validateFallbackModels(input: unknown): string | null {
 }
 
 export function buildJqWriteCommand(agent: string, entries: readonly FallbackModelEntry[]): string {
+  const shellQuote = (value: string): string => "'" + value.replaceAll("'", "'\"'\"'") + "'";
   const out = "/tmp/omo.jsonc.tmp";
   const [primary] = entries;
   if (primary === undefined) {
-    return `jq --arg agent '${agent}' 'del(.agents[$agent].model, .agents[$agent].variant, .agents[$agent].models, .agents[$agent].fallback_models)' ${OMO_CONFIG} > ${out} && mv ${out} ${OMO_CONFIG}`;
+    return `jq --arg agent ${shellQuote(agent)} 'del(.agents[$agent].model, .agents[$agent].variant, .agents[$agent].models, .agents[$agent].fallback_models)' ${OMO_CONFIG} > ${out} && mv ${out} ${OMO_CONFIG}`;
   }
   const variantSet = primary.variant
     ? ` | .agents[$agent].variant = ${JSON.stringify(primary.variant)}`
     : " | del(.agents[$agent].variant)";
-  return `jq --arg model '${primary.model}' --arg agent '${agent}' '.agents[$agent].model = $model${variantSet} | del(.agents[$agent].models, .agents[$agent].fallback_models)' ${OMO_CONFIG} > ${out} && mv ${out} ${OMO_CONFIG}`;
+  return `jq --arg model ${shellQuote(primary.model)} --arg agent ${shellQuote(agent)} '.agents[$agent].model = $model${variantSet} | del(.agents[$agent].models, .agents[$agent].fallback_models)' ${OMO_CONFIG} > ${out} && mv ${out} ${OMO_CONFIG}`;
 }
 
 export function displayNameToKey(displayName: string, knownKeys: ReadonlySet<string>): string | null {
