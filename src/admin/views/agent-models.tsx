@@ -73,18 +73,41 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
           <p class="text-sm text-muted" style="margin:0 0 12px;">
             Generate a reasonable configured model from the selected providers. Manual edits are kept.
           </p>
-          <label style="display:inline-flex;align-items:center;gap:8px;margin-right:16px;">
-            <input id="provider-all" type="checkbox" checked disabled={!state.catalogAvailable || !state.hasPassword} />
-            All providers
-          </label>
-          <span id="provider-options" style="display:inline-flex;flex-wrap:wrap;gap:12px 16px;">
-            {state.providers.map((provider) => (
-              <label style="display:inline-flex;align-items:center;gap:8px;">
-                <input class="provider-option" type="checkbox" value={provider} checked disabled={!state.catalogAvailable || !state.hasPassword} />
-                {provider}
-              </label>
-            ))}
-          </span>
+          <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:center;margin-bottom:12px;">
+            <label for="suggestion-mode" style="display:inline-flex;align-items:center;gap:8px;font-weight:600;">
+              Mode
+              <select
+                id="suggestion-mode"
+                aria-label="Suggestion mode"
+                disabled={!state.catalogAvailable || !state.hasPassword}
+                style={{
+                  padding: "4px 8px",
+                  borderRadius: "6px",
+                  border: "1px solid var(--border)",
+                  background: "var(--bg)",
+                  color: "var(--text)",
+                  opacity: state.catalogAvailable && state.hasPassword ? 1 : 0.5,
+                  cursor: state.catalogAvailable && state.hasPassword ? "pointer" : "not-allowed",
+                }}
+              >
+                <option value="free" selected>Free</option>
+                <option value="economy">Economy</option>
+                <option value="performance">Performance</option>
+              </select>
+            </label>
+            <label style="display:inline-flex;align-items:center;gap:8px;">
+              <input id="provider-all" type="checkbox" checked disabled={!state.catalogAvailable || !state.hasPassword} />
+              All providers
+            </label>
+            <span id="provider-options" style="display:inline-flex;flex-wrap:wrap;gap:12px 16px;">
+              {state.providers.map((provider) => (
+                <label style="display:inline-flex;align-items:center;gap:8px;">
+                  <input class="provider-option" type="checkbox" value={provider} checked disabled={!state.catalogAvailable || !state.hasPassword} />
+                  {provider}
+                </label>
+              ))}
+            </span>
+          </div>
           <button
             id="btn-generate"
             class="btn-outline"
@@ -97,6 +120,8 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
           <span id="provider-hint" class="text-sm text-muted" style="margin-left:10px;">
             All connected providers are selected.
           </span>
+          <div id="suggestion-meta" class="text-sm text-muted" style="margin-top:12px;display:none;overflow-wrap:anywhere;word-break:break-word;" aria-live="polite"></div>
+          <div id="suggestion-list" role="list" style="margin-top:12px;display:none;overflow-wrap:anywhere;word-break:break-word;min-width:0;"></div>
         </fieldset>
       </div>
 
@@ -248,7 +273,7 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
                   }}
                   title={!state.catalogAvailable ? "Model catalog unavailable" : !state.hasPassword ? "OpenCode password unavailable" : undefined}
                   disabled={!state.catalogAvailable || !state.hasPassword}
-                  onclick={`editAgent('${a.name}')`}
+                  onclick="editAgent(this)"
                 >
                   Edit
                 </button>
@@ -287,12 +312,22 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
           return selected.length === options.length ? null : selected;
         }
 
+        function selectedMode() {
+          var el = document.getElementById('suggestion-mode');
+          var v = el ? el.value : 'free';
+          return (v === 'free' || v === 'economy' || v === 'performance') ? v : 'free';
+        }
+
         function sameEntries(left, right) {
           if (left.length !== right.length) return false;
           return left.every(function (entry, index) {
             var other = right[index];
             return other !== undefined && entry.model === other.model && (entry.variant || '') === (other.variant || '');
           });
+        }
+
+        function escapeHtml(s) {
+          return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
         }
 
         function syncProviderSelection() {
@@ -322,11 +357,84 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
           syncProviderSelection();
         }
 
+        function renderSuggestionMeta(data) {
+          var metaEl = document.getElementById('suggestion-meta');
+          if (!metaEl) return;
+          var isExplicit = data && typeof data.mode === 'string' && typeof data.sourceStatus === 'string';
+          if (!isExplicit) {
+            metaEl.style.display = 'none';
+            metaEl.textContent = '';
+            return;
+          }
+          var parts = [];
+          parts.push('Mode: ' + escapeHtml(data.mode));
+          parts.push('Source: ' + escapeHtml(data.sourceStatus));
+          if (data.sourceAgeMs !== null && data.sourceAgeMs !== undefined) {
+            var sec = Math.round(data.sourceAgeMs / 1000);
+            parts.push('Age: ' + sec + 's');
+          }
+          if (Array.isArray(data.warnings) && data.warnings.length > 0) {
+            parts.push('Warnings: ' + data.warnings.map(escapeHtml).join(', '));
+          }
+          if (Array.isArray(data.providers) && data.providers.length > 0) {
+            parts.push('Providers: ' + data.providers.map(escapeHtml).join(', '));
+          }
+          metaEl.innerHTML = parts.join(' · ');
+          metaEl.style.display = 'block';
+        }
+
+        function renderSuggestionList(data) {
+          var listEl = document.getElementById('suggestion-list');
+          if (!listEl) return;
+          var isExplicit = data && typeof data.mode === 'string' && typeof data.sourceStatus === 'string';
+          if (!isExplicit) {
+            listEl.style.display = 'none';
+            listEl.innerHTML = '';
+            return;
+          }
+          var suggestions = data.suggestions || {};
+          var agentNames = agentModelsState.agents.map(function (a) { return a.name; });
+          var htmlOut = '';
+          for (var i = 0; i < agentNames.length; i++) {
+            var agent = agentNames[i];
+            var sug = suggestions[agent];
+            if (sug && typeof sug.model === 'string' && sug.model.indexOf('/') !== -1) {
+              var reason = sug.reason ? escapeHtml(sug.reason) : '';
+              var heuristicLabel = sug.heuristic ? ' <span style="color:#b45309;font-weight:600;">⚠ heuristic</span>' : '';
+              var meta = sug.metadata || {};
+              var metaParts = [];
+              if (meta.inputPrice !== null && meta.inputPrice !== undefined) metaParts.push('in:' + meta.inputPrice);
+              if (meta.outputPrice !== null && meta.outputPrice !== undefined) metaParts.push('out:' + meta.outputPrice);
+              if (meta.contextLimit !== null && meta.contextLimit !== undefined) metaParts.push('ctx:' + meta.contextLimit);
+              if (meta.outputLimit !== null && meta.outputLimit !== undefined) metaParts.push('outLim:' + meta.outputLimit);
+              if (meta.reasoning !== null && meta.reasoning !== undefined) metaParts.push('reasoning:' + meta.reasoning);
+              if (meta.toolCall !== null && meta.toolCall !== undefined) metaParts.push('toolCall:' + meta.toolCall);
+              if (meta.deprecated) metaParts.push('deprecated');
+              var metaStr = metaParts.length ? ' [' + metaParts.map(escapeHtml).join(', ') + ']' : '';
+              var pendingLabel = pending.has(agent) ? ' (pending kept)' : '';
+              htmlOut += '<div role="listitem" class="text-sm" style="padding:6px 0;border-top:1px solid var(--border);min-width:0;"><strong>' + escapeHtml(agent) + '</strong>: <code>' + escapeHtml(sug.model) + '</code>' + heuristicLabel + pendingLabel + '<br><span class="text-muted">' + reason + metaStr + '</span></div>';
+            } else {
+              htmlOut += '<div role="listitem" class="text-sm" style="padding:6px 0;border-top:1px solid var(--border);color:var(--muted);min-width:0;"><strong>' + escapeHtml(agent) + '</strong>: no candidate for ' + escapeHtml(data.mode) + ' — no eligible model</div>';
+            }
+          }
+          var extraAgents = Object.keys(suggestions).filter(function (k) { return agentNames.indexOf(k) === -1; });
+          for (var j = 0; j < extraAgents.length; j++) {
+            var ea = extraAgents[j];
+            var esug = suggestions[ea];
+            if (esug && typeof esug.model === 'string') {
+              htmlOut += '<div role="listitem" class="text-sm" style="padding:6px 0;border-top:1px solid var(--border);min-width:0;"><strong>' + escapeHtml(ea) + '</strong>: <code>' + escapeHtml(esug.model) + '</code></div>';
+            }
+          }
+          listEl.innerHTML = htmlOut;
+          listEl.style.display = 'block';
+        }
+
         async function generateSuggestions() {
           var button = document.getElementById('btn-generate');
           var status = document.getElementById('batch-status');
           var restartStatus = document.getElementById('restart-status');
           var providerInputs = document.querySelectorAll('#provider-filter input');
+          var modeSelect = document.getElementById('suggestion-mode');
           var banner = document.createElement('div');
           var elapsed = 0;
           var timer;
@@ -335,6 +443,7 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
           button.setAttribute('aria-busy', 'true');
           button.textContent = 'Generating…';
           providerInputs.forEach(function (input) { input.disabled = true; });
+          if (modeSelect) modeSelect.disabled = true;
           banner.className = 'restart-banner';
           banner.innerHTML = '<span class="spinner"></span> Generating model suggestions… Checking provider models and preparing pending changes. <span class="probe-elapsed">0s</span>';
           document.body.appendChild(banner);
@@ -347,10 +456,13 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
           }, 1000);
           try {
             var providers = selectedProviders();
+            var mode = selectedMode();
+            var body = { mode: mode };
+            if (providers !== null) body.providers = providers;
             var res = await fetch('/api/agent-models/suggestions', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(providers === null ? {} : { providers: providers }),
+              body: JSON.stringify(body),
             });
             var data = await res.json();
             if (!res.ok) {
@@ -360,16 +472,39 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
               restartStatus.textContent = '';
               return;
             }
+            var isExplicit = data && typeof data.mode === 'string' && typeof data.sourceStatus === 'string';
             var added = 0;
-            Object.keys(data.suggestions || {}).forEach(function (agent) {
-              var suggestion = data.suggestions[agent] || [];
-              var current = agentModelsState.agents.filter(function (item) { return item.name === agent; })[0];
-              var configured = current ? current.configured : [];
-              if (!pending.has(agent) && !sameEntries(configured, suggestion)) {
-                pending.set(agent, suggestion);
-                added += 1;
-              }
-            });
+            var suggestions = data.suggestions || {};
+            if (isExplicit) {
+              renderSuggestionMeta(data);
+              Object.keys(suggestions).forEach(function (agent) {
+                var sug = suggestions[agent];
+                if (!sug || typeof sug.model !== 'string' || sug.model.indexOf('/') === -1) return;
+                var entries = [{ model: sug.model }];
+                var current = agentModelsState.agents.filter(function (item) { return item.name === agent; })[0];
+                var configured = current ? current.configured : [];
+                if (!pending.has(agent) && !sameEntries(configured, entries)) {
+                  pending.set(agent, entries);
+                  added += 1;
+                }
+              });
+              renderSuggestionList(data);
+            } else {
+              document.getElementById('suggestion-meta').style.display = 'none';
+              document.getElementById('suggestion-list').style.display = 'none';
+              Object.keys(suggestions).forEach(function (agent) {
+                var suggestion = suggestions[agent] || [];
+                if (!Array.isArray(suggestion)) return;
+                var current = agentModelsState.agents.filter(function (item) { return item.name === agent; })[0];
+                var configured = current ? current.configured : [];
+                if (!pending.has(agent) && !sameEntries(configured, suggestion)) {
+                  var valid = suggestion.every(function (e) { return typeof e.model === 'string' && e.model.indexOf('/') !== -1; });
+                  if (!valid) return;
+                  pending.set(agent, suggestion);
+                  added += 1;
+                }
+              });
+            }
             updateRowDirtyState();
             updateBatchBar();
             status.style.color = '#22c55e';
@@ -390,6 +525,7 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
             providerInputs.forEach(function (input) {
               input.disabled = !agentModelsState.catalogAvailable || !agentModelsState.hasPassword;
             });
+            if (modeSelect) modeSelect.disabled = !agentModelsState.catalogAvailable || !agentModelsState.hasPassword;
           }
         }
 
@@ -397,18 +533,21 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
 
         function rowTemplate(model, variant) {
           var modelOpts = agentModelsState.catalog.map(function (m) {
-            return '<option value="' + m + '"' + (m === model ? ' selected' : '') + '>' + m + '</option>';
+            return '<option value="' + escapeHtml(m) + '"' + (m === model ? ' selected' : '') + '>' + escapeHtml(m) + '</option>';
           }).join('');
           var variantOpts = ['', ${raw(VARIANTS.map((v) => `"${v}"`).join(","))}].map(function (v) {
             return '<option value="' + v + '"' + (v === (variant || '') ? ' selected' : '') + '>' + (v || 'default') + '</option>';
           }).join('');
-          return '<div class="model-row" style="display:flex;gap:8px;margin-bottom:8px;align-items:center;">' +
-            '<select class="model-select" style="flex:1;">' + modelOpts + '</select>' +
-            '<select class="variant-select" style="width:110px;">' + variantOpts + '</select>' +
+          return '<div class="model-row" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px;align-items:center;min-width:0;">' +
+            '<select class="model-select" style="flex:1;min-width:0;max-width:100%;">' + modelOpts + '</select>' +
+            '<select class="variant-select" style="width:110px;max-width:100%;">' + variantOpts + '</select>' +
           '</div>';
         }
 
-        function editAgent(name) {
+        function editAgent(button) {
+          var row = button.closest('tr[data-agent]');
+          var name = row ? row.getAttribute('data-agent') : null;
+          if (!name) return;
           if (!agentModelsState.catalogAvailable || !agentModelsState.hasPassword) return;
           editAgentName = name;
           var agent = agentModelsState.agents.filter(function (a) { return a.name === name; })[0];
@@ -490,7 +629,7 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
           closeModal();
           var resultEl = document.getElementById('save-result');
           // Clear any previous batch result for this agent
-          var tr = document.querySelector('tr[data-agent="' + editAgentName + '"]');
+          var tr = document.querySelector('tr[data-agent="' + CSS.escape(editAgentName) + '"]');
           if (tr) {
             var batchResultEl = tr.querySelector('.batch-result');
             if (batchResultEl) batchResultEl.style.display = 'none';
@@ -510,6 +649,10 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
           updateBatchBar();
           document.querySelectorAll('.batch-result').forEach(function (el) { el.style.display = 'none'; el.textContent = ''; });
           document.getElementById('batch-status').textContent = '';
+          var meta = document.getElementById('suggestion-meta');
+          var list = document.getElementById('suggestion-list');
+          if (meta) { meta.style.display = 'none'; meta.textContent = ''; }
+          if (list) { list.style.display = 'none'; list.innerHTML = ''; }
         }
 
         function disableTableRows() {
@@ -529,7 +672,7 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
         function renderBatchResults(results) {
           Object.keys(results).forEach(function (agent) {
             var r = results[agent];
-            var tr = document.querySelector('tr[data-agent="' + agent + '"]');
+            var tr = document.querySelector('tr[data-agent="' + CSS.escape(agent) + '"]');
             if (!tr) return;
             var batchResultEl = tr.querySelector('.batch-result');
             if (!batchResultEl) return;
@@ -538,10 +681,22 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
               batchResultEl.style.color = '#22c55e';
               batchResultEl.textContent = r.status === 'cleared' ? 'cleared → ' + (r.resolved ? r.resolved.modelID + ' @ ' + r.resolved.providerID : 'n/a') : 'verified → ' + (r.requestVerified ? r.requestVerified.modelID + ' @ ' + r.requestVerified.providerID : r.resolved ? r.resolved.modelID + ' @ ' + r.resolved.providerID : 'n/a');
             } else {
-              batchResultEl.style.color = r.status === 'unverified' ? '#f59e0b' : 'var(--danger)';
-              batchResultEl.textContent = r.status + ': ' + (r.error || 'Unknown error');
+              var message = batchResultMessage(r);
+              batchResultEl.style.color = message.color;
+              batchResultEl.textContent = message.text;
             }
           });
+        }
+
+        function batchResultMessage(r) {
+          var error = r.error || 'Unknown error';
+          if (r.status === 'unverified') return { color: '#f59e0b', text: 'Applied but could not confirm restart: ' + error };
+          if (r.status === 'write_failed' || r.status === 'restart_failed' || r.status === 'rollback_failed') {
+            return { color: 'var(--danger)', text: 'not applied — rolled back: ' + error };
+          }
+          if (r.status === 'probe_failed') return { color: 'var(--danger)', text: 'rolled back — probe failed: ' + error };
+          if (r.status === 'runtime_mismatch') return { color: 'var(--danger)', text: 'applied but mismatched: ' + error };
+          return { color: 'var(--danger)', text: r.status + ': ' + error };
         }
 
         async function applyPending() {
@@ -683,10 +838,10 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
               el.textContent = 'Applied but could not confirm the server came back: ' + data.error;
             } else if (!data.ok && data.status === 'rollback_failed') {
               el.style.color = 'var(--danger)';
-              el.textContent = 'Restart and rollback failed; configuration state may have changed: ' + data.error;
-            } else if (!data.ok && (data.status === 'write_failed' || data.status === 'restart_failed')) {
+              el.textContent = 'Applied but verification failed and rollback also failed: ' + data.error;
+            } else if (!data.ok && data.status === 'probe_failed') {
               el.style.color = 'var(--danger)';
-              el.textContent = 'Failed (configuration was not changed): ' + data.error;
+              el.textContent = 'Applied but verification probe failed: ' + data.error;
             } else {
               el.style.color = 'var(--danger)';
               el.textContent = data.error || 'Unknown error';
