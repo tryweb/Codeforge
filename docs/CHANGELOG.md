@@ -1,6 +1,29 @@
 ## [Unreleased]
 
 
+## [1.16.7] - 2026-08-31
+
+### Added
+- Add upgrade target selector
+- Add version-aware upgrade API
+- Add GHCR release discovery
+
+### Fixed
+- Route dashboard upgrades through official release
+- Keep update checks on latest image
+- Harden native override command quoting
+- Verify decorated runtime agent assignments
+
+### Documentation
+- Add upgrade version selection spec
+- Archive upgrade version selector change
+- Update OMO v5 upgrade impact assessment to beta.30
+- Document native agent bridge reconciliation
+- Document decorated agent runtime verification
+
+### Changed
+- Cover stale runtime request history
+
 ## [1.16.6] - 2026-08-30
 
 ### Fixed
@@ -1718,7 +1741,7 @@
 
 ## Format
 
-[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.16.6...HEAD
+[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.16.7...HEAD
 [0.3.0]: https://github.com/tryweb/ai-engkit/releases/tag/v0.3.0
 [0.3.3]: https://github.com/tryweb/ai-engkit/compare/v0.3.0...v0.3.3
 [0.5.0]: https://github.com/tryweb/ai-engkit/compare/v0.3.3...v0.5.0
@@ -1877,3 +1900,4 @@
 [1.16.4]: https://github.com/tryweb/ai-engkit/compare/v1.16.3...v1.16.4
 [1.16.5]: https://github.com/tryweb/ai-engkit/compare/v1.16.4...v1.16.5
 [1.16.6]: https://github.com/tryweb/ai-engkit/compare/v1.16.5...v1.16.6
+[1.16.7]: https://github.com/tryweb/ai-engkit/compare/v1.16.6...v1.16.7
