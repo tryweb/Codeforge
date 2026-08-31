@@ -6,22 +6,38 @@ import {
   REAL_DEPS,
   type AgentModelsDeps,
   type AgentModelsLib,
+  type ApplyResult,
 } from "../lib/agent-models";
 import { createAgentModelReconciler } from "../lib/agent-model-reconciler";
 import { parseModelReference, probeModel, type ProbeResult } from "../lib/model-probe";
 import { AgentModelsPage } from "../views/agent-models";
 
 const AGENT_KEY_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
+const ALLOWED_MODES = new Set(["free", "economy", "performance"] as const);
+type SuggestionMode = "free" | "economy" | "performance";
 
-function validateSuggestionBody(body: unknown): { readonly providers: readonly string[] | null } | string {
+function validateSuggestionBody(
+  body: unknown,
+): { readonly providers: readonly string[] | null; readonly mode?: SuggestionMode } | string {
   if (body === undefined || body === null) return { providers: null };
   if (typeof body !== "object" || Array.isArray(body)) return "Request body must be a JSON object";
-  const providers = (body as Record<string, unknown>).providers;
-  if (providers === undefined) return { providers: null };
-  if (!Array.isArray(providers) || providers.some((provider) => typeof provider !== "string" || provider.trim().length === 0)) {
-    return "providers must be an array of non-empty strings";
+  const record = body as Record<string, unknown>;
+  const providersRaw = record.providers;
+  let providers: readonly string[] | null = null;
+  if (providersRaw !== undefined) {
+    if (!Array.isArray(providersRaw) || providersRaw.some((provider) => typeof provider !== "string" || provider.trim().length === 0)) {
+      return "providers must be an array of non-empty strings";
+    }
+    providers = [...new Set(providersRaw.map((provider) => provider.trim()))];
   }
-  return { providers: [...new Set(providers.map((provider) => provider.trim()))] };
+  const modeRaw = record.mode;
+  if (modeRaw !== undefined) {
+    if (typeof modeRaw !== "string" || !ALLOWED_MODES.has(modeRaw as SuggestionMode)) {
+      return "mode must be one of free, economy, performance";
+    }
+    return { providers, mode: modeRaw as SuggestionMode };
+  }
+  return { providers };
 }
 
 function validateBatchBody(body: unknown): { changes: Array<{ agent: string; entries: Array<{ model: string; variant?: string }> }> } | string {
@@ -69,6 +85,26 @@ export function createAgentModelsRoutes(deps: AgentModelsDeps): Hono {
       || parsed.providers.length === state.providers.length
       ? null
       : parsed.providers;
+    if (parsed.mode !== undefined) {
+      const out = await reconciler.suggestExplicit(parsed.mode, selected);
+      const suggestions: Record<string, { readonly model: string; readonly metadata: { readonly inputPrice: number | null; readonly outputPrice: number | null; readonly contextLimit: number | null; readonly outputLimit: number | null; readonly reasoning: boolean | null; readonly toolCall: boolean | null; readonly structuredOutput: boolean | null; readonly deprecated: boolean }; readonly reason: string; readonly heuristic: boolean }> = {};
+      for (const [agent, entry] of out.suggestions) {
+        suggestions[agent] = {
+          model: entry.model,
+          metadata: { ...entry.metadata },
+          reason: entry.reason,
+          heuristic: entry.heuristic,
+        };
+      }
+      return c.json({
+        mode: out.mode,
+        providers: [...out.providers],
+        sourceStatus: out.sourceStatus,
+        sourceAgeMs: out.sourceAgeMs,
+        warnings: [...out.warnings],
+        suggestions,
+      });
+    }
     const suggestions = await reconciler.suggest(selected);
     const result: Record<string, readonly { readonly model: string; readonly variant?: string }[]> = {};
     for (const [agent, entries] of suggestions) result[agent] = entries;
@@ -128,8 +164,8 @@ export function createAgentModelsRoutes(deps: AgentModelsDeps): Hono {
 
     // Single snapshot/write/restart for the whole batch
     const batchChanges = parsed.changes.map((change) => ({ agent: change.agent.trim(), entries: change.entries }));
-    const results = await (lib as unknown as { applyAndVerifyBatch: (changes: typeof batchChanges) => Promise<Map<string, unknown>> }).applyAndVerifyBatch(batchChanges);
-    const resultsRecord: Record<string, unknown> = {};
+    const results = await lib.applyAndVerifyBatch(batchChanges);
+    const resultsRecord: Record<string, ApplyResult> = {};
     for (const [agent, result] of results) {
       resultsRecord[agent] = result;
     }
