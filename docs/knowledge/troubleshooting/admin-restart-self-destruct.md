@@ -177,6 +177,22 @@ The same Bug 2 reappeared on the **agent command path**: `src/admin/agent/comman
 
 The `ai-dev` branch keeps the direct in-place compose (safe: the admin container is not the one being recreated).
 
+## Dashboard Fast-Fail and Bounded Recovery (2026-09)
+
+A staging observation on `192.168.11.195` showed `POST /api/admin/restart` returning `200` while the admin image digest stayed unchanged and uptime continued increasing. The Dashboard route resolved bind sources only inside its delayed callback and silently returned when either source was unavailable, so the browser could not distinguish a scheduled restart from a no-op.
+
+The Dashboard path now preserves response-first self-recreate while making its observable boundaries explicit:
+
+1. Resolve the compose project and host-side `.env`/Compose bind sources before returning success. A failed or missing preflight returns HTTP `500` and does not schedule the helper.
+2. After successful preflight, return HTTP `200` and retain the two-second delayed helper launch so the response flushes before Compose stops the old admin.
+3. Handle helper rejection and non-zero exit at the route boundary with an error log. A successful helper normally kills the process before it can report completion.
+4. Capture `/api/admin/status` before restart and poll it sequentially for at most 120 seconds. Reload only after an image-digest change, an uptime reset, or recovery from observed unavailability; the still-running old admin is not mistaken for a completed restart.
+5. On timeout or HTTP failure, restore the Restart button and show actionable feedback.
+
+The helper image remains separate from the target service image. `docker compose --env-file ...` resolves both services through `${AI_ENGKIT_VERSION:-latest}`, preserving Official versus Specified channel semantics.
+
+**Evidence:** focused restart tests pass `15/15`; the complete Admin test suite passes `740/740`. The TypeScript no-excuse audit reports no violations in the five changed source/test files. Live post-fix container recreation still requires deployment to the staging host.
+
 ## Related Files
 
 - `src/admin/routes/versions.ts` — inFlightCheck bug + getAiEngkitVersion / getLocalDigest fixes
