@@ -33,6 +33,8 @@ All tokens are CSS custom properties on `:root` in `style.css`:
 | `--text-xs` … `--text-4xl` | 0.75rem … 2.25rem | type scale |
 | `--text-code` | 0.8125rem | inline code |
 
+Semantic tones map to tokens: `success` → `var(--success)` + `.status-pill--success`/`.badge-success`; `warning` → `var(--warning)` + `.status-pill--warning`/`.badge-warning`; `danger` → `var(--danger)` + `.status-pill--danger`/`.badge-danger`; `neutral` → `var(--text-muted)` + `.status-pill--neutral` neutral surface. Color is never the sole indicator — each tone carries visible text.
+
 ## 3. Primitives
 
 Named classes, defined in `style.css`; JSX primitives live in
@@ -40,19 +42,31 @@ Named classes, defined in `style.css`; JSX primitives live in
 
 ### StatusPill — `.status-pill` + `.status-pill--{tone}`
 Compact rounded status indicator. Tones: `success`, `danger`, `warning`,
-`neutral`. Used for container status, auth state, version mismatch. Accepts an
+`neutral`. Used for container status, auth state, version mismatch, Center state, Runtime Profile fields, AI Runtime rows. Accepts an
 optional `ariaLabel` for glyph-only labels (e.g. `✓` / `✗`).
 
 ### MetricCard — `.metric-card` (+ `.metric-card--accent`)
 Overview metric surface. Rendered as `<dl>` with `<dt>` title, `<dd>` value,
 optional `<dd>` sub and foot (foot separated by a top border). Accent tone adds
 a green-tinted gradient border for the headline metric. Value uses
-`font-variant-numeric: tabular-nums` for stable scanning.
+`font-variant-numeric: tabular-nums` for stable scanning. Numbers format with `en-US` grouping.
 
 ### SiteSummary band — `.site-summary` + `__item` / `__label` / `__value`
 Compact status strip directly under the page heading. Flex-wrap row of
 label/value pairs and pills: container status + uptime, project count, GitHub /
-GitLab auth, git user, admin version mismatch, update availability.
+GitLab auth, git user, Center state (linked to `/agent`), admin version mismatch, update availability. Center item uses exact copy `Connected`/`Standalone`/`Disconnected`/`Unavailable` with tones `success`/`neutral`/`warning`/`danger` and links to `/agent`. When `admin_version` is `dev`, the `✓ Latest` badge is suppressed in both the Site Summary and the Component Versions `AI-EngKit` row; actionable states (`▲ Upgrade`, `● Pinned`, `? unavailable`) remain visible.
+
+### Runtime Profile — `.runtime-profile` + `__header` / `__fields` / `__field` / `__label` / `__value` / `__action`
+Compact read-only LeanCTX Runtime Profile card directly below the KPI row. Fixed field order: Apply state, `Compression`, `Tools`, `Security`, `Archive`, plus `Open configuration` link to `/leanctx`. Apply states: `Applied` (success), `Pending apply` (warning), `Saved config only` (neutral), `Runtime profile unavailable` (danger). Compression values: `Off`/`Lite`/`Standard`/`Max`/`Unknown`; Tools: `Minimal`/`Standard`/`Power`/`Unknown`; Archive: `On · {hours}h`/`Off`/`Unknown`; Security: `Protected` (success)/`Review` (warning)/`At risk` (danger)/`Unknown` (neutral) with focus-accessible detail listing `Secret detection`, `Secret redaction`, `Cross-project search`, `Permission inheritance` as `On`/`Off`/`Unknown`. All values carry semantic tone tokens; unknown uses neutral. The card action CTA links to `/leanctx` with min 44px target.
+
+### AI Runtime card — `.ai-runtime` + `__row` / `__label` / `__value`
+Compact AI execution dependency card. Fixed rows: `Providers` then `Subagents`. Providers row links to `/providers`; Subagents row links to `/agent-models`. No header action; rows provide navigation. Card container is not clickable (no nested interactive elements). Each row has min 44px target.
+
+### Dashboard operational row — `.dashboard__ops-row` + `.card--link`
+Container Status, Projects, and AI Runtime share one three-column row on desktop and stack below 1025px. The site-summary Projects item and Projects card link to `/projects`; GitHub, GitLab, and Git items link to `/auth/github`, `/auth/gitlab`, and `/git-config`; the AI-EngKit version links to `/versions`.
+
+### LeanCTX Insights — `.insights` + `__subsection` / `__title` / `__table`
+One container replacing the former separate full-width value panels. Fixed subsection order: `Savings Economics`, `Decision Quality`, `Evidence`, `Top Saving Tools`. Each subsection owns unique facts and renders `Data unavailable` locally without hiding siblings. Savings Economics shows gross tokens/USD, overhead USD/bounce tokens, ledger verification without repeating KPI headlines. Top Saving Tools shows at most five tools in descending token order with proportional share bars (`.share-bar` + `__fill`). All numbers use `en-US` formatting: integers/tokens grouped no decimals, percentages one decimal + `%`, USD `$` + two decimals, CPAO grouped + `μs`, ETPAO grouped + ` tokens`. Component Versions (`#versions-card`) shares heading/table rhythm with Insights per polish option 1 — `h3` 12px bottom margin and `th`/`td` 10px×12px with 4px top table offset — no content or breakpoint changes.
 
 ### Existing primitives (unchanged contract)
 - `.card` — surface container with 20px padding, 16px bottom margin.
@@ -79,45 +93,50 @@ OpenAI Pro/Plus connection surface. Success-tinted border when
 (`--font-mono`, letter-spaced), the verification link, live poll status, and
 Cancel / Finish actions; its buttons are ≥44px.
 
+### Share bar — `.share-bar` + `__fill`
+Proportional token-share bar in Top Saving Tools. Track is `--border` surface, fill uses `var(--accent)` or tone color; width is `(tokens / totalTokensSaved) * 100%`.
+
 ## 4. Dashboard page structure
 
-Order is fixed: heading → site summary band → overview metric row →
-operational cards.
+Order is fixed and does not reorder on status change:
 
 1. `h2` page heading.
-2. `.site-summary` band — scannable site status.
+2. `.site-summary` band — scannable site status including Center.
 3. `.metric-row` — three `.metric-card`s: **Token Savings** (net tokens saved,
    net USD saved, compression %), **leanCTX Memory** (total memory facts,
    projects with facts, health coverage), **leanCTX Activity** (active projects
    in 24h, savings ledger integrity).
-4. Operational cards: Container Status (restart + admin mismatch), Projects
-   (count + leanCTX detail rows), Token Savings (full ledger: gross, overhead,
-   net, SHA-256 chain), Auth Status, Component Versions (update badge + upgrade
-   progress).
+4. `.runtime-profile` — LeanCTX Runtime Profile (Apply, Compression, Tools, Security, Archive, CTA to `/leanctx`).
+5. `.dashboard__ops-row` — Container Status (restart + admin mismatch), Projects (count only, linked to `/projects`), and AI Runtime (Providers/Subagents) in one operational row.
+7. `.insights` — LeanCTX Insights (Savings Economics, Decision Quality, Evidence, Top Saving Tools) in fixed order.
+8. Existing lower-priority administrative sections: Auth Status, Component Versions.
 
 The overview row is the summary layer; the cards below keep the full detail.
-Null probes render `—` / "unavailable" in the overview and keep the layout
-stable.
+Null probes render `—` / "unavailable" / `Data unavailable` in the owning section and keep the layout
+stable. No duplicate headline values across sections.
 
 ## 5. Responsive rules
 
 | Breakpoint | Behavior |
 |---|---|
-| ≥1025px | 3-column `.metric-row`; sidebar visible |
-| 769–1024px | `.metric-row` 2 columns, third card spans full width |
-| ≤768px (and `.mobile` class) | `.metric-row` 1 column; sidebar → topbar drawer; `.grid-2`/`.grid-3` stack; 44px touch targets; cards scroll horizontally |
-| 320px floor | `.site-summary` wraps; metric values fit at `--text-3xl`; `.key-row` and `.key-add-row` wrap so registry keys fit without horizontal overflow |
+| ≥1280px (desktop) | `.runtime-profile__fields` single compact row; `.metric-row` 3 columns; `.dashboard__ops-row` 3 columns; sidebar visible; `.ai-runtime__row` horizontal |
+| 1025–1279px (desktop) | `.dashboard__ops-row` 3 columns; `.metric-row` 3 columns; sidebar visible |
+| 768–1024px (tablet) | `.metric-row` 2 columns, third card spans full width; `.dashboard__ops-row` stacks; `.runtime-profile` heading/action row + wrapping field row; `.ai-runtime__row` horizontal |
+| ≤768px (and `.mobile` class) | `.metric-row` 1 column; sidebar → topbar drawer; `.grid-2`/`.grid-3` stack; `.runtime-profile__fields` as two-column `dl` definition list; `.ai-runtime__row` stacks label/value/actions; 44px touch targets; `document.documentElement.scrollWidth === window.innerWidth` (no horizontal scroll); cards stack |
+| 375px (mobile) | Same as ≤768px; Runtime Profile fields and AI Runtime rows stacked; definition-list layout without clipping |
+| 320px floor | `.site-summary` wraps; metric values fit at `--text-3xl`; `.key-row` and `.key-add-row` wrap so registry keys fit without horizontal overflow; all new rows fit without clipping |
+
+Same DOM content is restyled rather than duplicated, preserving accessible names and avoiding divergent copy.
 
 ## 6. Accessibility constraints
 
 - `:focus-visible` outline: 2px `--accent`, 2px offset, on links, buttons,
-  inputs, and tabbable elements.
-- Semantic structure: `<section aria-label>` for the metric row, `<dl>/<dt>/<dd>`
-  for metric cards, `aria-label` on the site summary band and on glyph-only
-  pills.
+  inputs, and tabbable elements. Runtime Profile security details and AI Runtime rows expose focus-visible state; security details available on focus as well as hover.
+- Semantic structure: `<section aria-label>` for metric row, runtime profile, AI Runtime, and Insights; `<dl>/<dt>/<dd>` for metric cards, Runtime Profile fields, and key-value pairs; `<table>` with `<th>` for tool breakdown; `aria-label` on the site summary band and on glyph-only pills. Accessible names include both field label and visible state.
 - `prefers-reduced-motion`: all transitions/animations collapse to ~0 duration.
-- Touch targets ≥44px on mobile (buttons, nav links).
+- Touch targets ≥44px on mobile and at all breakpoints for buttons, CTAs, row links, nav links.
 - Muted text (`#a1a1aa`) on surface (`#27272a`) keeps ≥4.5:1 contrast.
+- Links are non-nested: card container not clickable; rows are distinct interactive targets. Details use focusable disclosure (`<details>`/keyboard-accessible tooltip) rather than hover-only content.
 
 ## 7. Accepted debt
 
@@ -133,6 +152,4 @@ stable.
   script is inlined, so its client logic lives in `/static/providers-page.js`
   (boot data injected via `window.providersBoot`); projects.tsx follows the
   same pattern with `/static/projects-page.js`.
-- Metric values formatted with `toLocaleString()` server-side (server locale).
-- Overview row and detail cards intentionally repeat headline numbers
-  (summary/detail pattern).
+- KPIs and Insights intentionally partition values: net savings/compression owned by KPI row; gross/overhead/verification owned by Savings Economics subsection.
