@@ -1,6 +1,48 @@
 ## [Unreleased]
 
 
+## [1.17.0] - 2026-09-01
+
+### Added
+- Bump Playwright MCP to 0.0.80
+- Add dashboard runtime data
+- Redesign dashboard view
+- Persist applied LeanCTX snapshots
+- Add dashboard aggregate summaries
+- Add OpenRouter provider support
+- Add role-aware model diversity policy
+
+### Fixed
+- Show Pinned state on dashboard when AI_ENGKIT_VERSION is set
+- Make dashboard restart handling explicit
+- Harden admin restart flow
+
+### Documentation
+- Archive dashboard runtime overview change
+- Add dashboard runtime overview spec
+- Update LeanCTX admin config
+- Update dashboard value metrics
+- Update dashboard design contract
+- Mention OpenRouter in provider guidance
+- Document admin restart self-destruct fix
+- Sync agent model selection specification
+- Archive role-aware scoring requirements
+- Archive role-aware scoring rationale
+- Archive bounded diversity requirements
+- Archive bounded diversity rationale
+- Specify bounded diversity tasks
+- Add bounded diversity proposal
+- Specify role-aware scoring tasks
+- Add role-aware scoring proposal
+
+### Changed
+- Polish dashboard layout
+- Archive role-aware scoring metadata
+- Archive bounded diversity metadata
+
+### Changed
+- Upgrade @playwright/mcp from 0.0.79 to 0.0.80.
+
 ## [1.16.8] - 2026-08-31
 
 ### Added
@@ -1758,7 +1800,7 @@
 
 ## Format
 
-[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.16.8...HEAD
+[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.17.0...HEAD
 [0.3.0]: https://github.com/tryweb/ai-engkit/releases/tag/v0.3.0
 [0.3.3]: https://github.com/tryweb/ai-engkit/compare/v0.3.0...v0.3.3
 [0.5.0]: https://github.com/tryweb/ai-engkit/compare/v0.3.3...v0.5.0
@@ -1919,3 +1961,4 @@
 [1.16.6]: https://github.com/tryweb/ai-engkit/compare/v1.16.5...v1.16.6
 [1.16.7]: https://github.com/tryweb/ai-engkit/compare/v1.16.6...v1.16.7
 [1.16.8]: https://github.com/tryweb/ai-engkit/compare/v1.16.7...v1.16.8
+[1.17.0]: https://github.com/tryweb/ai-engkit/compare/v1.16.8...v1.17.0
