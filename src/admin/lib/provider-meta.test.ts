@@ -97,6 +97,29 @@ describe("collectProvidersMeta", () => {
     });
   });
 
+  test("surfaces openrouter as a key-managed virtual card", async () => {
+    const seed = JSON.stringify({
+      providers: {
+        openrouter: {
+          keys: [{ id: "k1", value: "sk-or-1", createdAt: "2026-01-01T00:00:00.000Z" }],
+          activeKeyId: "k1",
+        },
+      },
+    });
+    await withRegistry(seed, async () => {
+      const meta = await collectProvidersMeta(stubDeps);
+      const openrouter = meta.providers.find((p) => p.name === "openrouter");
+      expect(openrouter).toBeDefined();
+      expect(openrouter?.label).toBe("OpenRouter");
+      expect(openrouter?.virtual).toBe(true);
+      expect(openrouter?.keyManagement).toBe(true);
+      expect(openrouter?.oauthManaged).toBe(false);
+      expect(openrouter?.registry.keyCount).toBe(1);
+      expect(openrouter?.registry.activeKeyId).toBe("k1");
+      expect(JSON.stringify(meta)).not.toContain("sk-or-1");
+    });
+  });
+
   test("auto-imports an auth-store key into an empty registry and masks it", async () => {
     const rawKey = "nvapi-sk-autoimport-1234567890";
     authStoreKeys.set("nvidia", rawKey);
