@@ -1,4 +1,5 @@
 import { displayNameToKey, isRecord } from "./agent-model-config";
+import { createAgentModelHistoryClient } from "./agent-model-history";
 import {
   MANAGED_OPENCODE_DIR,
   type AgentModelsDeps,
@@ -134,6 +135,7 @@ function parseCachedCatalog(stdout: string, connectedProviders: readonly string[
 }
 
 export function createAgentModelLiveClient(deps: Pick<AgentModelsDeps, "exec">) {
+  const history = createAgentModelHistoryClient(deps);
   async function fetchResolvedAgentModels(password: string): Promise<Map<string, ResolvedModel> | null> {
     const auth = Buffer.from(`opencode:${password}`).toString("base64");
     const result = await deps.exec(buildAgentFetchScript(auth), 90_000);
@@ -240,6 +242,7 @@ export function createAgentModelLiveClient(deps: Pick<AgentModelsDeps, "exec">) 
   return {
     fetchConnectedCatalog,
     fetchProviderSnapshot,
+    fetchRecentRequestModels: history.fetchRecentRequestModels,
     fetchRecentSuccessfulRequestModel,
     fetchSuccessfulRequestModel,
     fetchResolvedAgentModels,

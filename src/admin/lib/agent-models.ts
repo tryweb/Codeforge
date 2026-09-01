@@ -262,6 +262,7 @@ export function createAgentModelsLib(deps: AgentModelsDeps = REAL_DEPS) {
     getServerPassword,
     fetchConnectedCatalog: live.fetchConnectedCatalog,
     fetchProviderSnapshot: live.fetchProviderSnapshot,
+    fetchRecentRequestModels: live.fetchRecentRequestModels,
     fetchRecentSuccessfulRequestModel: live.fetchRecentSuccessfulRequestModel,
     fetchSuccessfulRequestModel: live.fetchSuccessfulRequestModel,
     fetchResolvedAgentModels: live.fetchResolvedAgentModels,
@@ -279,6 +280,8 @@ export type AgentModelsViewState = {
   providers: string[];
   hasPassword: boolean;
   catalogAvailable: boolean;
+  historyTruncated?: boolean;
+  historyWarning?: string;
 };
 
 /** Merge configured agents with live /agent names into per-agent view entries. */
@@ -315,12 +318,36 @@ export async function collectAgentModelState(
 
   const names = [...configurableKeys].sort();
 
-  const requestVerifiedEntries = await Promise.all(names.map(async (name): Promise<readonly [string, ResolvedModel | null]> => {
+  const recentRequestResult = password === null
+    ? { models: [], truncated: false }
+    : await lib.fetchRecentRequestModels(password);
+  const recentRequestModels = recentRequestResult.models;
+  const resolvedDisplayNames = new Set(resolvedMap ? resolvedMap.keys() : []);
+  const recentRequestByKey = new Map<string, (typeof recentRequestModels)[number]>();
+  for (const request of recentRequestModels) {
+    const directKey = request.agent.toLowerCase().trim();
+    const mappedKey = displayNameToKey(request.agent, knownKeys);
+    const key = knownKeys.has(directKey)
+      ? directKey
+      : mappedKey !== null && resolvedDisplayNames.has(request.agent)
+        ? mappedKey
+        : request.agent;
+    const previous = recentRequestByKey.get(key);
+    if (previous === undefined || request.completedAt >= previous.completedAt) recentRequestByKey.set(key, request);
+  }
+  const requestVerifiedByKey = new Map<string, ResolvedModel | null>();
+  for (const name of names) {
     const entry = config[name];
-    if (password === null || entry?.invalid === true) return [name, null];
-    return [name, await lib.fetchRecentSuccessfulRequestModel(password, name)];
-  }));
-  const requestVerifiedByKey = new Map(requestVerifiedEntries);
+    if (entry?.invalid === true) {
+      requestVerifiedByKey.set(name, null);
+      continue;
+    }
+    const match = recentRequestByKey.get(name);
+    requestVerifiedByKey.set(name, match === undefined ? null : {
+      modelID: match.modelID,
+      providerID: match.providerID,
+    });
+  }
 
   const agents: AgentModelEntry[] = names.map((name) => {
     const entry = config[name];
@@ -371,5 +398,6 @@ export async function collectAgentModelState(
     providers: [...providerSnapshot.connectedProviders].sort(),
     hasPassword: password !== null,
     catalogAvailable: providerSnapshot.catalog.length > 0,
+    ...(recentRequestResult.truncated ? { historyTruncated: true, historyWarning: recentRequestResult.warning } : {}),
   };
 }
