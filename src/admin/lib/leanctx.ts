@@ -423,5 +423,17 @@ export async function applyLeanCtxConfig(deps: LeanCtxApplyDeps = REAL_APPLY_DEP
     };
   }
 
+  // Record Admin-confirmed applied snapshot only on success; preserve prior snapshot on failure.
+  try {
+    const config = await readLeanCtxConfig();
+    const { _meta: ignoredMeta, ...clean } = config;
+    void ignoredMeta;
+    const { writeAppliedSnapshot } = await import("./leanctx-applied-snapshot");
+    await writeAppliedSnapshot(clean);
+  } catch (error) {
+    void error;
+    // Snapshot persistence is best-effort; Apply itself succeeded.
+  }
+
   return { ok: true, output };
 }
