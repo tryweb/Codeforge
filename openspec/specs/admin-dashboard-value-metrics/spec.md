@@ -5,81 +5,72 @@ Adds optional lean-ctx Decision Loop summary metrics to the Admin Dashboard, alo
 ## Requirements
 
 ### Requirement: Dashboard displays Decision Loop summary metrics
-
-The Admin Dashboard SHALL present a "Decision Loop" panel showing high-level value-gate data derived from `lean-ctx value-report --live --format json`: total tasks assessed, acceptance rate, CPAO (cost-per-accepted-outcome) in microseconds, ETPAO (effective tokens-per-accepted-outcome), and estimated USD savings. The panel SHALL remain a summary view and SHALL NOT require per-task details. When the value-report probe fails or returns no data, the panel SHALL render as unavailable without failing the Dashboard page.
+The Admin Dashboard SHALL present Decision Loop data inside the single `LeanCTX Insights` section under the `Decision Quality` label. It SHALL show total tasks assessed, acceptance rate, CPAO in microseconds, and ETPAO in tokens, and SHALL NOT repeat estimated USD savings already represented by the Dashboard savings hierarchy or show per-task details. When the value-report probe fails or returns no data, only the Decision Quality subsection SHALL render its unavailable or empty state.
 
 #### Scenario: Value report data renders successfully
-
 - **WHEN** the `value-report --live --format json` probe succeeds and returns task data
-- **THEN** the Dashboard shows a "Decision Loop" panel with summary metrics (total tasks, acceptance rate, CPAO, ETPAO, and USD savings)
+- **THEN** Decision Quality shows tasks assessed, acceptance rate, CPAO, and ETPAO within LeanCTX Insights
 
 #### Scenario: Value report probe fails
-
 - **WHEN** the value-report probe times out, returns non-JSON, or the command is unavailable
-- **THEN** the Decision Loop panel renders as "unavailable" and the Dashboard page still loads successfully
+- **THEN** Decision Quality displays `Data unavailable` and the Dashboard and other Insights subsections still render
 
 #### Scenario: Value report returns empty data
-
 - **WHEN** the value-report probe succeeds but reports zero tasks assessed
-- **THEN** the Decision Loop panel shows "No assessments recorded yet" and the page still loads
+- **THEN** Decision Quality displays `No assessments recorded yet`
 
 ### Requirement: Dashboard displays evidence chain summary status
-
-The Admin Dashboard SHALL present an "Evidence Chain" panel showing high-level Decision Loop evidence data derived from `lean-ctx prove --format json`: total task count, overall acceptance rate, evidence chain completeness (boolean), and the ledger item count. The panel SHALL remain a summary view and SHALL NOT require per-task details or full ledger metadata. When the prove probe fails, the panel SHALL render as unavailable without failing the page.
+The Admin Dashboard SHALL present evidence data inside the single `LeanCTX Insights` section under the `Evidence` label. It SHALL show total tasks proven, evidence chain completeness, and ledger item count, and SHALL NOT repeat acceptance rate already shown by Decision Quality or show per-task and full ledger metadata.
 
 #### Scenario: Prove report data renders successfully
-
 - **WHEN** the `prove --format json` probe succeeds and returns task data
-- **THEN** the Dashboard shows an "Evidence Chain" panel with summary metrics (acceptance rate, chain completeness, ledger item count, and task count)
+- **THEN** Evidence shows tasks proven, `Chain complete` or `Chain incomplete`, and ledger item count within LeanCTX Insights
 
 #### Scenario: Prove probe fails
-
 - **WHEN** the prove probe times out, returns non-JSON, or the command is unavailable
-- **THEN** the Evidence Chain panel renders as "unavailable" and the page still loads
+- **THEN** Evidence displays `Data unavailable` and the other Insights subsections still render
 
 #### Scenario: Prove returns empty data
-
 - **WHEN** the prove probe succeeds but reports zero tasks
-- **THEN** the panel shows "No evidence data" and the page still loads
+- **THEN** Evidence displays `No evidence data`
 
 ### Requirement: Dashboard displays a savings-by-tool summary
-
-The Admin Dashboard SHALL present a "Savings by Tool" panel showing a ranked list of top tools by tokens saved, derived from `lean-ctx savings --format json`. The existing Token Savings card (derived from `gain --json`) SHALL remain unchanged. When the savings-report probe fails, the panel SHALL render as unavailable without failing the page.
+The Admin Dashboard SHALL present up to five top tools inside the single `LeanCTX Insights` section under the `Top Saving Tools` label. Tools SHALL be ordered by tokens saved descending and each entry SHALL show tool name, tokens saved, and derived share using a compact proportional bar. Net tokens saved, net USD saved, and compression percentage SHALL remain owned by the KPI card and SHALL NOT be repeated in LeanCTX Insights.
 
 #### Scenario: Savings report data renders successfully
-
-- **WHEN** the `savings --format json` probe succeeds and returns data
-- **THEN** the Dashboard shows a "Savings by Tool" panel with a ranked tool breakdown table
+- **WHEN** the `savings --format json` probe succeeds with more than five sources
+- **THEN** Top Saving Tools shows the five largest sources in descending token order with token and share values
 
 #### Scenario: Savings report probe fails
-
 - **WHEN** the savings-report probe times out, returns non-JSON, or the command is unavailable
-- **THEN** the Savings by Tool panel renders as "unavailable" and the page still loads
+- **THEN** Top Saving Tools displays `Data unavailable` and the other Insights subsections still render
 
-### Requirement: New metrics are surfaced through /api/status
+#### Scenario: Savings report is empty
+- **WHEN** the savings-report probe succeeds with no top sources
+- **THEN** Top Saving Tools displays `No savings data`
 
-The `/api/status` endpoint SHALL include `valueReport`, `proveReport`, and `savingsReport` fields in the response body, each containing the parsed JSON output of the corresponding probe or `null` when the probe fails. The fields SHALL be gathered in parallel with existing probes and SHALL NOT block or delay the status response.
+### Requirement: LeanCTX Insights uses fixed order and deterministic formatting
+LeanCTX Insights SHALL render its subsections in this fixed order: `Savings Economics`, `Decision Quality`, `Evidence`, then `Top Saving Tools`. Integer counts and token values SHALL use `en-US` grouping with no decimal places; percentages SHALL use one decimal place followed by `%`; USD values SHALL use `$` and exactly two decimal places; CPAO SHALL use a grouped integer followed by `μs`; and ETPAO SHALL use a grouped integer followed by ` tokens`.
 
-#### Scenario: Status endpoint includes new fields
+#### Scenario: Insights renders complete data
+- **WHEN** all four Insights data sources succeed
+- **THEN** the four subsections appear in the required order and their values use the required formatting
 
-- **WHEN** a client requests `GET /api/status`
-- **THEN** the response includes `valueReport`, `proveReport`, and `savingsReport` fields, each either a parsed JSON object or `null`
+### Requirement: LeanCTX Insights explains savings without repeating KPI headlines
+LeanCTX Insights SHALL include a `Savings Economics` subsection showing gross USD and gross tokens saved, stream-overhead USD and bounce tokens, and ledger verification status. It SHALL omit net tokens saved, net USD saved, compression percentage, memory fact totals, project activity totals, and project health coverage because those values are owned by the KPI row. The Projects card SHALL contain project-management information and SHALL NOT repeat LeanCTX memory or activity aggregates.
 
-#### Scenario: New probe failure does not block status response
+#### Scenario: Gain detail is available
+- **WHEN** gain telemetry succeeds
+- **THEN** Savings Economics shows gross savings, stream overhead, and ledger verification without repeating the KPI headline values
 
-- **WHEN** one of the new probes times out
-- **THEN** the corresponding field is `null` and the status response still succeeds with all other fields populated
+#### Scenario: Project summary renders
+- **WHEN** LeanCTX site statistics are available
+- **THEN** the Projects card does not render total facts, active projects, health coverage, or projects-with-facts rows
 
-### Requirement: New probes are bounded and cached
+#### Scenario: Gain detail is unavailable
+- **WHEN** the gain probe fails, times out, or returns invalid data
+- **THEN** Savings Economics displays `Data unavailable` and the other Insights subsections still render
 
-The system SHALL run the three new probes (value-report, prove, savings-report) with a timeout matching the existing probe timeout (10 seconds default). Each probe SHALL be cached with a TTL matching the existing cache TTL (300 seconds default). A probe that exceeds the timeout SHALL yield `null` for its field and SHALL NOT block other probes or the page response.
-
-#### Scenario: Cached probe returns within TTL
-
-- **WHEN** a Dashboard page load occurs within the cache TTL of a previous successful probe
-- **THEN** the cached result is used without re-running the CLI command
-
-#### Scenario: Timeout yields null and page still loads
-
-- **WHEN** a new probe exceeds the 10-second timeout
-- **THEN** the corresponding Dashboard field is null/unavailable and the page renders successfully
+#### Scenario: Gain detail contains zero values
+- **WHEN** the gain probe succeeds with zero gross savings, zero overhead, and zero ledger events
+- **THEN** Savings Economics displays the formatted zero values rather than an empty-state message
