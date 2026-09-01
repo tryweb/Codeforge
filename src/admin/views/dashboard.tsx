@@ -2,6 +2,8 @@ import type { FC } from "hono/jsx";
 import { html } from "hono/html";
 import { Layout } from "./layout";
 import type { GainStats, LeanCtxSiteStats, ProveReportStats, SavingsReportStats, ValueReportStats } from "../lib/project-tool-status";
+import type { DashboardCenterSummary, DashboardRuntimeProfile, ProviderSummary, SubagentSummary } from "../lib/dashboard-aggregates";
+import { deriveSecurity, formatArchive, formatCompression, formatPermissionInheritance, formatTools, formatApplyState } from "../lib/dashboard-aggregates";
 
 interface UpdateCheckResult {
   current: string;
@@ -28,6 +30,10 @@ interface DashboardData {
   glab_auth: string;
   git_user: string;
   project_count: number;
+  center?: DashboardCenterSummary;
+  runtimeProfile?: DashboardRuntimeProfile;
+  providerSummary?: ProviderSummary;
+  subagentSummary?: SubagentSummary;
   leanctx: LeanCtxSiteStats | null;
   gain: GainStats | null;
   valueReport: ValueReportStats | null;
@@ -42,7 +48,7 @@ interface DashboardData {
   admin_version_mismatch: boolean;
 }
 
-const UpdateBadge: FC<{ check: UpdateCheckResult }> = ({ check }) => {
+const UpdateBadge: FC<{ check: UpdateCheckResult; adminVersion: string }> = ({ check, adminVersion }) => {
   if (check.status === "pinned") {
     return <span class="badge" style="background:rgba(99,102,241,0.15);color:var(--accent);font-size:0.65rem;">● Pinned {check.configured || check.current}</span>;
   }
@@ -51,6 +57,9 @@ const UpdateBadge: FC<{ check: UpdateCheckResult }> = ({ check }) => {
   }
   if (check.status === "check-failed") {
     return <span class="badge" style="background:rgba(139,143,163,0.15);color:var(--text-muted);font-size:0.65rem;">? unavailable</span>;
+  }
+  if (adminVersion === "dev") {
+    return null;
   }
   return <span class="badge badge-success" style="font-size:0.65rem;">✓ Latest</span>;
 };
@@ -83,43 +92,51 @@ const DashboardContent: FC<{ data: DashboardData }> = ({ data }) => {
   const isUpgrading = data.upgrade_state === "running";
   const { gain, leanctx, valueReport, proveReport, savingsReport } = data;
   const uptime = data.uptime_seconds != null ? `${Math.floor(data.uptime_seconds / 60)}m` : null;
+  const center = data.center ?? { state: "unavailable" as const, label: "Unavailable", tone: "danger" as const, href: "/agent" as const, ariaLabel: "Center Unavailable" };
+  const runtimeProfile = data.runtimeProfile ?? { applyState: "runtime-unavailable" as const, source: "unavailable" as const, compressionLevel: null, toolProfile: null, permissionInheritance: null, crossProjectSearch: null, secretDetectionEnabled: null, secretRedactionEnabled: null, archiveEnabled: null, archiveMaxAgeHours: null, archiveMaxDiskMb: null };
+  const providerSummary = data.providerSummary ?? { state: "unavailable" as const, totalCount: 0, issueCount: 0, label: "Status unavailable", tone: "neutral" as const, href: "/providers" as const };
+  const subagentSummary = data.subagentSummary ?? { state: "unavailable" as const, configuredCount: 0, worstCount: 0, label: "Status unavailable", tone: "neutral" as const, href: "/agent-models" as const };
   return (
-    <div>
-      <h2 style="margin-bottom:16px;">Dashboard</h2>
+    <div class="dashboard">
+      <h2 class="dashboard__heading">Dashboard</h2>
 
       <section class="site-summary" aria-label="Site summary">
         <span class="site-summary__item">
           <StatusPill tone={isRunning ? "success" : "danger"} label={data.container_status} />
           {uptime && <span class="site-summary__value">{uptime} uptime</span>}
         </span>
-        <span class="site-summary__item">
+        <a href="/projects" class="site-summary__item site-summary__item--link" aria-label={`Projects ${data.project_count} workspace projects`}>
           <span class="site-summary__label">Projects</span>
           <strong class="site-summary__value">{data.project_count}</strong>
-        </span>
-        <span class="site-summary__item">
+        </a>
+        <a href="/auth/github" class="site-summary__item site-summary__item--link" aria-label={`GitHub ${data.gh_auth}`}>
           <span class="site-summary__label">GitHub</span>
           <StatusPill tone={data.gh_auth === "authenticated" ? "success" : "warning"} label={data.gh_auth === "authenticated" ? "✓" : "✗"} ariaLabel={`GitHub ${data.gh_auth}`} />
-        </span>
-        <span class="site-summary__item">
+        </a>
+        <a href="/auth/gitlab" class="site-summary__item site-summary__item--link" aria-label={`GitLab ${data.glab_auth}`}>
           <span class="site-summary__label">GitLab</span>
           <StatusPill tone={data.glab_auth === "authenticated" ? "success" : "warning"} label={data.glab_auth === "authenticated" ? "✓" : "✗"} ariaLabel={`GitLab ${data.glab_auth}`} />
-        </span>
-        <span class="site-summary__item">
+        </a>
+        <a href="/git-config" class="site-summary__item site-summary__item--link" aria-label={data.git_user ? `Git ${data.git_user}` : "Git not configured"}>
           <span class="site-summary__label">Git</span>
           <span class={`site-summary__value${data.git_user ? "" : " text-muted"}`}>{data.git_user || "not configured"}</span>
-        </span>
+        </a>
+        <a href={center.href} class="site-summary__item site-summary__item--link" aria-label={center.ariaLabel}>
+          <span class="site-summary__label">Center</span>
+          <StatusPill tone={center.tone} label={center.label} ariaLabel={center.ariaLabel} />
+        </a>
         {data.admin_version_mismatch && (
           <span class="site-summary__item">
             <StatusPill tone="warning" label={`⚠ ${data.admin_version}`} ariaLabel="Admin container version mismatch" />
           </span>
         )}
         <span class="site-summary__item">
-          <UpdateBadge check={data.update_check} />
+          <UpdateBadge check={data.update_check} adminVersion={data.admin_version} />
         </span>
       </section>
 
       {!isRunning && (
-        <div class="card" style="border-color:var(--danger);margin-bottom:16px;">
+        <div class="card" style="border-color:var(--danger);">
           <strong class="text-danger">⚠ ai-dev container is not running</strong>
           <p class="text-sm text-muted mt-4">Some features (auth, SSH, git, projects, upgrade) are unavailable while ai-dev is down.</p>
         </div>
@@ -129,26 +146,73 @@ const DashboardContent: FC<{ data: DashboardData }> = ({ data }) => {
         <MetricCard
           title="Token Savings"
           tone="accent"
-          value={gain ? gain.netTokensSaved.toLocaleString() : "—"}
+          value={gain ? new Intl.NumberFormat("en-US").format(gain.netTokensSaved) : "—"}
           sub={gain ? `$${gain.netUsdSaved.toFixed(2)} net saved` : "unavailable"}
           foot={gain ? `${gain.compressionPct.toFixed(1)}% compression` : undefined}
         />
         <MetricCard
           title="leanCTX Memory"
-          value={leanctx ? leanctx.totalMemoryFacts.toLocaleString() : "—"}
-          sub={leanctx ? `${leanctx.projectsWithFacts} projects with facts` : "unavailable"}
-          foot={leanctx ? `${leanctx.healthCoverage} projects with health score` : undefined}
+          value={leanctx ? new Intl.NumberFormat("en-US").format(leanctx.totalMemoryFacts) : "—"}
+          sub={leanctx ? `${new Intl.NumberFormat("en-US").format(leanctx.projectsWithFacts)} projects with facts` : "unavailable"}
+          foot={leanctx ? `${new Intl.NumberFormat("en-US").format(leanctx.healthCoverage)} projects with health score` : undefined}
         />
         <MetricCard
           title="leanCTX Activity"
-          value={leanctx ? String(leanctx.activeProjects24h) : "—"}
+          value={leanctx ? new Intl.NumberFormat("en-US").format(leanctx.activeProjects24h) : "—"}
           sub={leanctx ? "active in last 24h" : "unavailable"}
-          foot={gain ? (gain.ledgerVerified ? `✓ ledger intact · ${gain.ledgerEvents.toLocaleString()} events` : "⚠ ledger unverified") : undefined}
+          foot={gain ? (gain.ledgerVerified ? `✓ ledger intact · ${new Intl.NumberFormat("en-US").format(gain.ledgerEvents)} events` : "⚠ ledger unverified") : undefined}
         />
-
       </section>
+      {(() => {
+        const apply = formatApplyState(runtimeProfile.applyState);
+        const comp = formatCompression(runtimeProfile.compressionLevel);
+        const tools = formatTools(runtimeProfile.toolProfile);
+        const arch = formatArchive(runtimeProfile.archiveEnabled, runtimeProfile.archiveMaxAgeHours);
+        const sec = deriveSecurity({ secretDetectionEnabled: runtimeProfile.secretDetectionEnabled, secretRedactionEnabled: runtimeProfile.secretRedactionEnabled, crossProjectSearch: runtimeProfile.crossProjectSearch });
+        const perm = formatPermissionInheritance(runtimeProfile.permissionInheritance);
+        const isUnavailable = runtimeProfile.applyState === "runtime-unavailable";
+        return (
+          <section class="runtime-profile card" aria-label="LeanCTX Runtime Profile">
+            <div class="runtime-profile__header">
+              <h3>LeanCTX Runtime</h3>
+              <a href="/leanctx" class="btn btn-outline runtime-profile__action">Open configuration</a>
+            </div>
+            {isUnavailable ? (
+              <div class="runtime-profile__fields runtime-profile__fields--unavailable">
+                <span class={`status-pill status-pill--${apply.tone}`} aria-label={apply.ariaLabel}>{apply.value}</span>
+              </div>
+            ) : (
+              <dl class="runtime-profile__fields">
+                <div class="runtime-profile__field">
+                  <dt class="runtime-profile__label">{apply.label}</dt>
+                  <dd class={`runtime-profile__value status-pill status-pill--${apply.tone}`} aria-label={apply.ariaLabel}>{apply.value}</dd>
+                </div>
+                <div class="runtime-profile__field">
+                  <dt class="runtime-profile__label">{comp.label}</dt>
+                  <dd class={`runtime-profile__value status-pill status-pill--${comp.tone}`} aria-label={comp.ariaLabel}>{comp.value}</dd>
+                </div>
+                <div class="runtime-profile__field">
+                  <dt class="runtime-profile__label">{tools.label}</dt>
+                  <dd class={`runtime-profile__value status-pill status-pill--${tools.tone}`} aria-label={tools.ariaLabel}>{tools.value}</dd>
+                </div>
+                <div class="runtime-profile__field runtime-profile__field--security">
+                  <dt class="runtime-profile__label">{sec.label}</dt>
+                  <dd class={`runtime-profile__value status-pill status-pill--${sec.tone}`} aria-label={sec.ariaLabel} aria-describedby="runtime-profile-security-detail" tabIndex={0}>{sec.value}</dd>
+                  <div id="runtime-profile-security-detail" class="runtime-profile__security-detail" role="tooltip">
+                    {sec.detail.map((d) => <span>{d.label}: {d.value}</span>)}<span>Permission inheritance: {perm}</span>
+                  </div>
+                </div>
+                <div class="runtime-profile__field">
+                  <dt class="runtime-profile__label">{arch.label}</dt>
+                  <dd class={`runtime-profile__value status-pill status-pill--${arch.tone}`} aria-label={arch.ariaLabel}>{arch.value}</dd>
+                </div>
+              </dl>
+            )}
+          </section>
+        );
+      })()}
 
-      <div class="grid-2">
+      <div class="dashboard__ops-row">
         <div class="card">
           <h3>Container Status</h3>
           <div class="flex items-center gap-2">
@@ -174,144 +238,122 @@ const DashboardContent: FC<{ data: DashboardData }> = ({ data }) => {
             </div>
           )}
         </div>
-        <div class="card">
+        <a href="/projects" class="card card--link" aria-label={`Projects ${data.project_count} workspace projects`}>
           <h3>Projects</h3>
           <p class="stat-number">{data.project_count}</p>
           <p class="text-sm text-muted">workspace projects</p>
-          {data.leanctx ? (
-            <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
+        </a>
+      <section class="ai-runtime card" aria-label="AI Runtime">
+        <div class="ai-runtime__header">
+          <h3>AI Runtime</h3>
+        </div>
+        <div class="ai-runtime__rows">
+          <a href={providerSummary.href} class="ai-runtime__row">
+            <span class="ai-runtime__label">Providers</span>
+            <span class={`ai-runtime__value status-pill status-pill--${providerSummary.tone}`} aria-label={`Providers ${providerSummary.label}`}>{providerSummary.label}</span>
+          </a>
+          <a href={subagentSummary.href} class="ai-runtime__row">
+            <span class="ai-runtime__label">Subagents</span>
+            <span class={`ai-runtime__value status-pill status-pill--${subagentSummary.tone}`} aria-label={`Subagents ${subagentSummary.label}`}>{subagentSummary.label}</span>
+          </a>
+        </div>
+      </section>
+      </div>
+      <section class="insights card" aria-label="LeanCTX Insights">
+        <h3>LeanCTX Insights</h3>
+        <div class="insights__grid">
+        <div class="insights__subsection insights__subsection--wide">
+          <h4 class="insights__title">Savings Economics</h4>
+          {data.gain ? (
+            <div>
               <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
-                <span class="text-sm text-muted">projects with leanCTX facts</span>
-                <span class="badge" style="font-size:0.8rem;">{data.leanctx.projectsWithFacts}</span>
+                <span class="text-sm text-muted">gross saved</span>
+                <span class="text-sm">{`$${data.gain.grossUsdSaved.toFixed(2)}`} ({new Intl.NumberFormat("en-US").format(data.gain.tokensSaved)} tokens)</span>
               </div>
               <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
-                <span class="text-sm text-muted">total memory facts</span>
-                <span class="badge" style="font-size:0.8rem;">{data.leanctx.totalMemoryFacts.toLocaleString()}</span>
+                <span class="text-sm text-muted">stream overhead</span>
+                <span class="text-sm">{`$${data.gain.overheadUsd.toFixed(2)}`} ({new Intl.NumberFormat("en-US").format(data.gain.bounceTokens)} bounce tokens)</span>
               </div>
-              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
-                <span class="text-sm text-muted">active in last 24h</span>
-                <span class="badge" style="font-size:0.8rem;">{data.leanctx.activeProjects24h}</span>
-              </div>
-              <div style="display:flex;align-items:center;justify-content:space-between;">
-                <span class="text-sm text-muted">projects with health score</span>
-                <span class="badge" style="font-size:0.8rem;">{data.leanctx.healthCoverage}</span>
+              <div style="display:flex;align-items:center;justify-content:space-between;padding-top:8px;border-top:1px solid var(--border);">
+                <span class="text-sm text-muted">savings ledger</span>
+                {data.gain.ledgerVerified ? (
+                  <span class="badge badge-success" style="font-size:0.8rem;">✓ SHA-256 chain intact · {new Intl.NumberFormat("en-US").format(data.gain.ledgerEvents)} events</span>
+                ) : (
+                  <span class="badge badge-warning" style="font-size:0.8rem;">⚠ chain unverified</span>
+                )}
               </div>
             </div>
           ) : (
-            <p class="text-sm text-muted" style="margin-top:12px;">leanCTX statistics unavailable</p>
+            <p class="text-sm text-muted">Data unavailable</p>
           )}
         </div>
-      </div>
-      <div class="card">
-        <h3>Token Savings <span class="text-sm text-muted">· leanCTX</span></h3>
-        {data.gain ? (
-          <div>
-            <div class="dashboard-token-summary flex items-center gap-2" style="margin-bottom:12px;">
-              <span class="stat-number">{data.gain.netTokensSaved.toLocaleString()}</span>
-              <span class="text-sm text-muted">tokens net saved</span>
-              <span class="badge badge-success" style="font-size:0.8rem;">{data.gain.compressionPct.toFixed(1)}% compression</span>
-            </div>
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
-              <span class="text-sm text-muted">gross saved</span>
-              <span class="text-sm">${data.gain.grossUsdSaved.toFixed(2)} ({data.gain.tokensSaved.toLocaleString()} tokens)</span>
-            </div>
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
-              <span class="text-sm text-muted">stream overhead</span>
-              <span class="text-sm">${data.gain.overheadUsd.toFixed(2)} ({data.gain.bounceTokens.toLocaleString()} bounce tokens)</span>
-            </div>
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
-              <span class="text-sm text-muted">net saved</span>
-              <span class="text-sm">${data.gain.netUsdSaved.toFixed(2)}</span>
-            </div>
-            <div style="display:flex;align-items:center;justify-content:space-between;padding-top:12px;border-top:1px solid var(--border);">
-              <span class="text-sm text-muted">savings ledger</span>
-              {data.gain.ledgerVerified ? (
-                <span class="badge badge-success" style="font-size:0.8rem;">✓ SHA-256 chain intact · {data.gain.ledgerEvents.toLocaleString()} events</span>
-              ) : (
-                <span class="badge badge-warning" style="font-size:0.8rem;">⚠ chain unverified</span>
-              )}
-            </div>
-          </div>
-        ) : (
-          <p class="text-sm text-muted">Token savings unavailable</p>
-        )}
-      </div>
-      <div class="card">
-        <h3>Decision Loop <span class="text-sm text-muted">· value report</span></h3>
-        {valueReport ? (
-          valueReport.tasks.length > 0 ? (
-            <div class="flex items-center gap-2" style="flex-wrap:wrap;">
-              <span class="badge badge-success" style="font-size:0.8rem;">{valueReport.totalTasks} tasks assessed</span>
-              <span class="badge" style="font-size:0.8rem;">{(valueReport.acceptedRate <= 1 ? valueReport.acceptedRate * 100 : valueReport.acceptedRate).toFixed(0)}% acceptance</span>
-              <span class="badge" style="font-size:0.8rem;">CPAO {valueReport.cpaoMicros}μs</span>
-              <span class="badge" style="font-size:0.8rem;">ETPAO {valueReport.etpaoTokens.toLocaleString()} tokens</span>
-              <span class="badge" style="font-size:0.8rem;">${valueReport.savingsUsd.toFixed(2)} saved</span>
-            </div>
+        <div class="insights__subsection">
+          <h4 class="insights__title">Decision Quality</h4>
+          {data.valueReport ? (
+            data.valueReport.totalTasks > 0 ? (
+              <div class="flex items-center gap-2" style="flex-wrap:wrap;">
+                <span class="badge" style="font-size:0.8rem;">{new Intl.NumberFormat("en-US").format(data.valueReport.totalTasks)} tasks assessed</span>
+                <span class="badge" style="font-size:0.8rem;">{`${(data.valueReport.acceptedRate <= 1 ? data.valueReport.acceptedRate * 100 : data.valueReport.acceptedRate).toFixed(1)}%`} acceptance</span>
+                <span class="badge" style="font-size:0.8rem;">CPAO {new Intl.NumberFormat("en-US").format(data.valueReport.cpaoMicros)}μs</span>
+                <span class="badge" style="font-size:0.8rem;">ETPAO {new Intl.NumberFormat("en-US").format(data.valueReport.etpaoTokens)} tokens</span>
+              </div>
+            ) : (
+              <p class="text-sm text-muted">No assessments recorded yet</p>
+            )
           ) : (
-            <p class="text-sm text-muted">No assessments recorded yet</p>
-          )
-        ) : (
-          <p class="text-sm text-muted">Decision Loop data unavailable</p>
-        )}
-      </div>
-      <div class="card">
-        <h3>Evidence Chain <span class="text-sm text-muted">· prove report</span></h3>
-        {proveReport ? (
-          proveReport.tasks.length > 0 ? (
-            <div class="flex items-center gap-2" style="flex-wrap:wrap;">
-              <span class="badge badge-success" style="font-size:0.8rem;">{proveReport.totalTasks} tasks proven</span>
-              <span class="badge" style="font-size:0.8rem;">{(proveReport.acceptedRate <= 1 ? proveReport.acceptedRate * 100 : proveReport.acceptedRate).toFixed(0)}% accepted</span>
-              <span class={`badge ${proveReport.evidenceChainComplete ? "badge-success" : "badge-warning"}`} style="font-size:0.8rem;">
-                {proveReport.evidenceChainComplete ? "✓ chain complete" : "⚠ chain incomplete"}
-              </span>
-              <span class="badge" style="font-size:0.8rem;">ledger {proveReport.ledger.itemCount} items</span>
-            </div>
+            <p class="text-sm text-muted">Data unavailable</p>
+          )}
+        </div>
+        <div class="insights__subsection">
+          <h4 class="insights__title">Evidence</h4>
+          {data.proveReport ? (
+            data.proveReport.totalTasks > 0 ? (
+              <div class="flex items-center gap-2" style="flex-wrap:wrap;">
+                <span class="badge" style="font-size:0.8rem;">{new Intl.NumberFormat("en-US").format(data.proveReport.totalTasks)} tasks proven</span>
+                <span class={`badge ${data.proveReport.evidenceChainComplete ? "badge-success" : "badge-warning"}`} style="font-size:0.8rem;">
+                  {data.proveReport.evidenceChainComplete ? "Chain complete" : "Chain incomplete"}
+                </span>
+                <span class="badge" style="font-size:0.8rem;">ledger {new Intl.NumberFormat("en-US").format(data.proveReport.ledger.itemCount)} items</span>
+              </div>
+            ) : (
+              <p class="text-sm text-muted">No evidence data</p>
+            )
           ) : (
-            <p class="text-sm text-muted">No evidence data</p>
-          )
-        ) : (
-          <p class="text-sm text-muted">Evidence Chain data unavailable</p>
-        )}
-      </div>
-      <div class="card">
-        <h3>Savings by Tool <span class="text-sm text-muted">· savings report</span></h3>
-        {savingsReport ? (
-          savingsReport.topSources.length > 0 ? (
-            <table>
-              <tr><th>Tool</th><th>Tokens saved</th><th>Share</th></tr>
-              {savingsReport.topSources.map(([name, tokens]) => (
-                <tr>
-                  <td>{name}</td>
-                  <td>{tokens.toLocaleString()}</td>
-                  <td>{savingsReport.tokensSaved > 0 ? `${((tokens / savingsReport.tokensSaved) * 100).toFixed(1)}%` : "—"}</td>
-                </tr>
-              ))}
-            </table>
+            <p class="text-sm text-muted">Data unavailable</p>
+          )}
+        </div>
+        <div class="insights__subsection insights__subsection--wide">
+          <h4 class="insights__title">Top Saving Tools</h4>
+          {data.savingsReport ? (
+            data.savingsReport.topSources.length > 0 ? (
+              <table>
+                <thead><tr><th>Tool</th><th>Tokens saved</th><th>Share</th></tr></thead>
+                <tbody>
+                {(() => {
+                  const top5 = [...data.savingsReport!.topSources].sort((a, b) => b[1] - a[1]).slice(0, 5);
+                  const total = data.savingsReport!.tokensSaved;
+                  return top5.map(([name, tokens]) => (
+                    <tr>
+                      <td>{name}</td>
+                      <td>{new Intl.NumberFormat("en-US").format(tokens)}</td>
+                      <td>
+                        <div class="share-bar"><div class="share-bar__fill" style={`width:${total > 0 ? ((tokens / total) * 100).toFixed(1) : 0}%`}></div></div>
+                        {total > 0 ? `${((tokens / total) * 100).toFixed(1)}%` : "—"}
+                      </td>
+                    </tr>
+                  ));
+                })()}
+                </tbody>
+              </table>
+            ) : (
+              <p class="text-sm text-muted">No savings data</p>
+            )
           ) : (
-            <p class="text-sm text-muted">No data</p>
-          )
-        ) : (
-          <p class="text-sm text-muted">Savings by Tool data unavailable</p>
-        )}
-      </div>
-      <div class="card">
-        <h3>Auth Status</h3>
-        <table>
-          <tr><th>Service</th><th>Status</th></tr>
-          <tr>
-            <td>GitHub CLI</td>
-            <td><span class={`badge ${data.gh_auth === "authenticated" ? "badge-success" : "badge-warning"}`}>{data.gh_auth}</span></td>
-          </tr>
-          <tr>
-            <td>GitLab CLI</td>
-            <td><span class={`badge ${data.glab_auth === "authenticated" ? "badge-success" : "badge-warning"}`}>{data.glab_auth}</span></td>
-          </tr>
-          <tr>
-            <td>Git Config</td>
-            <td><span class={`badge ${data.git_user ? "badge-success" : "badge-warning"}`}>{data.git_user || "not configured"}</span></td>
-          </tr>
-        </table>
-      </div>
+            <p class="text-sm text-muted">Data unavailable</p>
+          )}
+        </div>
+        </div>
+      </section>
       <div class="card" id="versions-card">
         <h3>Component Versions</h3>
         <table>
@@ -320,8 +362,12 @@ const DashboardContent: FC<{ data: DashboardData }> = ({ data }) => {
             <tr>
               <td>{name}</td>
               <td>
-                <code>{version}</code>
-                {name === "AI-EngKit" && !isUpgrading && <span style="margin-left:8px;"><UpdateBadge check={data.update_check} /></span>}
+                {name === "AI-EngKit" ? (
+                  <a href="/versions" aria-label={`AI-EngKit version ${version}`}><code>{version}</code></a>
+                ) : (
+                  <code>{version}</code>
+                )}
+                {name === "AI-EngKit" && !isUpgrading && <span style="margin-left:8px;"><UpdateBadge check={data.update_check} adminVersion={data.admin_version} /></span>}
                 {name === "AI-EngKit" && isUpgrading && <span class="badge" style="background:rgba(99,102,241,0.15);color:var(--accent);margin-left:8px;">running</span>}
               </td>
             </tr>
