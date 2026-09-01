@@ -164,7 +164,7 @@ const DashboardContent: FC<{ data: DashboardData }> = ({ data }) => {
               <div class="flex items-center gap-2">
                 <span class="text-sm">ai-admin</span>
                 <span class="badge badge-warning" style="font-size:0.65rem;">⚠ {data.admin_version}</span>
-                <button onclick="restartAdmin()" class="btn-outline" style="padding:2px 8px;font-size:0.7rem;color:var(--danger);border-color:var(--danger);">↻ Restart</button>
+              <button onclick="restartAdmin(event)" class="btn-outline" style="padding:2px 8px;font-size:0.7rem;color:var(--danger);border-color:var(--danger);">↻ Restart</button>
               </div>
               <p class="text-sm text-muted" style="margin-top:4px;">Admin container needs restart to match ai-dev version</p>
             </div>
@@ -373,27 +373,79 @@ const DashboardContent: FC<{ data: DashboardData }> = ({ data }) => {
           if (!res.ok) { alert("Failed to start upgrade"); return; }
           connectUpgradeSSE();
         }
-        async function restartAdmin() {
-          if (!confirm("Restart admin container? Dashboard will reload in ~3 seconds.")) return;
+        async function restartAdmin(event) {
+          if (!confirm("Restart admin container? Dashboard will reload after restart completes.")) return;
           const btn = event.target;
           btn.disabled = true;
           btn.textContent = "Restarting...";
+          let baselineUptime = null;
+          let baselineDigest = null;
+          try {
+            const baseRes = await fetch("/api/admin/status");
+            if (baseRes.ok) {
+              const baseData = await baseRes.json();
+              if (typeof baseData.uptime_seconds === "number") baselineUptime = baseData.uptime_seconds;
+              if (typeof baseData.image_digest === "string" && baseData.image_digest) baselineDigest = baseData.image_digest;
+            }
+          } catch (_baselineError) {
+            baselineUptime = null;
+            baselineDigest = null;
+          }
           try {
             const res = await fetch("/api/admin/restart", { method: "POST" });
-            if (res.ok) {
-              const poll = setInterval(async () => {
-                try {
-                  const h = await fetch("/healthz");
-                  if (h.ok) { clearInterval(poll); location.reload(); }
-                } catch {}
-              }, 1000);
-            } else {
-              alert("Failed to restart admin");
+            if (!res.ok) {
+              let message = "Failed to restart admin";
+              try {
+                const data = await res.json();
+                if (data && typeof data.error === "string" && data.error) message = data.error;
+                else if (data && typeof data.message === "string" && data.message) message = data.message;
+              } catch (_parseError) {
+                message = "Failed to restart admin";
+              }
+              alert(message);
               btn.disabled = false;
               btn.textContent = "↻ Restart";
+              return;
             }
+            const deadline = Date.now() + 120000;
+            let observedUnavailability = false;
+            const poll = async () => {
+              if (Date.now() > deadline) {
+                alert("Admin restart timed out — please check container status and logs");
+                btn.disabled = false;
+                btn.textContent = "↻ Restart";
+                return;
+              }
+              try {
+                const statusRes = await fetch("/api/admin/status");
+                if (!statusRes.ok) {
+                  observedUnavailability = true;
+                  setTimeout(poll, 1000);
+                  return;
+                }
+                const statusData = await statusRes.json();
+                const newDigest = typeof statusData.image_digest === "string" ? statusData.image_digest : null;
+                const newUptime = typeof statusData.uptime_seconds === "number" ? statusData.uptime_seconds : null;
+                if (baselineDigest !== null && newDigest !== null && newDigest !== baselineDigest) {
+                  location.reload();
+                  return;
+                }
+                if (typeof baselineUptime === "number" && typeof newUptime === "number" && newUptime < baselineUptime) {
+                  location.reload();
+                  return;
+                }
+                if (observedUnavailability) {
+                  location.reload();
+                  return;
+                }
+              } catch (_pollError) {
+                observedUnavailability = true;
+              }
+              setTimeout(poll, 1000);
+            };
+            setTimeout(poll, 1000);
           } catch (e) {
-            alert("Error: " + e.message);
+            alert("Error: " + (e instanceof Error ? e.message : String(e)));
             btn.disabled = false;
             btn.textContent = "↻ Restart";
           }
