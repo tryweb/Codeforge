@@ -29,6 +29,12 @@ import { DashboardPage } from "./views/dashboard";
 import { getSelfContainerRef, dockerCommand, execInAiDev } from "./lib/docker";
 import { createToolStatusProbe } from "./lib/project-tool-status";
 import leanctxRoutes from "./routes/leanctx";
+import { getAgentStatus } from "./agent";
+import { readLeanCtxConfig } from "./lib/leanctx";
+import { deriveDashboardRuntimeState, readAppliedSnapshot } from "./lib/leanctx-applied-snapshot";
+import { aggregateProviderSummary, aggregateSubagentSummary, projectCenter } from "./lib/dashboard-aggregates";
+import { collectProvidersMeta } from "./lib/provider-meta";
+import { collectAgentModelState, createAgentModelsLib } from "./lib/agent-models";
 
 export const app = new Hono();
 
@@ -134,7 +140,8 @@ app.get("/", async (c) => {
     try {
       const r = await exec(cmd, 15_000);
       return r.exitCode === 0 && r.stdout ? r.stdout.split("\n")[0].trim() : "";
-    } catch {
+    } catch (error) {
+      void error;
       return "";
     }
   };
@@ -161,11 +168,79 @@ app.get("/", async (c) => {
     toolStatus.probeValueReport(), toolStatus.probeProveReport(), toolStatus.probeSavingsReport(),
   ]);
 
+  const timeout = async <T>(p: Promise<T>, ms = 10_000): Promise<T | null> => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        p,
+        new Promise<null>((resolve) => {
+          timer = setTimeout(() => resolve(null), ms);
+        }),
+      ]);
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+    }
+  };
+
+  const centerRaw = getAgentStatus();
+  const centerSummary = projectCenter(centerRaw.state, centerRaw.last_error);
+
+  const runtimeProfilePromise = (async () => {
+    try {
+      const cfg = await timeout(
+        readLeanCtxConfig().then((c) => {
+          const { _meta: _omitMeta, ...clean } = c;
+          void _omitMeta;
+          return clean;
+        }),
+      );
+      const snap = await timeout(readAppliedSnapshot());
+      const { profile } = deriveDashboardRuntimeState(cfg, snap);
+      return profile;
+    } catch (error) {
+      void error;
+      return null;
+    }
+  })();
+
+  const providerPromise = (async () => {
+    try {
+      const meta = await timeout(collectProvidersMeta());
+      if (!meta) return null;
+      return aggregateProviderSummary(meta);
+    } catch (error) {
+      void error;
+      return aggregateProviderSummary(null);
+    }
+  })();
+
+  const subagentPromise = (async () => {
+    try {
+      const lib = createAgentModelsLib();
+      const env = readEnvFile();
+      const pwd = env["OPENCODE_SERVER_PASSWORD"]?.trim() || null;
+      const state = await timeout(collectAgentModelState(lib, pwd));
+      if (!state) return aggregateSubagentSummary(null, false);
+      return aggregateSubagentSummary(state.agents, state.catalogAvailable);
+    } catch (error) {
+      void error;
+      return aggregateSubagentSummary(null, false);
+    }
+  })();
+
+  const [runtimeProfile, providerSummary, subagentSummary] = await Promise.all([
+    timeout(runtimeProfilePromise.then((v) => v ?? null)),
+    timeout(providerPromise.then((v) => v ?? aggregateProviderSummary(null))),
+    timeout(subagentPromise.then((v) => v ?? aggregateSubagentSummary(null, false))),
+  ]);
+
   let aiEngkitVer = await getVer("cat /opt/ai-engkit/VERSION") || "dev";
   let adminVer = "dev";
   try {
     adminVer = readFileSync("/opt/ai-engkit/VERSION", "utf-8").trim();
-  } catch {}
+  } catch (error) {
+    void error;
+  }
 
   const [opencodeVer, openchamberVer, dockerVer] = await Promise.all([
     getVer("opencode --version 2>/dev/null || echo ''"),
@@ -188,6 +263,10 @@ app.get("/", async (c) => {
     })(),
   ]);
 
+  const finalRuntime = runtimeProfile ?? { applyState: "runtime-unavailable" as const, source: "unavailable" as const, compressionLevel: null, toolProfile: null, permissionInheritance: null, crossProjectSearch: null, secretDetectionEnabled: null, secretRedactionEnabled: null, archiveEnabled: null, archiveMaxAgeHours: null, archiveMaxDiskMb: null };
+  const finalProvider = providerSummary ?? aggregateProviderSummary(null);
+  const finalSubagent = subagentSummary ?? aggregateSubagentSummary(null, false);
+
   return c.html(
     DashboardPage({
       container_status: containerRunning ? "running" : "stopped",
@@ -202,6 +281,10 @@ app.get("/", async (c) => {
       glab_auth: glabAuth,
       git_user: gitUser,
       project_count: projectCount,
+      center: centerSummary,
+      runtimeProfile: finalRuntime,
+      providerSummary: finalProvider,
+      subagentSummary: finalSubagent,
       leanctx,
       gain,
       valueReport,
