@@ -7,7 +7,8 @@ interface UpdateCheckResult {
   current: string;
   latest: string;
   update_available: boolean;
-  status: "checking" | "up-to-date" | "update-available" | "check-failed";
+  status: "checking" | "up-to-date" | "update-available" | "check-failed" | "pinned";
+  configured: string | null;
   message: string;
 }
 
@@ -42,6 +43,9 @@ interface DashboardData {
 }
 
 const UpdateBadge: FC<{ check: UpdateCheckResult }> = ({ check }) => {
+  if (check.status === "pinned") {
+    return <span class="badge" style="background:rgba(99,102,241,0.15);color:var(--accent);font-size:0.65rem;">● Pinned {check.configured || check.current}</span>;
+  }
   if (check.status === "update-available") {
     return <span class="badge badge-warning" style="cursor:pointer;" onclick="startUpgrade()">▲ Upgrade</span>;
   }

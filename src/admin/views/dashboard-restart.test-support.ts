@@ -122,6 +122,7 @@ export function getProductionRestartAdminSource(): string {
         latest: "v1.0.0",
         update_available: false,
         status: "up-to-date",
+        configured: null,
         message: "",
       },
       upgrade_state: "idle",

@@ -1,13 +1,16 @@
 import { readFileSync } from "fs";
 import { Hono } from "hono";
 import { execInAiDev, dockerCommand, getAiDevContainerRef, getSelfContainerRef } from "../lib/docker";
+import { readEnvFile } from "../lib/env";
 import { VersionsPage } from "../views/versions";
 
 export interface UpdateCheckResult {
   current: string;
   latest: string;
   update_available: boolean;
-  status: "checking" | "up-to-date" | "update-available" | "check-failed";
+  status: "checking" | "up-to-date" | "update-available" | "check-failed" | "pinned";
+  /** The version explicitly configured via AI_ENGKIT_VERSION, when pinned. */
+  configured: string | null;
   message: string;
 }
 
@@ -49,10 +52,25 @@ export async function getUpdateCheck(): Promise<UpdateCheckResult> {
 
   inFlightCheck = (async () => {
     try {
+      // A pinned AI_ENGKIT_VERSION locks the environment to that release; do not compare against :latest.
+      const configured = readEnvFile().AI_ENGKIT_VERSION?.trim();
+      if (configured) {
+        const result: UpdateCheckResult = {
+          current: await getAiEngkitVersion(),
+          latest: "",
+          update_available: false,
+          status: "pinned",
+          configured,
+          message: `Pinned to ${configured}`,
+        };
+        cachedCheck = { result, expiresAt: now + 300_000 };
+        return result;
+      }
+
       const current = await getAiEngkitVersion();
       // Dev builds (AI_ENGKIT_VERSION=dev) should not compare against GHCR releases
       if (current === "dev") {
-        const result: UpdateCheckResult = { current, latest: "", update_available: false, status: "up-to-date", message: "Dev build" };
+        const result: UpdateCheckResult = { current, latest: "", update_available: false, status: "up-to-date", configured: null, message: "Dev build" };
         cachedCheck = { result, expiresAt: now + 300_000 };
         return result;
       }
@@ -61,7 +79,7 @@ export async function getUpdateCheck(): Promise<UpdateCheckResult> {
         getLocalDigest(),
       ]);
       if (!remoteDigest || !localDigest) {
-        return { current, latest: "", update_available: false, status: "up-to-date", message: "Up to date" };
+        return { current, latest: "", update_available: false, status: "up-to-date", configured: null, message: "Up to date" };
       }
       const available = localDigest !== remoteDigest;
       const result: UpdateCheckResult = {
@@ -69,6 +87,7 @@ export async function getUpdateCheck(): Promise<UpdateCheckResult> {
         latest: available ? "latest" : "",
         update_available: available,
         status: available ? "update-available" : "up-to-date",
+        configured: null,
         message: available ? `New image available` : "Up to date",
       };
       cachedCheck = { result, expiresAt: now + 300_000 };
