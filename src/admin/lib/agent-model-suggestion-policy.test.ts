@@ -33,7 +33,15 @@ function meta(
 }
 
 function caps(refs: readonly string[]): PolicyCapabilityCatalog {
-  const m = new Map<string, { reasoning?: boolean; toolcall?: boolean; attachment?: boolean; input?: Record<string, unknown> }>();
+  const m = new Map<
+    string,
+    {
+      reasoning?: boolean;
+      toolcall?: boolean;
+      attachment?: boolean;
+      input?: Record<string, unknown>;
+    }
+  >();
   for (const r of refs) {
     // default capable for general/exploration: toolcall true
     m.set(r, { reasoning: true, toolcall: true, attachment: false, input: {} });
@@ -94,7 +102,8 @@ describe("agent-model-suggestion-policy join", () => {
 });
 
 describe("free mode filtering", () => {
-  const freeMeta = (ref: string, o: Partial<NormalizedModelMetadata> = {}) => meta(ref, { inputPrice: 0, outputPrice: 0, ...o });
+  const freeMeta = (ref: string, o: Partial<NormalizedModelMetadata> = {}) =>
+    meta(ref, { inputPrice: 0, outputPrice: 0, ...o });
 
   test("excludes paid candidate", () => {
     const catalog = ["p/free", "p/paid"];
@@ -117,7 +126,10 @@ describe("free mode filtering", () => {
     const catalog = ["p/free", "p/unknown"];
     const metadata = new Map<string, NormalizedModelMetadata>([
       ["p/free", freeMeta("p/free")],
-      ["p/unknown", freeMeta("p/unknown", { inputPrice: null, outputPrice: null })],
+      [
+        "p/unknown",
+        freeMeta("p/unknown", { inputPrice: null, outputPrice: null }),
+      ],
     ]);
     const input = baseInput({
       mode: "free",
@@ -133,7 +145,9 @@ describe("free mode filtering", () => {
 
   test("excludes stale metadata", () => {
     const catalog = ["p/free"];
-    const metadata = new Map<string, NormalizedModelMetadata>([["p/free", freeMeta("p/free")]]);
+    const metadata = new Map<string, NormalizedModelMetadata>([
+      ["p/free", freeMeta("p/free")],
+    ]);
     const input = baseInput({
       mode: "free",
       catalog,
@@ -216,7 +230,9 @@ describe("free mode filtering", () => {
 
   test("fresh zero-price capable is eligible", () => {
     const catalog = ["p/free"];
-    const metadata = new Map<string, NormalizedModelMetadata>([["p/free", freeMeta("p/free")]]);
+    const metadata = new Map<string, NormalizedModelMetadata>([
+      ["p/free", freeMeta("p/free")],
+    ]);
     const input = baseInput({
       mode: "free",
       catalog,
@@ -227,7 +243,9 @@ describe("free mode filtering", () => {
     const out = suggestForMode(input);
     expect(out.suggestions.get("general")?.model).toBe("p/free");
     expect(out.suggestions.get("general")?.reason.length).toBeGreaterThan(0);
-    expect((out.suggestions.get("general")?.reason.length ?? 0) <= 200).toBe(true);
+    expect((out.suggestions.get("general")?.reason.length ?? 0) <= 200).toBe(
+      true,
+    );
   });
 });
 
@@ -265,7 +283,9 @@ describe("economy ranking", () => {
     const out = suggestForMode(input);
     // known should win despite unknown being lexicographically earlier? check ordering
     expect(out.suggestions.get("general")?.model).toBe("p/known");
-    expect(effectiveCost(meta("p/unknown", { inputPrice: null, outputPrice: 1 }))).toBe(Infinity);
+    expect(
+      effectiveCost(meta("p/unknown", { inputPrice: null, outputPrice: 1 })),
+    ).toBe(Infinity);
   });
 
   test("capability score tie-breaker descending then reference ascending", () => {
@@ -277,7 +297,15 @@ describe("economy ranking", () => {
     // a has lower capability score
     const capabilities: PolicyCapabilityCatalog = new Map([
       ["p/a", { reasoning: false, toolcall: false }],
-      ["p/b", { reasoning: true, toolcall: true, attachment: true, input: { a: {}, b: {} } }],
+      [
+        "p/b",
+        {
+          reasoning: true,
+          toolcall: true,
+          attachment: true,
+          input: { a: {}, b: {} },
+        },
+      ],
     ]);
     const input = baseInput({
       mode: "economy",
@@ -313,8 +341,22 @@ describe("economy ranking", () => {
   test("missing context is inadequate", () => {
     const catalog = ["p/good", "p/bad"];
     const metadata = new Map<string, NormalizedModelMetadata>([
-      ["p/good", meta("p/good", { inputPrice: 1, outputPrice: 1, contextLimit: 1000 })],
-      ["p/bad", meta("p/bad", { inputPrice: 0.1, outputPrice: 0.1, contextLimit: null })],
+      [
+        "p/good",
+        meta("p/good", {
+          inputPrice: 1,
+          outputPrice: 1,
+          contextLimit: 100_000,
+        }),
+      ],
+      [
+        "p/bad",
+        meta("p/bad", {
+          inputPrice: 0.1,
+          outputPrice: 0.1,
+          contextLimit: null,
+        }),
+      ],
     ]);
     const input = baseInput({
       mode: "economy",
@@ -326,14 +368,25 @@ describe("economy ranking", () => {
     const out = suggestForMode(input);
     // bad has cheaper cost but inadequate context, so excluded
     expect(out.suggestions.get("general")?.model).toBe("p/good");
-    expect(isContextInadequate(meta("p/bad", { contextLimit: null }))).toBe(true);
-    expect(isContextInadequate(meta("p/good", { contextLimit: 1 }))).toBe(false);
+    expect(isContextInadequate(meta("p/bad", { contextLimit: null }))).toBe(
+      true,
+    );
+    expect(isContextInadequate(meta("p/good", { contextLimit: 1 }))).toBe(
+      false,
+    );
   });
 
   test("known context is adequate (any known value)", () => {
     const catalog = ["p/tiny"];
     const metadata = new Map<string, NormalizedModelMetadata>([
-      ["p/tiny", meta("p/tiny", { inputPrice: 1, outputPrice: 1, contextLimit: 1 })],
+      [
+        "p/tiny",
+        meta("p/tiny", {
+          inputPrice: 1,
+          outputPrice: 1,
+          contextLimit: 100_000,
+        }),
+      ],
     ]);
     const input = baseInput({
       mode: "economy",
@@ -350,8 +403,22 @@ describe("performance ranking", () => {
   test("benchmark descending when comparable exists", () => {
     const catalog = ["p/low", "p/high"];
     const metadata = new Map<string, NormalizedModelMetadata>([
-      ["p/low", meta("p/low", { benchmarkScore: 80, contextLimit: 1000, outputLimit: 1000 })],
-      ["p/high", meta("p/high", { benchmarkScore: 95, contextLimit: 1000, outputLimit: 1000 })],
+      [
+        "p/low",
+        meta("p/low", {
+          benchmarkScore: 80,
+          contextLimit: 100_000,
+          outputLimit: 8_192,
+        }),
+      ],
+      [
+        "p/high",
+        meta("p/high", {
+          benchmarkScore: 95,
+          contextLimit: 100_000,
+          outputLimit: 8_192,
+        }),
+      ],
     ]);
     const input = baseInput({
       mode: "performance",
@@ -368,8 +435,22 @@ describe("performance ranking", () => {
   test("heuristic true when no comparable benchmark", () => {
     const catalog = ["p/a", "p/b"];
     const metadata = new Map<string, NormalizedModelMetadata>([
-      ["p/a", meta("p/a", { benchmarkScore: null, contextLimit: 2000, outputLimit: 1000 })],
-      ["p/b", meta("p/b", { benchmarkScore: null, contextLimit: 1000, outputLimit: 2000 })],
+      [
+        "p/a",
+        meta("p/a", {
+          benchmarkScore: null,
+          contextLimit: 200_000,
+          outputLimit: 8_192,
+        }),
+      ],
+      [
+        "p/b",
+        meta("p/b", {
+          benchmarkScore: null,
+          contextLimit: 100_000,
+          outputLimit: 32_000,
+        }),
+      ],
     ]);
     const input = baseInput({
       mode: "performance",
@@ -380,15 +461,33 @@ describe("performance ranking", () => {
     });
     const out = suggestForMode(input);
     expect(out.suggestions.get("general")?.heuristic).toBe(true);
-    expect(out.suggestions.get("general")?.reason.toLowerCase()).toContain("heuristic");
+    expect(out.suggestions.get("general")?.reason.toLowerCase()).toContain(
+      "heuristic",
+    );
   });
 
-  test("performance falls back to capability, context, output, freshness, reference", () => {
+  test("performance falls back to roleScore via saturated context/output then reference", () => {
     const catalog = ["p/a", "p/b"];
     // no bench, same capability score, a has larger context
     const metadata = new Map<string, NormalizedModelMetadata>([
-      ["p/a", meta("p/a", { benchmarkScore: null, contextLimit: 2000, outputLimit: 1000, fetchedAt: 1000 })],
-      ["p/b", meta("p/b", { benchmarkScore: null, contextLimit: 1000, outputLimit: 1000, fetchedAt: 1000 })],
+      [
+        "p/a",
+        meta("p/a", {
+          benchmarkScore: null,
+          contextLimit: 200_000,
+          outputLimit: 8_192,
+          fetchedAt: 1000,
+        }),
+      ],
+      [
+        "p/b",
+        meta("p/b", {
+          benchmarkScore: null,
+          contextLimit: 100_000,
+          outputLimit: 8_192,
+          fetchedAt: 1000,
+        }),
+      ],
     ]);
     const capsEqual = caps(catalog);
     const input = baseInput({
@@ -402,8 +501,24 @@ describe("performance ranking", () => {
 
     // tie context, b larger output
     const metadata2 = new Map<string, NormalizedModelMetadata>([
-      ["p/a", meta("p/a", { benchmarkScore: null, contextLimit: 1000, outputLimit: 1000, fetchedAt: 1000 })],
-      ["p/b", meta("p/b", { benchmarkScore: null, contextLimit: 1000, outputLimit: 5000, fetchedAt: 1000 })],
+      [
+        "p/a",
+        meta("p/a", {
+          benchmarkScore: null,
+          contextLimit: 100_000,
+          outputLimit: 8_192,
+          fetchedAt: 1000,
+        }),
+      ],
+      [
+        "p/b",
+        meta("p/b", {
+          benchmarkScore: null,
+          contextLimit: 100_000,
+          outputLimit: 32_000,
+          fetchedAt: 1000,
+        }),
+      ],
     ]);
     const input2 = baseInput({
       mode: "performance",
@@ -412,12 +527,30 @@ describe("performance ranking", () => {
       capabilities: capsEqual,
       agents: ["general"],
     });
-    expect(suggestForMode(input2).suggestions.get("general")?.model).toBe("p/b");
+    expect(suggestForMode(input2).suggestions.get("general")?.model).toBe(
+      "p/b",
+    );
 
-    // tie context/output, fresher wins
+    // tie context/output/roleScore → reference ascending (not freshness)
     const metadata3 = new Map<string, NormalizedModelMetadata>([
-      ["p/a", meta("p/a", { benchmarkScore: null, contextLimit: 1000, outputLimit: 1000, fetchedAt: 2000 })],
-      ["p/b", meta("p/b", { benchmarkScore: null, contextLimit: 1000, outputLimit: 1000, fetchedAt: 1000 })],
+      [
+        "p/a",
+        meta("p/a", {
+          benchmarkScore: null,
+          contextLimit: 100_000,
+          outputLimit: 8_192,
+          fetchedAt: 1000,
+        }),
+      ],
+      [
+        "p/b",
+        meta("p/b", {
+          benchmarkScore: null,
+          contextLimit: 100_000,
+          outputLimit: 8_192,
+          fetchedAt: 2000,
+        }),
+      ],
     ]);
     const input3 = baseInput({
       mode: "performance",
@@ -426,14 +559,32 @@ describe("performance ranking", () => {
       capabilities: capsEqual,
       agents: ["general"],
     });
-    expect(suggestForMode(input3).suggestions.get("general")?.model).toBe("p/a");
+    expect(suggestForMode(input3).suggestions.get("general")?.model).toBe(
+      "p/a",
+    );
   });
 
   test("reference tie-breaker for performance", () => {
     const catalog = ["p/b", "p/a"];
     const metadata = new Map<string, NormalizedModelMetadata>([
-      ["p/a", meta("p/a", { benchmarkScore: 90, contextLimit: 1000, outputLimit: 1000, fetchedAt: 1000 })],
-      ["p/b", meta("p/b", { benchmarkScore: 90, contextLimit: 1000, outputLimit: 1000, fetchedAt: 1000 })],
+      [
+        "p/a",
+        meta("p/a", {
+          benchmarkScore: 90,
+          contextLimit: 100_000,
+          outputLimit: 8_192,
+          fetchedAt: 1000,
+        }),
+      ],
+      [
+        "p/b",
+        meta("p/b", {
+          benchmarkScore: 90,
+          contextLimit: 100_000,
+          outputLimit: 8_192,
+          fetchedAt: 1000,
+        }),
+      ],
     ]);
     const capsEqual = caps(catalog);
     const input = baseInput({
@@ -449,7 +600,7 @@ describe("performance ranking", () => {
   test("missing context excluded in performance", () => {
     const catalog = ["p/good", "p/bad"];
     const metadata = new Map<string, NormalizedModelMetadata>([
-      ["p/good", meta("p/good", { benchmarkScore: 10, contextLimit: 1000 })],
+      ["p/good", meta("p/good", { benchmarkScore: 10, contextLimit: 100_000 })],
       ["p/bad", meta("p/bad", { benchmarkScore: 99, contextLimit: null })],
     ]);
     const input = baseInput({
@@ -459,22 +610,265 @@ describe("performance ranking", () => {
       capabilities: caps(catalog),
       agents: ["general"],
     });
-    expect(suggestForMode(input).suggestions.get("general")?.model).toBe("p/good");
+    expect(suggestForMode(input).suggestions.get("general")?.model).toBe(
+      "p/good",
+    );
+  });
+});
+
+
+describe("role-aware agent mappings", () => {
+  test("all eight roles map correctly plus unknown falls back to general", () => {
+    expect(_test.roleForAgent("oracle")).toBe("deep-reasoning");
+    expect(_test.roleForAgent("metis")).toBe("deep-reasoning");
+    expect(_test.roleForAgent("plan")).toBe("planning");
+    expect(_test.roleForAgent("momus")).toBe("review");
+    expect(_test.roleForAgent("sisyphus-junior")).toBe("coding");
+    expect(_test.roleForAgent("explore")).toBe("exploration");
+    expect(_test.roleForAgent("librarian")).toBe("research");
+    expect(_test.roleForAgent("multimodal-looker")).toBe("multimodal");
+    expect(_test.roleForAgent("general")).toBe("general");
+    expect(_test.roleForAgent("unknown-agent-xyz")).toBe("general");
+    expect(_test.roleForAgent("custom-bot")).toBe("general");
+  });
+
+  test("general min context/output boundaries exclude below-minimum", () => {
+    const generalProfile = _test.profileForAgent("general");
+    expect(generalProfile.minContext).toBe(64_000);
+    expect(generalProfile.prefContext).toBe(256_000);
+    expect(generalProfile.minOutput).toBe(8_000);
+    expect(generalProfile.prefOutput).toBe(64_000);
+    const catalog = ["p/ok", "p/small"];
+    const metadata = new Map([
+      ["p/ok", meta("p/ok", { contextLimit: 64_000, outputLimit: 8_192 })],
+      ["p/small", meta("p/small", { contextLimit: 63_999, outputLimit: 8_192 })],
+    ]);
+    const input = baseInput({ mode: "economy", catalog, metadata, capabilities: caps(catalog), agents: ["general"] });
+    expect(suggestForMode(input).suggestions.get("general")?.model).toBe("p/ok");
+    const metadata2 = new Map([
+      ["p/ok", meta("p/ok", { contextLimit: 64_000, outputLimit: 8_192 })],
+      ["p/small-out", meta("p/small-out", { contextLimit: 64_000, outputLimit: 7_999 })],
+    ]);
+    const input2 = baseInput({ mode: "economy", catalog: ["p/ok","p/small-out"], metadata: metadata2, capabilities: caps(["p/ok","p/small-out"]), agents: ["general"] });
+    expect(suggestForMode(input2).suggestions.get("general")?.model).toBe("p/ok");
+  });
+
+  test("saturated fit is 0 at min, 1 at preferred, and capped above preferred", () => {
+    const gp = _test.profileForAgent("general");
+    expect(_test.saturatedFit(gp.minContext, gp.minContext, gp.prefContext)).toBe(0);
+    expect(_test.saturatedFit(gp.prefContext, gp.minContext, gp.prefContext)).toBe(1);
+    expect(_test.saturatedFit(gp.prefContext + 1_000_000, gp.minContext, gp.prefContext)).toBe(1);
+    const mid = (gp.minContext + gp.prefContext) / 2;
+    expect(_test.saturatedFit(mid, gp.minContext, gp.prefContext)).toBeCloseTo(0.5, 5);
+    expect(_test.saturatedFit(100_000, 100_000, 100_000)).toBe(1);
+    expect(_test.saturatedFit(gp.minOutput, gp.minOutput, gp.prefOutput)).toBe(0);
+    expect(_test.saturatedFit(gp.prefOutput, gp.minOutput, gp.prefOutput)).toBe(1);
+    expect(_test.saturatedFit(gp.prefOutput + 1_000, gp.minOutput, gp.prefOutput)).toBe(1);
+    const catalog = ["p/a","p/b"];
+    const metadata = new Map([
+      ["p/a", meta("p/a", { contextLimit: gp.prefContext, outputLimit: gp.prefOutput })],
+      ["p/b", meta("p/b", { contextLimit: gp.prefContext + 500_000, outputLimit: gp.prefOutput + 100_000 })],
+    ]);
+    const input = baseInput({ mode: "performance", catalog, metadata, capabilities: caps(catalog), agents: ["general"] });
+    expect(suggestForMode(input).suggestions.get("general")?.model).toBe("p/a");
+  });
+
+  test("multimodal attachment required even when model id contains Vision", () => {
+    const catalog = ["p/Vision-pro-model","p/real-multimodal"];
+    const metadata = new Map([
+      ["p/Vision-pro-model", meta("p/Vision-pro-model", { contextLimit: 100_000, outputLimit: 32_000 })],
+      ["p/real-multimodal", meta("p/real-multimodal", { contextLimit: 100_000, outputLimit: 32_000 })],
+    ]);
+    const capabilities = new Map([
+      ["p/Vision-pro-model", { reasoning: true, toolcall: true, attachment: false }],
+      ["p/real-multimodal", { reasoning: true, toolcall: true, attachment: true }],
+    ]);
+    const input = baseInput({ mode: "performance", catalog, metadata, capabilities, agents: ["multimodal-looker"] });
+    expect(suggestForMode(input).suggestions.get("multimodal-looker")?.model).toBe("p/real-multimodal");
+    const input2 = baseInput({ mode: "economy", catalog: ["p/Vision-pro-model"], metadata: new Map([["p/Vision-pro-model", meta("p/Vision-pro-model",{contextLimit:100_000, outputLimit:32000})]]), capabilities: new Map([["p/Vision-pro-model", {toolcall:true, attachment:false}]]), agents: ["multimodal-looker"] });
+    expect(suggestForMode(input2).suggestions.has("multimodal-looker")).toBe(false);
+  });
+});
+
+describe("benchmark normalization and heuristic", () => {
+  test("two comparable benchmark values normalize and higher wins without overriding all role fit", () => {
+    const catalog = ["p/low","p/high"];
+    const metadata = new Map([
+      ["p/low", meta("p/low", { benchmarkScore: 80, contextLimit: 100_000, outputLimit: 8_192, reasoning: true })],
+      ["p/high", meta("p/high", { benchmarkScore: 95, contextLimit: 100_000, outputLimit: 8_192, reasoning: false })],
+    ]);
+    const input = baseInput({ mode: "performance", catalog, metadata, capabilities: caps(catalog), agents: ["general"] });
+    const out = suggestForMode(input);
+    expect(out.suggestions.get("general")?.model).toBe("p/high");
+    expect(out.suggestions.get("general")?.heuristic).toBe(false);
+  });
+
+  test("missing benchmark in comparable cohort receives 0 for that dimension", () => {
+    const catalog = ["p/a","p/b","p/c"];
+    const metadata = new Map([
+      ["p/a", meta("p/a", { benchmarkScore: 80, contextLimit: 100_000, outputLimit: 8_192 })],
+      ["p/b", meta("p/b", { benchmarkScore: 95, contextLimit: 100_000, outputLimit: 8_192 })],
+      ["p/c", meta("p/c", { benchmarkScore: null, contextLimit: 100_000, outputLimit: 8_192 })],
+    ]);
+    const input = baseInput({ mode: "performance", catalog, metadata, capabilities: caps(catalog), agents: ["general"] });
+    const out = suggestForMode(input);
+    expect(out.suggestions.get("general")?.model).toBe("p/b");
+    const profile = _test.profileForAgent("general");
+    const cands = [
+      { reference: "p/a", providerId: "p", modelId: "a", metadata: meta("p/a",{benchmarkScore:80}), capability: {toolcall:true}, capabilityScore:0, effectiveCost: 1 },
+      { reference: "p/b", providerId: "p", modelId: "b", metadata: meta("p/b",{benchmarkScore:95}), capability: {toolcall:true}, capabilityScore:0, effectiveCost: 1 },
+      { reference: "p/c", providerId: "p", modelId: "c", metadata: meta("p/c",{benchmarkScore:null}), capability: {toolcall:true}, capabilityScore:0, effectiveCost: 1 },
+    ];
+    const res = _test.computeRoleScores(profile, cands as unknown as readonly import("./agent-model-suggestion-policy").PolicyCandidate[]);
+    const low = res.scored.find(s=>s.reference==="p/a")!;
+    const missing = res.scored.find(s=>s.reference==="p/c")!;
+    expect(missing.roleScore).toBe(low.roleScore);
+    expect(res.heuristic).toBe(false);
+  });
+
+  test("fewer than two benchmark values -> heuristic and renormalized weights", () => {
+    const catalog = ["p/x","p/y"];
+    const metadata = new Map([
+      ["p/x", meta("p/x", { benchmarkScore: null, contextLimit: 100_000, outputLimit: 8_192 })],
+      ["p/y", meta("p/y", { benchmarkScore: null, contextLimit: 100_000, outputLimit: 8_192 })],
+    ]);
+    const input = baseInput({ mode: "performance", catalog, metadata, capabilities: caps(catalog), agents: ["general"] });
+    const out = suggestForMode(input);
+    expect(out.suggestions.get("general")?.heuristic).toBe(true);
+    const metadata2 = new Map([
+      ["p/x", meta("p/x", { benchmarkScore: 85, contextLimit: 100_000, outputLimit: 8_192 })],
+      ["p/y", meta("p/y", { benchmarkScore: null, contextLimit: 100_000, outputLimit: 8_192 })],
+    ]);
+    const input2 = baseInput({ mode: "performance", catalog, metadata: metadata2, capabilities: caps(catalog), agents: ["general"] });
+    expect(suggestForMode(input2).suggestions.get("general")?.heuristic).toBe(true);
+  });
+});
+
+describe("multi-agent and reason structural tokens", () => {
+  test("different roles select their own best eligible candidate; duplicates allowed and permutation stable", () => {
+    const catalog = ["p/code-specialist","p/research-giant","p/generalist","p/explore-lite"];
+    const metadata = new Map([
+      ["p/code-specialist", meta("p/code-specialist", { contextLimit: 128_000, outputLimit: 64_000, reasoning: false, toolCall: true, structuredOutput: true, benchmarkScore: 90 })],
+      ["p/research-giant", meta("p/research-giant", { contextLimit: 1_000_000, outputLimit: 64_000, reasoning: true, toolCall: true, structuredOutput: false, benchmarkScore: 90 })],
+      ["p/generalist", meta("p/generalist", { contextLimit: 256_000, outputLimit: 64_000, reasoning: true, toolCall: true, structuredOutput: true, benchmarkScore: 90 })],
+      ["p/explore-lite", meta("p/explore-lite", { contextLimit: 128_000, outputLimit: 32_000, reasoning: false, toolCall: true, structuredOutput: false, benchmarkScore: 90 })],
+    ]);
+    const capabilities = new Map([
+      ["p/code-specialist", { toolcall: true, reasoning: false }],
+      ["p/research-giant", { toolcall: true, reasoning: true }],
+      ["p/generalist", { toolcall: true, reasoning: true }],
+      ["p/explore-lite", { toolcall: true, reasoning: false }],
+    ]);
+    const agents = ["sisyphus-junior","librarian","explore","general","oracle"];
+    const input = baseInput({ mode: "performance", catalog, metadata, capabilities, agents });
+    const _out = suggestForMode(input);
+    const singleCatalog = ["p/shared"];
+    const singleMeta = new Map([["p/shared", meta("p/shared",{contextLimit:256_000, outputLimit:64_000})]]);
+    const singleOut = suggestForMode({ mode:"performance", providers:[], catalog:singleCatalog, metadata:singleMeta, sourceStatus:"fresh", sourceAgeMs:0, warnings:[], capabilities: caps(singleCatalog), agents: ["oracle","explore","general"]});
+    expect(singleOut.suggestions.size).toBe(3);
+    expect([...singleOut.suggestions.values()].every(v=>v.model==="p/shared")).toBe(true);
+    const shuffledCatalog = [...catalog].reverse();
+    const inputShuffled = baseInput({ mode: "performance", catalog: shuffledCatalog, metadata, capabilities, agents: [...agents].reverse() });
+    const outShuffled = suggestForMode(inputShuffled);
+    for (const a of agents) {
+      expect(_out.suggestions.get(a)?.model).toBe(outShuffled.suggestions.get(a)?.model);
+    }
+  });
+
+  test("reason contains mode, role, score, and heuristic structural tokens and is bounded", () => {
+    const catalog = ["p/a","p/b"];
+    const metadata = new Map([
+      ["p/a", meta("p/a", { benchmarkScore: 80, contextLimit: 256_000, outputLimit: 32_000 })],
+      ["p/b", meta("p/b", { benchmarkScore: 90, contextLimit: 256_000, outputLimit: 32_000 })],
+    ]);
+    const inputPerf = baseInput({ mode: "performance", catalog, metadata, capabilities: caps(catalog), agents: ["plan","unknown-bot"] });
+    const outPerf = suggestForMode(inputPerf);
+    const reasonPlan = outPerf.suggestions.get("plan")?.reason ?? "";
+    expect(reasonPlan.includes("performance")).toBe(true);
+    expect(reasonPlan.includes("planning")).toBe(true);
+    expect(/score \d\.\d{2}/.test(reasonPlan)).toBe(true);
+    expect(reasonPlan.length).toBeLessThanOrEqual(200);
+    const reasonUnknown = outPerf.suggestions.get("unknown-bot")?.reason ?? "";
+    expect(reasonUnknown.includes("general")).toBe(true);
+    expect(reasonUnknown.includes("performance")).toBe(true);
+    const heuristicMeta = new Map([
+      ["p/a", meta("p/a", { benchmarkScore: null, contextLimit: 100_000, outputLimit: 8_192 })],
+      ["p/b", meta("p/b", { benchmarkScore: null, contextLimit: 100_000, outputLimit: 8_192 })],
+    ]);
+    const heuristicOut = suggestForMode(baseInput({ mode: "performance", catalog, metadata: heuristicMeta, capabilities: caps(catalog), agents: ["general"] }));
+    expect(heuristicOut.suggestions.get("general")?.heuristic).toBe(true);
+    expect(heuristicOut.suggestions.get("general")?.reason.toLowerCase().includes("heuristic")).toBe(true);
+    const freeReason = suggestForMode(baseInput({ mode:"free", catalog:["p/a"], metadata: new Map([["p/a", meta("p/a",{inputPrice:0, outputPrice:0, contextLimit:100_000, outputLimit:8192})]]), capabilities: caps(["p/a"]), agents:["general"]})).suggestions.get("general")?.reason ?? "";
+    expect(freeReason.includes("free")).toBe(true);
+    expect(freeReason.includes("role general")).toBe(true);
+    const ecoReason = suggestForMode(baseInput({ mode:"economy", catalog:["p/a"], metadata: new Map([["p/a", meta("p/a",{inputPrice:1, outputPrice:1, contextLimit:100_000, outputLimit:8192})]]), capabilities: caps(["p/a"]), agents:["general"]})).suggestions.get("general")?.reason ?? "";
+    expect(ecoReason.includes("economy")).toBe(true);
+    expect(ecoReason.includes("cost")).toBe(true);
+  });
+
+  test("economy reason names only cost and role fit", () => {
+    const catalog = ["p/a", "p/b"];
+    const metadata = new Map([
+      ["p/a", meta("p/a", { inputPrice: 1, outputPrice: 1, benchmarkScore: 80 })],
+      ["p/b", meta("p/b", { inputPrice: 2, outputPrice: 2, benchmarkScore: 90 })],
+    ]);
+    const reason =
+      suggestForMode(
+        baseInput({
+          mode: "economy",
+          catalog,
+          metadata,
+          capabilities: caps(catalog),
+          agents: ["general"],
+        }),
+      ).suggestions.get("general")?.reason ?? "";
+
+    expect(reason).toContain("economy");
+    expect(reason).toContain("role general");
+    expect(reason).toMatch(/score \d\.\d{2}/);
+    expect(reason).toContain("cost 1.00");
+    expect(reason).toContain("p/a");
+    for (const dimension of [
+      "benchmark",
+      "reasoning,",
+      "toolCall",
+      "attachment",
+      "structured",
+      "contextFit",
+      "outputFit",
+    ]) {
+      expect(reason).not.toContain(dimension);
+    }
+    expect(reason.length).toBeLessThanOrEqual(200);
   });
 });
 
 describe("helpers", () => {
   test("isContextInadequate only null", () => {
-    expect(_test.isContextInadequate(meta("p/x", { contextLimit: null }))).toBe(true);
-    expect(_test.isContextInadequate(meta("p/x", { contextLimit: 1 }))).toBe(false);
-    expect(_test.isContextInadequate(meta("p/x", { contextLimit: 128000 }))).toBe(false);
+    expect(_test.isContextInadequate(meta("p/x", { contextLimit: null }))).toBe(
+      true,
+    );
+    expect(_test.isContextInadequate(meta("p/x", { contextLimit: 1 }))).toBe(
+      false,
+    );
+    expect(
+      _test.isContextInadequate(meta("p/x", { contextLimit: 128000 })),
+    ).toBe(false);
   });
 
   test("effectiveCost Infinity when missing", () => {
-    expect(_test.effectiveCost(meta("p/x", { inputPrice: null, outputPrice: 1 }))).toBe(Infinity);
-    expect(_test.effectiveCost(meta("p/x", { inputPrice: 1, outputPrice: null }))).toBe(Infinity);
-    expect(_test.effectiveCost(meta("p/x", { inputPrice: null, outputPrice: null }))).toBe(Infinity);
-    expect(_test.effectiveCost(meta("p/x", { inputPrice: 2, outputPrice: 4 }))).toBeCloseTo(2 * 0.6 + 4 * 0.4);
+    expect(
+      _test.effectiveCost(meta("p/x", { inputPrice: null, outputPrice: 1 })),
+    ).toBe(Infinity);
+    expect(
+      _test.effectiveCost(meta("p/x", { inputPrice: 1, outputPrice: null })),
+    ).toBe(Infinity);
+    expect(
+      _test.effectiveCost(meta("p/x", { inputPrice: null, outputPrice: null })),
+    ).toBe(Infinity);
+    expect(
+      _test.effectiveCost(meta("p/x", { inputPrice: 2, outputPrice: 4 })),
+    ).toBeCloseTo(2 * 0.6 + 4 * 0.4);
   });
 
   test("provider scope filtering", () => {
@@ -496,7 +890,9 @@ describe("helpers", () => {
 
   test("bounded reason length", () => {
     const catalog = ["p/a"];
-    const metadata = new Map<string, NormalizedModelMetadata>([["p/a", meta("p/a")]]);
+    const metadata = new Map<string, NormalizedModelMetadata>([
+      ["p/a", meta("p/a")],
+    ]);
     const input = baseInput({
       mode: "performance",
       catalog,
@@ -504,13 +900,16 @@ describe("helpers", () => {
       capabilities: caps(catalog),
       agents: ["general"],
     });
-    const reason = suggestForMode(input).suggestions.get("general")?.reason ?? "";
+    const reason =
+      suggestForMode(input).suggestions.get("general")?.reason ?? "";
     expect(reason.length <= 200).toBe(true);
   });
 
   test("warning handling passthrough", () => {
     const catalog = ["p/a"];
-    const metadata = new Map<string, NormalizedModelMetadata>([["p/a", meta("p/a")]]);
+    const metadata = new Map<string, NormalizedModelMetadata>([
+      ["p/a", meta("p/a")],
+    ]);
     const input = baseInput({
       mode: "economy",
       catalog,
@@ -532,7 +931,13 @@ describe("helpers", () => {
       ["p/a", meta("p/a", { inputPrice: 1, outputPrice: 1 })],
       ["p/Z", meta("p/Z", { inputPrice: 1, outputPrice: 1 })],
     ]);
-    const input = baseInput({ mode: "economy", catalog, metadata, capabilities: caps(catalog), agents: ["general"] });
+    const input = baseInput({
+      mode: "economy",
+      catalog,
+      metadata,
+      capabilities: caps(catalog),
+      agents: ["general"],
+    });
     expect(suggestForMode(input).suggestions.get("general")?.model).toBe("p/Z");
   });
 });

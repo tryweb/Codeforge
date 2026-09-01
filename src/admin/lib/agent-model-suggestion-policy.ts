@@ -60,6 +60,14 @@ export type PolicyOutput = {
   readonly suggestions: ReadonlyMap<string, AgentSuggestion>;
 };
 
+import {
+  type RoleProfile,
+  profileForAgent,
+  roleForAgent,
+} from "./agent-model-role-profiles";
+
+export type { AgentRole } from "./agent-model-role-profiles";
+export { profileForAgent, roleForAgent } from "./agent-model-role-profiles";
 const REASON_MAX = 200;
 
 function capReason(s: string): string {
@@ -100,18 +108,17 @@ export function isContextInadequate(m: NormalizedModelMetadata): boolean {
   return m.contextLimit === null;
 }
 
-function hasMinimumCapabilities(agent: string, m: NormalizedModelMetadata): boolean {
-  const cat = category(agent);
-  if (cat === "reasoning") return m.reasoning === true;
-  // exploration and general require toolCall true (minimum tool-use)
-  return m.toolCall === true;
+export function saturatedFit(
+  value: number,
+  min: number,
+  preferred: number,
+): number {
+  if (min === preferred) return 1;
+  const raw = (value - min) / (preferred - min);
+  if (raw <= 0) return 0;
+  if (raw >= 1) return 1;
+  return raw;
 }
-
-function hasMinimumForFree(agent: string, m: NormalizedModelMetadata): boolean {
-  // Free requires same minimum plus non-deprecated and zero cost already checked
-  return hasMinimumCapabilities(agent, m);
-}
-
 function toSuggestionMetadata(m: NormalizedModelMetadata): SuggestionMetadata {
   return {
     inputPrice: m.inputPrice,
@@ -124,7 +131,6 @@ function toSuggestionMetadata(m: NormalizedModelMetadata): SuggestionMetadata {
     deprecated: m.deprecated,
   };
 }
-
 function joinCandidates(
   catalog: readonly string[],
   metadata: ReadonlyMap<string, NormalizedModelMetadata>,
@@ -163,148 +169,318 @@ function joinCandidates(
   return candidates;
 }
 
+function isRoleEligible(
+  profile: RoleProfile,
+  candidate: PolicyCandidate,
+): boolean {
+  const m = candidate.metadata;
+  if (m.deprecated) return false;
+  if (m.contextLimit === null || m.outputLimit === null) return false;
+  if (m.contextLimit < profile.minContext) return false;
+  if (m.outputLimit < profile.minOutput) return false;
+  if (profile.requiredReasoning && m.reasoning !== true) return false;
+  if (profile.requiredToolCall && m.toolCall !== true) return false;
+  if (profile.requiredAttachment && candidate.capability?.attachment !== true)
+    return false;
+  return true;
+}
 function filterFree(
   agent: string,
   candidates: readonly PolicyCandidate[],
   sourceStatus: SourceStatus,
 ): PolicyCandidate[] {
   if (sourceStatus !== "fresh") return [];
+  const profile = profileForAgent(agent);
   return candidates.filter((c) => {
-    if (c.metadata.deprecated) return false;
-    if (c.metadata.inputPrice !== 0 || c.metadata.outputPrice !== 0) return false;
-    if (c.metadata.inputPrice === null || c.metadata.outputPrice === null) return false;
-    if (isContextInadequate(c.metadata)) return false;
-    if (!hasMinimumForFree(agent, c.metadata)) return false;
+    // Zero-cost gate: inputPrice/outputPrice !== 0 already excludes null (null !== 0); keep role eligibility gates
+    if (c.metadata.inputPrice !== 0 || c.metadata.outputPrice !== 0)
+      return false;
+    if (!isRoleEligible(profile, c)) return false;
     return true;
   });
 }
-
 function filterEconomyPerformance(
   agent: string,
   candidates: readonly PolicyCandidate[],
 ): PolicyCandidate[] {
-  return candidates.filter((c) => {
-    if (c.metadata.deprecated) return false;
-    if (isContextInadequate(c.metadata)) return false;
-    if (!hasMinimumCapabilities(agent, c.metadata)) return false;
-    return true;
-  });
+  const profile = profileForAgent(agent);
+  return candidates.filter((c) => isRoleEligible(profile, c));
 }
-
-function sortEconomy(agent: string, candidates: PolicyCandidate[]): PolicyCandidate[] {
-  const withScore = candidates.map((c) => ({
-    ...c,
-    capabilityScore: capabilityScore(agent, c.capability),
-  }));
-  withScore.sort((a, b) => {
+type ScoredCandidate = PolicyCandidate & { readonly roleScore: number };
+function computeRoleScores(
+  profile: RoleProfile,
+  candidates: readonly PolicyCandidate[],
+): { scored: ScoredCandidate[]; heuristic: boolean } {
+  if (candidates.length === 0) return { scored: [], heuristic: true };
+  // Benchmark comparability: <2 values → omit benchmark weight and renormalize; performance is heuristic
+  const benchValues = candidates
+    .map((c) => c.metadata.benchmarkScore)
+    .filter((v): v is number => v !== null);
+  const comparable = benchValues.length >= 2;
+  let minBench = 0;
+  let maxBench = 0;
+  if (comparable) {
+    minBench = Math.min(...benchValues);
+    maxBench = Math.max(...benchValues);
+  }
+  const scored: ScoredCandidate[] = candidates.map((c) => {
+    const m = c.metadata;
+    const cap = c.capability;
+    const contextLimit = m.contextLimit;
+    const outputLimit = m.outputLimit;
+    if (contextLimit === null || outputLimit === null) {
+      return { ...c, roleScore: 0 };
+    }
+    const contextFit = saturatedFit(
+      contextLimit,
+      profile.minContext,
+      profile.prefContext,
+    );
+    const outputFit = saturatedFit(
+      outputLimit,
+      profile.minOutput,
+      profile.prefOutput,
+    );
+    const reasoningScore = m.reasoning === true ? 1 : 0;
+    const toolCallScore = m.toolCall === true ? 1 : 0;
+    const attachmentScore = cap?.attachment === true ? 1 : 0;
+    const structuredScore = m.structuredOutput === true ? 1 : 0;
+    let benchmarkScore: number;
+    if (!comparable) benchmarkScore = 0;
+    else {
+      const raw = m.benchmarkScore;
+      if (raw === null) benchmarkScore = 0;
+      else if (maxBench === minBench) benchmarkScore = 0.5;
+      else benchmarkScore = (raw - minBench) / (maxBench - minBench);
+    }
+    const w = profile.weights;
+    let sum = 0;
+    let wsum = 0;
+    const add = (weight: number, score: number): void => {
+      if (weight === 0) return;
+      sum += weight * score;
+      wsum += weight;
+    };
+    if (comparable) add(w.benchmark, benchmarkScore);
+    add(w.reasoning, reasoningScore);
+    add(w.toolCall, toolCallScore);
+    add(w.attachment, attachmentScore);
+    add(w.structured, structuredScore);
+    add(w.context, contextFit);
+    add(w.output, outputFit);
+    const roleScore = wsum === 0 ? 0 : sum / wsum;
+    return { ...c, roleScore };
+  });
+  return { scored, heuristic: !comparable };
+}
+function sortEconomy(
+  agent: string,
+  candidates: PolicyCandidate[],
+): { sorted: ScoredCandidate[]; heuristic: boolean } {
+  const profile = profileForAgent(agent);
+  const { scored } = computeRoleScores(profile, candidates);
+  scored.sort((a, b) => {
     if (a.effectiveCost !== b.effectiveCost) {
-      // Infinity correctly sorts last via numeric compare
-      if (!Number.isFinite(a.effectiveCost) && !Number.isFinite(b.effectiveCost)) {
-        // both Infinity -> tie break via next
-      } else if (!Number.isFinite(a.effectiveCost)) return 1;
-      else if (!Number.isFinite(b.effectiveCost)) return -1;
+      const aInf = !Number.isFinite(a.effectiveCost);
+      const bInf = !Number.isFinite(b.effectiveCost);
+      if (aInf && bInf) {
+      } else if (aInf) return 1;
+      else if (bInf) return -1;
       else return a.effectiveCost - b.effectiveCost;
     }
-    if (a.capabilityScore !== b.capabilityScore) return b.capabilityScore - a.capabilityScore;
+    if (a.roleScore !== b.roleScore) return b.roleScore - a.roleScore;
     return compareReferences(a.reference, b.reference);
   });
-  return withScore;
+  return { sorted: scored, heuristic: false };
+}
+function sortPerformance(
+  agent: string,
+  candidates: PolicyCandidate[],
+): { sorted: ScoredCandidate[]; heuristic: boolean } {
+  const profile = profileForAgent(agent);
+  const { scored, heuristic } = computeRoleScores(profile, candidates);
+  scored.sort((a, b) => {
+    if (a.roleScore !== b.roleScore) return b.roleScore - a.roleScore;
+    return compareReferences(a.reference, b.reference);
+  });
+  return { sorted: scored, heuristic };
+}
+function decidingDimensions(
+  profile: RoleProfile,
+  heuristic: boolean,
+): string[] {
+  const w = profile.weights;
+  const parts: string[] = [];
+  if (w.benchmark > 0 && !heuristic) parts.push("benchmark");
+  if (w.reasoning > 0) parts.push("reasoning");
+  if (w.toolCall > 0) parts.push("toolCall");
+  if (w.attachment > 0) parts.push("attachment");
+  if (w.structured > 0) parts.push("structured");
+  if (w.context > 0) parts.push("contextFit");
+  if (w.output > 0) parts.push("outputFit");
+  return parts;
+}
+function isHighRiskRole(role: string): boolean {
+  return role === "review" || role === "deep-reasoning";
 }
 
-function sortPerformance(agent: string, candidates: PolicyCandidate[]): { sorted: PolicyCandidate[]; heuristic: boolean } {
-  const hasComparable = candidates.some((c) => c.metadata.benchmarkScore !== null);
-  const withScore = candidates.map((c) => ({
-    ...c,
-    capabilityScore: capabilityScore(agent, c.capability),
-  }));
-  withScore.sort((a, b) => {
-    const aBench = a.metadata.benchmarkScore;
-    const bBench = b.metadata.benchmarkScore;
-    if (hasComparable) {
-      const aVal = aBench ?? Number.NEGATIVE_INFINITY;
-      const bVal = bBench ?? Number.NEGATIVE_INFINITY;
-      if (aVal !== bVal) return bVal - aVal;
+function tieGroup(
+  sorted: readonly ScoredCandidate[],
+  mode: SuggestionMode,
+): ScoredCandidate[] {
+  if (sorted.length === 0) return [];
+  const top = sorted[0];
+  if (top === undefined) return [];
+  if (mode === "free") {
+    return sorted.filter((c) => c.roleScore === top.roleScore);
+  }
+  if (mode === "economy") {
+    return sorted.filter(
+      (c) =>
+        c.effectiveCost === top.effectiveCost && c.roleScore === top.roleScore,
+    );
+  }
+  return sorted.filter((c) => c.roleScore === top.roleScore);
+}
+
+function selectDiverseWinner(
+  sorted: readonly ScoredCandidate[],
+  mode: SuggestionMode,
+  profile: RoleProfile,
+  codingModel: string | null,
+  modelReuse: ReadonlyMap<string, number>,
+  providerReuse: ReadonlyMap<string, number>,
+): { winner: ScoredCandidate; diversified: boolean; crossReview: boolean } {
+  if (sorted.length === 0) throw new Error("selectDiverseWinner: empty sorted");
+  const group = tieGroup(sorted, mode);
+  if (group.length <= 1) {
+    const w = sorted[0];
+    if (w === undefined) throw new Error("selectDiverseWinner: missing top");
+    return { winner: w, diversified: false, crossReview: false };
+  }
+  const baselineRef = group[0]?.reference ?? sorted[0]?.reference ?? "";
+  const candidates = [...group];
+  const highRisk = isHighRiskRole(profile.role);
+  const crossReviewActive = highRisk && codingModel !== null;
+  candidates.sort((a, b) => {
+    if (crossReviewActive && codingModel !== null) {
+      const aDiff = a.reference !== codingModel ? 0 : 1;
+      const bDiff = b.reference !== codingModel ? 0 : 1;
+      if (aDiff !== bDiff) return aDiff - bDiff;
     }
-    if (a.capabilityScore !== b.capabilityScore) return b.capabilityScore - a.capabilityScore;
-    const aCtx = a.metadata.contextLimit ?? Number.NEGATIVE_INFINITY;
-    const bCtx = b.metadata.contextLimit ?? Number.NEGATIVE_INFINITY;
-    if (aCtx !== bCtx) return bCtx - aCtx;
-    const aOut = a.metadata.outputLimit ?? Number.NEGATIVE_INFINITY;
-    const bOut = b.metadata.outputLimit ?? Number.NEGATIVE_INFINITY;
-    if (aOut !== bOut) return bOut - aOut;
-    const aFresh = a.metadata.fetchedAt;
-    const bFresh = b.metadata.fetchedAt;
-    if (aFresh !== bFresh) return bFresh - aFresh;
+    const aModelReuse = modelReuse.get(a.reference) ?? 0;
+    const bModelReuse = modelReuse.get(b.reference) ?? 0;
+    if (aModelReuse !== bModelReuse) return aModelReuse - bModelReuse;
+    const aProvReuse = providerReuse.get(a.providerId) ?? 0;
+    const bProvReuse = providerReuse.get(b.providerId) ?? 0;
+    if (aProvReuse !== bProvReuse) return aProvReuse - bProvReuse;
     return compareReferences(a.reference, b.reference);
   });
-  return { sorted: withScore, heuristic: !hasComparable };
+  const winner = candidates[0];
+  if (winner === undefined) throw new Error("selectDiverseWinner: missing winner");
+  const diversified = winner.reference !== baselineRef;
+  const crossReview =
+    diversified &&
+    crossReviewActive &&
+    winner.reference !== codingModel &&
+    group.some((c) => c.reference === codingModel);
+  return { winner, diversified, crossReview };
 }
 
 function reasonFor(
   mode: SuggestionMode,
-  candidate: PolicyCandidate,
+  profile: RoleProfile,
+  candidate: ScoredCandidate,
   heuristic: boolean,
+  diversityMarker: string | null,
 ): string {
-  const costStr = Number.isFinite(candidate.effectiveCost)
-    ? `cost ${candidate.effectiveCost.toFixed(2)}`
-    : "cost unknown";
-  const capStr = `capability ${candidate.capabilityScore}`;
+  const scoreStr = candidate.roleScore.toFixed(2);
+  const role = profile.role;
   const ref = candidate.reference;
-  if (mode === "free") {
-    return capReason(`Free · zero cost · ${capStr} · ${ref} · fresh metadata`);
-  }
+  const diversitySuffix = diversityMarker === null ? "" : ` · ${diversityMarker}`;
   if (mode === "economy") {
-    return capReason(`Economy · ${costStr} · ${capStr} · ${ref}`);
+    const costStr = Number.isFinite(candidate.effectiveCost)
+      ? `cost ${candidate.effectiveCost.toFixed(2)}`
+      : "cost unknown";
+    return capReason(
+      `${mode} · role ${role} · score ${scoreStr} · ${costStr} · ${ref}${diversitySuffix}`,
+    );
   }
-  // performance
-  if (heuristic) {
-    const ctx = candidate.metadata.contextLimit ?? 0;
-    const out = candidate.metadata.outputLimit ?? 0;
-    return capReason(`Performance · heuristic · ${capStr} · context ${ctx} · output ${out} · ${ref}`);
-  }
-  const bench = candidate.metadata.benchmarkScore;
-  const benchStr = bench !== null ? `benchmark ${bench}` : "benchmark n/a";
-  return capReason(`Performance · ${benchStr} · ${capStr} · ${ref}`);
+  const dims = decidingDimensions(profile, heuristic).join(",");
+  const base = `${mode} · role ${role} · score ${scoreStr} · ${dims} · ${ref}`;
+  if (heuristic && mode === "performance")
+    return capReason(`${base} · heuristic (no comparable benchmark)${diversitySuffix}`);
+  if (mode === "free") return capReason(`${base} · zero cost · fresh${diversitySuffix}`);
+  return capReason(`${base}${diversitySuffix}`);
 }
-
 export function suggestForMode(input: PolicyInput): PolicyOutput {
-  const joined = joinCandidates(input.catalog, input.metadata, input.providers, input.capabilities);
+  const joined = joinCandidates(
+    input.catalog,
+    input.metadata,
+    input.providers,
+    input.capabilities,
+  );
   const suggestions = new Map<string, AgentSuggestion>();
+  const modelReuse = new Map<string, number>();
+  const providerReuse = new Map<string, number>();
+  let codingModel: string | null = null;
   for (const agent of input.agents) {
-    let sorted: PolicyCandidate[] = [];
+    const profile = profileForAgent(agent);
+    let sorted: ScoredCandidate[] = [];
     let heuristic = false;
     if (input.mode === "free") {
       const filtered = filterFree(agent, joined, input.sourceStatus);
-      // free ranking: capability score desc, reference asc (cost equal zero, so cost tie)
-      const withScore = filtered.map((c) => ({ ...c, capabilityScore: capabilityScore(agent, c.capability) }));
-      withScore.sort((a, b) => {
-        if (a.capabilityScore !== b.capabilityScore) return b.capabilityScore - a.capabilityScore;
+      // free ranking: roleScore desc, reference asc (cost equal zero, so cost tie)
+      const res = computeRoleScores(profile, filtered);
+      res.scored.sort((a, b) => {
+        if (a.roleScore !== b.roleScore) return b.roleScore - a.roleScore;
         return compareReferences(a.reference, b.reference);
       });
-      sorted = withScore;
+      sorted = res.scored;
       heuristic = false;
     } else if (input.mode === "economy") {
       const filtered = filterEconomyPerformance(agent, joined);
-      sorted = sortEconomy(agent, filtered);
-      heuristic = false;
+      const res = sortEconomy(agent, filtered);
+      sorted = res.sorted;
+      heuristic = res.heuristic;
     } else {
       const filtered = filterEconomyPerformance(agent, joined);
       const res = sortPerformance(agent, filtered);
       sorted = res.sorted;
       heuristic = res.heuristic;
-      // if no candidates after filtering, heuristic should still be true when no comparable bench across filtered set?
-      // For empty set, hasComparable false -> heuristic true, but no suggestion emitted so irrelevant.
-      // Keep as computed.
     }
-    const top = sorted[0];
-    if (top === undefined) continue;
+    if (sorted.length === 0) continue;
+    const { winner, diversified, crossReview } = selectDiverseWinner(
+      sorted,
+      input.mode,
+      profile,
+      codingModel,
+      modelReuse,
+      providerReuse,
+    );
     const isPerf = input.mode === "performance";
+    const marker = diversified ? (crossReview ? "cross-review" : "diversity") : null;
     suggestions.set(agent, {
-      model: top.reference,
-      metadata: toSuggestionMetadata(top.metadata),
-      reason: reasonFor(input.mode, top, isPerf ? heuristic : false),
+      model: winner.reference,
+      metadata: toSuggestionMetadata(winner.metadata),
+      reason: reasonFor(
+        input.mode,
+        profile,
+        winner,
+        isPerf ? heuristic : false,
+        marker,
+      ),
       heuristic: isPerf ? heuristic : false,
     });
+    modelReuse.set(
+      winner.reference,
+      (modelReuse.get(winner.reference) ?? 0) + 1,
+    );
+    providerReuse.set(
+      winner.providerId,
+      (providerReuse.get(winner.providerId) ?? 0) + 1,
+    );
+    if (agent === "sisyphus-junior") codingModel = winner.reference;
   }
   return {
     mode: input.mode,
@@ -315,17 +491,11 @@ export function suggestForMode(input: PolicyInput): PolicyOutput {
     suggestions,
   };
 }
-
-// Export helpers for tests (pure, no I/O)
 export const _test = {
-  joinCandidates,
-  filterFree,
-  filterEconomyPerformance,
-  sortEconomy,
-  sortPerformance,
-  hasMinimumCapabilities,
   isContextInadequate,
   effectiveCost,
-  category,
-  capabilityScore,
+  saturatedFit,
+  profileForAgent,
+  computeRoleScores,
+  roleForAgent,
 };
