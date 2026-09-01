@@ -49,7 +49,7 @@ describe("createAgentModelsRoutes — GET /api/agent-models", () => {
   });
 
   test("reports runtime mismatch when configured and live primary models differ", async () => {
-    const { deps, cleanup } = stubDeps([
+    const { deps, calls, cleanup } = stubDeps([
       { match: /jq -c '\.agents/, stdout: '{"librarian":{"model":"opencode/nemotron-3.5-lightning-free"}}' },
       {
         match: /\/provider\b/,
@@ -73,7 +73,7 @@ describe("createAgentModelsRoutes — GET /api/agent-models", () => {
       },
       {
         match: /\/session/,
-        stdout: JSON.stringify({ info: { role: "assistant", modelID: "qwen3.7-plus", providerID: "opencode-go" } }),
+        stdout: JSON.stringify([{ agent: "librarian", modelID: "qwen3.7-plus", providerID: "opencode-go", completedAt: 1 }]),
       },
     ]);
     const res = await createAgentModelsRoutes(deps).request("http://localhost/api/agent-models");
@@ -103,7 +103,7 @@ describe("createAgentModelsRoutes — GET /api/agent-models", () => {
       },
       {
         match: /\/session/,
-        stdout: JSON.stringify({ info: { role: "assistant", modelID: "nemotron-old", providerID: "nvidia" } }),
+        stdout: JSON.stringify([{ agent: "momus", modelID: "nemotron-old", providerID: "nvidia", completedAt: 1 }]),
       },
     ]);
 
@@ -161,6 +161,10 @@ describe("createAgentModelsRoutes — GET /api/agent-models", () => {
           { name: "explore", mode: "subagent", model: { modelID: "gpt-5.6-luna-fast", providerID: "openai" } },
         ]),
       },
+      {
+        match: /\/api\/session/,
+        stdout: JSON.stringify([{ agent: "general", modelID: "big-pickle", providerID: "opencode", completedAt: 1 }]),
+      },
     ]);
     const data = await (await createAgentModelsRoutes(deps).request("http://localhost/api/agent-models")).json();
     const names = data.agents.map((agent: { name: string }) => agent.name);
@@ -169,7 +173,7 @@ describe("createAgentModelsRoutes — GET /api/agent-models", () => {
     const general = data.agents.find((agent: { name: string }) => agent.name === "general");
     expect(general.configured).toEqual([]);
     expect(general.resolved).toBeNull();
-    expect(general.requestVerified).toEqual({ modelID: "big-pickle", providerID: "opencode" });
+    expect(general.requestVerified).toBeNull();
     expect(general.effectiveness).toBe("plugin");
     expect(names).not.toContain("build");
     expect(names).not.toContain("compaction");

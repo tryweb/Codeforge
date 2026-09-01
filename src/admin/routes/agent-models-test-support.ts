@@ -35,7 +35,17 @@ export function stubDeps(handlers: readonly ExecHandler[], password: string | nu
           exitCode: 0,
         };
       }
-      if (command.includes("/session")) {
+      if (command.includes("/api/session")) {
+        return {
+          stdout: JSON.stringify([
+            { agent: "plan", modelID: "kimi-k3", providerID: "opencode-go", completedAt: 1 },
+            { agent: "general", modelID: "big-pickle", providerID: "opencode", completedAt: 1 },
+          ]),
+          stderr: "",
+          exitCode: 0,
+        };
+      }
+      if (command.includes("$BASE/session")) {
         return {
           stdout: JSON.stringify({ info: { role: "assistant", modelID: "big-pickle", providerID: "opencode" } }),
           stderr: "",
@@ -83,7 +93,11 @@ export function listHandlers(): readonly ExecHandler[] {
       }),
     },
     {
-      match: /\/session/,
+      match: /\/api\/session/,
+      stdout: JSON.stringify([{ agent: "plan", modelID: "kimi-k3", providerID: "opencode-go", completedAt: 1 }]),
+    },
+    {
+      match: /\$BASE\/session/,
       stdout: JSON.stringify({ info: { role: "assistant", modelID: "kimi-k3", providerID: "opencode-go" } }),
     },
     { match: /connected-providers\.json/, stdout: '{"connected":["openai","opencode-go"]}' },
