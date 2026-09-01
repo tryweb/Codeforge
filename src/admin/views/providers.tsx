@@ -59,7 +59,7 @@ export function ProvidersPage({
       </div>
       <p class="text-sm text-muted" style="margin-bottom: 16px;">
         Providers are defined in <code>OPENCODE_PROVIDER</code> and injected into <code>opencode.json</code> on startup.
-        Key-managed providers (Opencode Go, OpenAI API) keep their API keys in the provider-keys registry instead;
+        Key-managed providers (Opencode Go, OpenAI API, Nvidia API, OpenRouter) keep their API keys in the provider-keys registry instead;
         the registry-selected key is written to the opencode auth store and applied on restart.
       </p>
       {meta.invalid && (
