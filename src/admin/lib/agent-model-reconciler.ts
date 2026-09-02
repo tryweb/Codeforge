@@ -14,6 +14,7 @@ import {
   type ApplyResult,
   type FallbackModelEntry,
   type ResolvedModel,
+  type VerificationMode,
 } from "./agent-model-types";
 
 // Maximum distinct provider/model probes permitted during one reconciliation.
@@ -248,7 +249,7 @@ export function createAgentModelReconciler(deps: AgentModelsDeps) {
     }
     let failed = 0;
     const results: ReconcileAgentResult[] = [];
-    const batchResults = await lib.applyAndVerifyBatch(changed);
+    const batchResults = await lib.applyAndVerifyBatch(changed, "inference");
     for (const { agent } of changed) {
       const result = batchResults.get(agent)
         ?? { ok: false, status: "write_failed" as const, error: "agent model batch returned no result" };
@@ -374,11 +375,11 @@ export function createAgentModelReconciler(deps: AgentModelsDeps) {
     return summary;
   }
 
-  async function applyAgent(agent: string, entries: readonly FallbackModelEntry[]): Promise<ApplyResult> {
+  async function applyAgent(agent: string, entries: readonly FallbackModelEntry[], verification: VerificationMode = "readiness"): Promise<ApplyResult> {
     return withLock(async () => {
       const config = await lib.readAgentModelsConfig();
       const current = config[agent]?.models ?? [];
-      return sameEntries(current, entries) ? resultForNoop(entries) : lib.applyAndVerify(agent, entries);
+      return sameEntries(current, entries) ? resultForNoop(entries) : lib.applyAndVerify(agent, entries, verification);
     }, resultForNoop(entries));
   }
 

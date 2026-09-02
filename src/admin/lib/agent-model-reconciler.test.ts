@@ -360,6 +360,40 @@ describe("agent model reconciler", () => {
     base.cleanup();
   });
 
+  test("reuses a quota result for repeated candidate refs in one reconcile", async () => {
+    const config = JSON.stringify({ general: {}, plan: {} });
+    const provider = JSON.stringify({
+      connected: ["p"],
+      all: [{ id: "p", models: { alpha: { capabilities: {} } } }],
+    });
+    const agents = JSON.stringify([
+      { name: "general", mode: "subagent", model: { providerID: "missing", modelID: "default" } },
+      { name: "plan", mode: "subagent", model: { providerID: "missing", modelID: "default" } },
+    ]);
+    const base = fixture(config, provider, agents, {});
+    const calls: string[] = [];
+    const deps: AgentModelsDeps = {
+      ...base.deps,
+      exec: async (command: string, timeout?: number): Promise<ExecResult> => {
+        calls.push(command);
+        if (command.includes('title:"model availability probe"')) {
+          return {
+            stdout: JSON.stringify({ info: { role: "assistant", error: "FreeUsageLimitError: free usage exceeded" } }),
+            stderr: "",
+            exitCode: 0,
+          };
+        }
+        return base.deps.exec(command, timeout);
+      },
+    };
+
+    const result = await createAgentModelReconciler(deps).reconcileAll();
+
+    expect(result.changed).toBe(0);
+    expect(probedModelIds(calls)).toEqual(["alpha"]);
+    base.cleanup();
+  });
+
   test("keeps healthy pinned model untouched", async () => {
     const config = JSON.stringify({ general: { model: "p/keep" }, "sisyphus-junior": {} });
     const provider = JSON.stringify({
