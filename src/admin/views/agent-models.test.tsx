@@ -128,7 +128,8 @@ describe("AgentModelsPage mode-aware suggestions", () => {
     expect(html).toContain("pending.set(agent, entries)");
     // Apply flow still uses changes: Array.from(pending.entries()).map(...)
     expect(html).toContain("Array.from(pending.entries()).map");
-    expect(html).toContain("body: JSON.stringify({ changes: changes })");
+    expect(html).toContain("verification");
+    expect(html).toContain("JSON.stringify({ changes: changes, verification: verification })");
   });
 
   it("handles legacy suggestion response safely by checking Array.isArray", () => {
@@ -183,5 +184,29 @@ describe("AgentModelsPage mode-aware suggestions", () => {
     expect(html).toContain("restart_failed");
     expect(html).toContain("not applied — rolled back");
     expect(html).toContain("rolled back — probe failed");
+  });
+
+  it("guards Apply before confirmation and fetch to prevent rapid duplicates", () => {
+    const html = render();
+    const applyStart = html.indexOf("async function applyPending()");
+    const applyEnd = html.indexOf("// Legacy single-agent path kept for compatibility", applyStart);
+    expect(applyStart).toBeGreaterThanOrEqual(0);
+    expect(applyEnd).toBeGreaterThan(applyStart);
+    const applySource = html.slice(applyStart, applyEnd);
+    const guardIndex = applySource.indexOf("if (applyInProgress) return;");
+    const confirmIndex = applySource.indexOf("if (!confirm(confirmMsg)) return;");
+    const lockIndex = applySource.indexOf("applyInProgress = true;");
+    const fetchIndex = applySource.indexOf("fetch('/api/agent-models'");
+    expect(guardIndex).toBeGreaterThanOrEqual(0);
+    expect(guardIndex).toBeLessThan(confirmIndex);
+    expect(lockIndex).toBeLessThan(fetchIndex);
+    expect(applySource).toContain("applyBtn.disabled = true;");
+    expect(applySource).toContain("discardBtn.disabled = true;");
+  });
+
+  it("escapes newlines in the inference confirmation JavaScript string", () => {
+    const html = render();
+    expect(html).toContain("\\n\\nInference verification will send a real model request");
+    expect(html).not.toContain("'\n\nInference verification will send a real model request");
   });
 });

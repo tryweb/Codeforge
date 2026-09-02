@@ -56,15 +56,19 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
         </div>
       )}
 
-      <div id="batch-bar" class="card" style="display:none; margin-bottom:16px; background:rgba(245,158,11,0.1); border-color:#f59e0b;">
+      <div id="batch-bar" class="card" style="display:none; margin-bottom:16px; background:rgba(245,158,11,0.1); border-color:var(--warning);">
         <div style="display:flex; align-items:center; justify-content:space-between;">
           <span id="batch-count" class="text-sm" style="font-weight:600;"></span>
-          <div style="display:flex; gap:8px;">
+          <div style="display:flex; gap:8px; align-items:center;">
+            <label style="display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--muted);">
+              <input type="checkbox" id="verify-inference" /> Verify usability (may consume quota)
+            </label>
             <button id="btn-discard" class="btn-outline" onclick="discardPending()" style="padding:6px 12px;">Discard</button>
-            <button id="btn-apply" onclick="applyPending()" style="padding:6px 16px; background:#f59e0b; color:#000; font-weight:600;">Apply</button>
+            <button id="btn-apply" onclick="applyPending()" style="padding:6px 16px; background:var(--warning); color:#000; font-weight:600;">Apply</button>
           </div>
         </div>
         <div id="batch-status" class="text-sm" style="margin-top:8px;"></div>
+        <div id="verify-warning" class="text-sm" style="display:none; margin-top:6px; color:var(--warning);">⚠ Inference verification sends a real model request and may consume provider quota or incur cost. Readiness verification (default) checks configuration without inference.</div>
       </div>
 
       <div class="card" style="margin-bottom:16px;">
@@ -149,7 +153,7 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
             top: 0;
             left: 0;
             right: 0;
-            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+            background: linear-gradient(135deg, var(--warning) 0%, #d97706 100%);
             color: #000;
             padding: 12px 20px;
             text-align: center;
@@ -180,7 +184,7 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
             display: inline-block;
             width: 8px;
             height: 8px;
-            background: #f59e0b;
+            background: var(--warning);
             border-radius: 50%;
             margin-left: 6px;
             vertical-align: middle;
@@ -212,7 +216,7 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
                   )}
                 </span>
                 <span class="dirty-dot" style="display:none;" title="Pending change"></span>
-                <div class="pending-value text-sm" style="display:none; color:#f59e0b;"></div>
+                <div class="pending-value text-sm" style="display:none; color:var(--warning);"></div>
                 <div class="batch-result text-sm" style="display:none;"></div>
               </td>
               <td data-label="Assigned model">
@@ -247,9 +251,9 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
                   style={{
                     color:
                       a.source === "configured"
-                        ? "#22c55e"
+                        ? "var(--success)"
                         : a.source === "inherited"
-                          ? "#f59e0b"
+                          ? "var(--warning)"
                           : "#94a3b8",
                     fontSize: "0.75rem",
                     textTransform: "uppercase",
@@ -305,6 +309,7 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
         var agentModelsState = ${json};
         var editAgentName = null;
         var pending = new Map();
+        var applyInProgress = false;
 
         function selectedProviders() {
           var options = Array.from(document.querySelectorAll('.provider-option'));
@@ -400,7 +405,7 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
             var sug = suggestions[agent];
             if (sug && typeof sug.model === 'string' && sug.model.indexOf('/') !== -1) {
               var reason = sug.reason ? escapeHtml(sug.reason) : '';
-              var heuristicLabel = sug.heuristic ? ' <span style="color:#b45309;font-weight:600;">⚠ heuristic</span>' : '';
+              var heuristicLabel = sug.heuristic ? ' <span style="color:var(--warning);font-weight:600;">⚠ heuristic</span>' : '';
               var meta = sug.metadata || {};
               var metaParts = [];
               if (meta.inputPrice !== null && meta.inputPrice !== undefined) metaParts.push('in:' + meta.inputPrice);
@@ -507,7 +512,7 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
             }
             updateRowDirtyState();
             updateBatchBar();
-            status.style.color = '#22c55e';
+            status.style.color = 'var(--success)';
             status.textContent = 'Added ' + added + ' suggestions. Review them, then Apply.';
             banner.innerHTML = '<span class="spinner"></span> Suggestions ready. Review the pending changes before Apply.';
             restartStatus.textContent = 'Suggestions ready ✔';
@@ -678,8 +683,14 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
             if (!batchResultEl) return;
             batchResultEl.style.display = 'block';
             if (r.ok) {
-              batchResultEl.style.color = '#22c55e';
-              batchResultEl.textContent = r.status === 'cleared' ? 'cleared → ' + (r.resolved ? r.resolved.modelID + ' @ ' + r.resolved.providerID : 'n/a') : 'verified → ' + (r.requestVerified ? r.requestVerified.modelID + ' @ ' + r.requestVerified.providerID : r.resolved ? r.resolved.modelID + ' @ ' + r.resolved.providerID : 'n/a');
+              if (r.status === 'applied_with_quota_warning') {
+                batchResultEl.style.color = 'var(--warning)';
+                var warning = r.warning || r.error || 'provider quota exhausted';
+                batchResultEl.textContent = 'applied with quota warning → ' + (r.resolved ? r.resolved.modelID + ' @ ' + r.resolved.providerID : 'n/a') + ' (' + warning + ')';
+              } else {
+                batchResultEl.style.color = 'var(--success)';
+                batchResultEl.textContent = r.status === 'cleared' ? 'cleared → ' + (r.resolved ? r.resolved.modelID + ' @ ' + r.resolved.providerID : 'n/a') : 'verified → ' + (r.requestVerified ? r.requestVerified.modelID + ' @ ' + r.requestVerified.providerID : r.resolved ? r.resolved.modelID + ' @ ' + r.resolved.providerID : 'n/a');
+              }
             } else {
               var message = batchResultMessage(r);
               batchResultEl.style.color = message.color;
@@ -689,8 +700,14 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
         }
 
         function batchResultMessage(r) {
-          var error = r.error || 'Unknown error';
-          if (r.status === 'unverified') return { color: '#f59e0b', text: 'Applied but could not confirm restart: ' + error };
+          var error = r.error || r.warning || 'Unknown error';
+          if (r.status === 'applied_with_quota_warning') return { color: 'var(--warning)', text: 'applied with quota warning: ' + error };
+          if (r.status === 'unverified') {
+            if (error.toLowerCase().indexOf('timed out') !== -1 || error.toLowerCase().indexOf('timeout') !== -1) {
+              return { color: 'var(--warning)', text: 'Apply timed out: ' + error + ' The configuration was written but verification did not complete. Check health and retry.' };
+            }
+            return { color: 'var(--warning)', text: 'Applied but could not confirm restart: ' + error };
+          }
           if (r.status === 'write_failed' || r.status === 'restart_failed' || r.status === 'rollback_failed') {
             return { color: 'var(--danger)', text: 'not applied — rolled back: ' + error };
           }
@@ -701,7 +718,13 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
 
         async function applyPending() {
           if (pending.size === 0) return;
-          if (!confirm('Apply ' + pending.size + ' change' + (pending.size > 1 ? 's' : '') + ' & restart ai-dev? Active OpenCode sessions will be interrupted.')) return;
+          if (applyInProgress) return;
+          var verifyEl = document.getElementById('verify-inference');
+          var verification = verifyEl && verifyEl.checked ? 'inference' : 'readiness';
+          var confirmMsg = 'Apply ' + pending.size + ' change' + (pending.size > 1 ? 's' : '') + ' & restart ai-dev? Active OpenCode sessions will be interrupted.';
+          if (verification === 'inference') confirmMsg += '\\n\\nInference verification will send a real model request and may consume provider quota or incur cost. Continue?';
+          if (!confirm(confirmMsg)) return;
+          applyInProgress = true;
           var applyBtn = document.getElementById('btn-apply');
           var discardBtn = document.getElementById('btn-discard');
           var status = document.getElementById('restart-status');
@@ -728,13 +751,18 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
             var el = status.querySelector('.probe-elapsed');
             if (el) el.textContent = elapsed + 's';
           }, 1000);
+          var deadlineMs = verification === 'inference' ? 310000 : 190000;
+          var controller = new AbortController();
+          var timeoutId = setTimeout(function () { controller.abort(); }, deadlineMs);
           try {
             var changes = Array.from(pending.entries()).map(function (kv) { return { agent: kv[0], entries: kv[1] }; });
             var res = await fetch('/api/agent-models', {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ changes: changes }),
+              body: JSON.stringify({ changes: changes, verification: verification }),
+              signal: controller.signal,
             });
+            clearTimeout(timeoutId);
             var data = await res.json();
             clearInterval(timer);
             if (!res.ok) {
@@ -744,17 +772,24 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
               discardBtn.disabled = false;
               enableTableRows();
               status.textContent = '';
+              applyInProgress = false;
               return;
             }
             // data.results is Record<agent, ApplyResult>
             var results = data.results || {};
             renderBatchResults(results);
             var failed = Object.keys(results).filter(function (k) { return !results[k].ok; });
+            var quotaWarned = Object.keys(results).filter(function (k) { return results[k].ok && results[k].status === 'applied_with_quota_warning'; });
             if (failed.length === 0) {
-              batchStatus.style.color = '#22c55e';
-              batchStatus.textContent = 'Applied and restarted (' + Object.keys(results).length + ' agents). Reloading…';
-              status.textContent = 'Restarted ✔';
-              setTimeout(function () { status.textContent = ''; batchStatus.textContent = ''; applyBtn.disabled = false; discardBtn.disabled = false; enableTableRows(); pending.clear(); updateRowDirtyState(); updateBatchBar(); location.reload(); }, 2500);
+              if (quotaWarned.length > 0) {
+                batchStatus.style.color = 'var(--warning)';
+                batchStatus.textContent = 'Applied with quota warning for ' + quotaWarned.join(', ') + '. Configuration kept; check provider quota. Reloading…';
+              } else {
+                batchStatus.style.color = 'var(--success)';
+                batchStatus.textContent = 'Applied and restarted (' + Object.keys(results).length + ' agents). Reloading…';
+              }
+              status.textContent = quotaWarned.length > 0 ? 'Applied with warning ⚠' : 'Restarted ✔';
+              setTimeout(function () { status.textContent = ''; batchStatus.textContent = ''; applyBtn.disabled = false; discardBtn.disabled = false; enableTableRows(); applyInProgress = false; pending.clear(); updateRowDirtyState(); updateBatchBar(); location.reload(); }, 2500);
             } else {
               batchStatus.style.color = 'var(--danger)';
               batchStatus.textContent = failed.length + ' failed: ' + failed.join(', ') + '. See per-row status.';
@@ -762,22 +797,37 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
               discardBtn.disabled = false;
               enableTableRows();
               status.textContent = '';
+              applyInProgress = false;
               // Keep pending for failed ones, clear succeeded? For now keep all pending for retry
             }
           } catch (e) {
+            clearTimeout(timeoutId);
             clearInterval(timer);
             batchStatus.style.color = 'var(--danger)';
-            batchStatus.textContent = e.message;
+            var errMsg = e && typeof e.message === 'string' ? e.message : String(e);
+            if (e && e.name === 'AbortError') {
+              batchStatus.textContent = 'Apply timed out after ' + (deadlineMs/1000) + 's. The configuration was written but verification did not complete. Check provider quota and try again.';
+              status.textContent = 'Timed out ⏱';
+            } else {
+              batchStatus.textContent = errMsg;
+              status.textContent = '';
+            }
             applyBtn.disabled = false;
             discardBtn.disabled = false;
             enableTableRows();
-            status.textContent = '';
+            status.textContent = e && e.name === 'AbortError' ? 'Timed out ⏱' : '';
+            applyInProgress = false;
           }
         }
 
         // Legacy single-agent path kept for compatibility (not used by new UI)
         async function submitAgentModel(entries, confirmation) {
+          if (applyInProgress) return;
           if (!confirm(confirmation)) return;
+          var verifyEl = document.getElementById('verify-inference');
+          var verification = verifyEl && verifyEl.checked ? 'inference' : 'readiness';
+          if (verification === 'inference' && !confirm('Inference verification will send a real model request and may consume provider quota or incur cost. Continue?')) return;
+          applyInProgress = true;
           var btn = document.getElementById('btn-save');
           var clearBtn = document.getElementById('btn-clear');
           var cancelBtn = document.getElementById('btn-cancel');
@@ -804,12 +854,17 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
             var el = status.querySelector('.probe-elapsed');
             if (el) el.textContent = elapsed + 's';
           }, 1000);
+          var deadlineMs = verification === 'inference' ? 310000 : 190000;
+          var controller = new AbortController();
+          var timeoutId = setTimeout(function () { controller.abort(); }, deadlineMs);
           try {
             var res = await fetch('/api/agent-models/' + encodeURIComponent(editAgentName), {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ entries: entries }),
+              body: JSON.stringify({ entries: entries, verification: verification }),
+              signal: controller.signal,
             });
+            clearTimeout(timeoutId);
             var data = await res.json();
             clearInterval(timer);
             if (!res.ok) {
@@ -821,21 +876,31 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
               if (cancelBtn) cancelBtn.disabled = false;
               enableTableRows();
               status.textContent = '';
+              applyInProgress = false;
               return;
             }
             var el = document.getElementById('save-result');
             if (data.ok && data.status === 'cleared') {
               var automatic = data.resolved ? data.resolved.modelID + ' @ ' + data.resolved.providerID : 'n/a';
-              el.style.color = '#22c55e';
+              el.style.color = 'var(--success)';
               el.textContent = 'Configured model cleared. Automatic model: ' + automatic;
             } else if (data.ok && data.status === 'verified') {
               var resolved = data.resolved ? data.resolved.modelID + ' @ ' + data.resolved.providerID : 'n/a';
               var requestVerified = data.requestVerified ? data.requestVerified.modelID + ' @ ' + data.requestVerified.providerID : 'not verified';
-              el.style.color = '#22c55e';
+              el.style.color = 'var(--success)';
               el.textContent = 'Applied and restarted. Successful request model: ' + requestVerified + ' (assigned: ' + resolved + ')';
+            } else if (data.ok && data.status === 'applied_with_quota_warning') {
+              var qWarning = data.warning || data.error || 'provider quota exhausted';
+              el.style.color = 'var(--warning)';
+              el.textContent = 'Applied with quota warning: ' + qWarning + ' (provider quota exhausted; configuration kept)';
             } else if (!data.ok && data.status === 'unverified') {
-              el.style.color = '#f59e0b';
-              el.textContent = 'Applied but could not confirm the server came back: ' + data.error;
+              if (data.error && data.error.toLowerCase().indexOf('timed out') !== -1) {
+                el.style.color = 'var(--warning)';
+                el.textContent = 'Apply timed out: ' + data.error;
+              } else {
+                el.style.color = 'var(--warning)';
+                el.textContent = 'Applied but could not confirm the server came back: ' + data.error;
+              }
             } else if (!data.ok && data.status === 'rollback_failed') {
               el.style.color = 'var(--danger)';
               el.textContent = 'Applied but verification failed and rollback also failed: ' + data.error;
@@ -847,27 +912,45 @@ const AgentModelsContent: FC<{ state: AgentModelsState }> = ({ state }) => {
               el.textContent = data.error || 'Unknown error';
             }
             if (data.ok === true) {
-              status.textContent = 'Restarted ✔';
-              setTimeout(function () { status.textContent = ''; btn.disabled = false; clearBtn.disabled = false; if (cancelBtn) cancelBtn.disabled = false; enableTableRows(); location.reload(); }, 2500);
+              status.textContent = data.status === 'applied_with_quota_warning' ? 'Applied with warning ⚠' : 'Restarted ✔';
+              setTimeout(function () { status.textContent = ''; btn.disabled = false; clearBtn.disabled = false; if (cancelBtn) cancelBtn.disabled = false; enableTableRows(); applyInProgress = false; location.reload(); }, 2500);
             } else {
               btn.disabled = false;
               clearBtn.disabled = false;
               if (cancelBtn) cancelBtn.disabled = false;
               enableTableRows();
               status.textContent = '';
+              applyInProgress = false;
             }
           } catch (e) {
+            clearTimeout(timeoutId);
             clearInterval(timer);
             var el = document.getElementById('save-result');
             el.style.color = 'var(--danger)';
-            el.textContent = e.message;
+            var errMsg2 = e && typeof e.message === 'string' ? e.message : String(e);
+            if (e && e.name === 'AbortError') {
+              el.textContent = 'Apply timed out after ' + (deadlineMs/1000) + 's. The configuration was written but verification did not complete. Check provider quota and try again.';
+              status.textContent = 'Timed out ⏱';
+            } else {
+              el.textContent = errMsg2;
+              status.textContent = '';
+            }
             btn.disabled = false;
             clearBtn.disabled = false;
             if (cancelBtn) cancelBtn.disabled = false;
             enableTableRows();
-            status.textContent = '';
+            applyInProgress = false;
           }
         }
+
+        (function setupVerifyToggle() {
+          var el = document.getElementById('verify-inference');
+          var warning = document.getElementById('verify-warning');
+          if (!el || !warning) return;
+          el.addEventListener('change', function () {
+            warning.style.display = el.checked ? 'block' : 'none';
+          });
+        })();
       `}</script>
     </div>
   );
