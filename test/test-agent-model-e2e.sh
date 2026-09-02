@@ -123,6 +123,12 @@ echo "== Native Agent Model E2E (container: $CONTAINER) =="
 in_container 'cat ~/.omo/omo.jsonc' > "$BASELINE" 2>/dev/null || { fail "baseline: could not read ~/.omo/omo.jsonc"; exit 1; }
 assert_contains "baseline omo.jsonc captured" 'agents' "$(cat "$BASELINE")"
 
+# Credential-gated: skip cleanly without server password (readiness/inference distinction requires managed server)
+if ! in_container 'grep -q "OPENCODE_SERVER_PASSWORD" ~/.env 2>/dev/null && grep -q "OPENCODE_SERVER_PASSWORD=." ~/.env 2>/dev/null'; then
+  echo "  SKIP agent-model-e2e: OPENCODE_SERVER_PASSWORD not set in .env (readiness/inference E2E requires live server)"
+  exit 0
+fi
+
 if ! in_container "jq -e '.models.opencode[]? | select(.id == \"big-pickle\")' ~/.cache/oh-my-opencode/provider-models.json >/dev/null"; then
   echo "  ${YELLOW}SKIP${NC} agent-model-e2e: $GENERAL_TARGET is absent from the environment catalog"
   exit 0
@@ -180,8 +186,9 @@ verify_child_model() {
   PARENT_SESSION=""
 }
 
+# Explicit usability verification (inference, billable, opt-in) — the only real model request
 verify_child_model "general" "$GENERAL_TARGET"
-echo "  (OMO librarian child verification skipped: direct /session creation bypasses OMO delegate-task model resolution)"
+echo "  (OMO librarian child verification skipped: direct /session creation bypasses OMO delegate-task model resolution; readiness Apply does not send inference)"
 
 jq 'del(.agents.librarian.model, .agents.librarian.variant, .agents.librarian.models, .agents.librarian.fallback_models)' "$BASELINE" \
   | docker exec -i "$CONTAINER" sh -c 'cat > ~/.omo/omo.jsonc' \
