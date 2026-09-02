@@ -267,3 +267,76 @@ describe("createAgentModelsRoutes — POST /api/agent-models/suggestions", () =>
     cleanup();
   });
 });
+
+describe("createAgentModelsRoutes — verification mode", () => {
+  test("rejects invalid verification with 400 for single-agent Apply", async () => {
+    const { deps, cleanup } = stubDeps([
+      { match: /jq -c '\.agents/, stdout: '{"plan":{}}' },
+      { match: /connected-providers\.json/, stdout: '{"connected":["opencode"]}' },
+      { match: /provider-models\.json/, stdout: "opencode/big-pickle\n" },
+      { match: /\/agent\b/, stdout: JSON.stringify([{ name: "plan", mode: "subagent", model: { modelID: "big-pickle", providerID: "opencode" } }]) },
+    ]);
+    const app = createAgentModelsRoutes(deps);
+    const res = await app.request("http://localhost/api/agent-models/plan", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ entries: [{ model: "opencode/big-pickle" }], verification: "bad" }),
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toContain("verification");
+    cleanup();
+  });
+
+  test("rejects invalid verification with 400 for batch Apply", async () => {
+    const { deps, cleanup } = stubDeps([
+      { match: /jq -c '\.agents/, stdout: '{"plan":{}}' },
+      { match: /connected-providers\.json/, stdout: '{"connected":["opencode"]}' },
+      { match: /provider-models\.json/, stdout: "opencode/big-pickle\n" },
+      { match: /\/agent\b/, stdout: JSON.stringify([{ name: "plan", mode: "subagent", model: { modelID: "big-pickle", providerID: "opencode" } }]) },
+    ]);
+    const app = createAgentModelsRoutes(deps);
+    const res = await app.request("http://localhost/api/agent-models", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ changes: [{ agent: "plan", entries: [{ model: "opencode/big-pickle" }] }], verification: "invalid" }),
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toContain("verification");
+    cleanup();
+  });
+
+  test("readiness batch Apply issues zero model-message calls", async () => {
+    const { deps, calls, cleanup } = stubDeps([
+      { match: /jq -c '\.agents/, stdout: '{"plan":{}}' },
+      { match: /connected-providers\.json/, stdout: '{"connected":["opencode"]}' },
+      { match: /provider-models\.json/, stdout: "opencode/big-pickle\n" },
+      { match: /cat ~\/\.omo\/omo\.jsonc/, stdout: '{"agents":{}}' },
+      { match: /\.agents\[\$agent\]\.model = \$model/, stdout: "" },
+      { match: /\/agent\b/, stdout: JSON.stringify([{ name: "plan", mode: "subagent", model: { modelID: "big-pickle", providerID: "opencode" } }]) },
+    ]);
+    const app = createAgentModelsRoutes(deps);
+    const res = await app.request("http://localhost/api/agent-models", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ changes: [{ agent: "plan", entries: [{ model: "opencode/big-pickle" }] }] }),
+    });
+    expect(res.status).toBe(200);
+    expect(calls.some((c) => c.includes("POST") && c.includes("/session/") && c.includes("message"))).toBe(false);
+    expect(calls.some((c) => c.includes("title:\"model availability probe\""))).toBe(false);
+    expect(calls.some((c) => c.includes("POST") && c.includes("/session/") && c.includes("/message"))).toBe(false);
+    cleanup();
+  });
+
+  test("empty batch Apply is a no-op without execution", async () => {
+    const { deps, calls, cleanup } = stubDeps([], null);
+    const res = await createAgentModelsRoutes(deps).request("http://localhost/api/agent-models", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ changes: [] }),
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ results: {} });
+    expect(calls).toEqual([]);
+    cleanup();
+  });
+});

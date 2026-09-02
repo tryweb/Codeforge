@@ -8,6 +8,7 @@ import {
   type AgentModelsLib,
   type ApplyResult,
 } from "../lib/agent-models";
+import { parseVerificationMode, type VerificationMode } from "../lib/agent-model-types";
 import { createAgentModelReconciler } from "../lib/agent-model-reconciler";
 import { parseModelReference, probeModel, type ProbeResult } from "../lib/model-probe";
 import { AgentModelsPage } from "../views/agent-models";
@@ -40,12 +41,11 @@ function validateSuggestionBody(
   return { providers };
 }
 
-function validateBatchBody(body: unknown): { changes: Array<{ agent: string; entries: Array<{ model: string; variant?: string }> }> } | string {
+function validateBatchBody(body: unknown): { changes: Array<{ agent: string; entries: Array<{ model: string; variant?: string }> }>; verification: VerificationMode } | string {
   if (typeof body !== "object" || body === null || Array.isArray(body)) return "Request body must be a JSON object with changes array";
   const record = body as Record<string, unknown>;
   if (!Array.isArray(record.changes)) return "changes must be an array";
   const changes = record.changes as unknown[];
-  if (changes.length === 0) return "changes must not be empty";
   for (const item of changes) {
     if (typeof item !== "object" || item === null || Array.isArray(item)) return "each change must be an object with agent and entries";
     const change = item as Record<string, unknown>;
@@ -54,7 +54,21 @@ function validateBatchBody(body: unknown): { changes: Array<{ agent: string; ent
     const error = validateFallbackModels({ entries: change.entries });
     if (error !== null) return `agent ${agent}: ${error}`;
   }
-  return { changes: changes as Array<{ agent: string; entries: Array<{ model: string; variant?: string }> }> };
+  if (record.verification !== undefined) {
+    const verification = parseVerificationMode(record.verification);
+    if (verification === null) return "verification must be \"readiness\" or \"inference\"";
+    return { changes: changes as Array<{ agent: string; entries: Array<{ model: string; variant?: string }> }>, verification };
+  }
+  return { changes: changes as Array<{ agent: string; entries: Array<{ model: string; variant?: string }> }>, verification: "readiness" };
+}
+
+function parseSingleVerification(body: unknown): VerificationMode | string {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) return "readiness";
+  const record = body as Record<string, unknown>;
+  if (record.verification === undefined) return "readiness";
+  const verification = parseVerificationMode(record.verification);
+  if (verification === null) return "verification must be \"readiness\" or \"inference\"";
+  return verification;
 }
 
 export function createAgentModelsRoutes(deps: AgentModelsDeps): Hono {
@@ -118,6 +132,7 @@ export function createAgentModelsRoutes(deps: AgentModelsDeps): Hono {
     if (typeof parsed === "string") {
       return c.json({ error: parsed }, 400);
     }
+    if (parsed.changes.length === 0) return c.json({ results: {} });
 
     const password = lib.getServerPassword();
     if (password === null) {
@@ -148,23 +163,25 @@ export function createAgentModelsRoutes(deps: AgentModelsDeps): Hono {
       }
     }
 
-    for (const change of parsed.changes) {
-      for (const entry of change.entries) {
-        const ref = parseModelReference(entry.model);
-        if (ref === null) continue;
-        const probe: ProbeResult = await probeModel(deps, ref.providerID, ref.modelID);
-        if (probe.status === "retired") {
-          return c.json({ error: `model ${entry.model} has been retired (end of life): ${probe.reason ?? ""}` }, 400);
-        }
-        if (probe.status === "unavailable") {
-          return c.json({ error: `model ${entry.model} is unavailable: ${probe.reason ?? ""}` }, 400);
+    if (parsed.verification === "inference") {
+      for (const change of parsed.changes) {
+        for (const entry of change.entries) {
+          const ref = parseModelReference(entry.model);
+          if (ref === null) continue;
+          const probe: ProbeResult = await probeModel(deps, ref.providerID, ref.modelID);
+          if (probe.status === "retired") {
+            return c.json({ error: `model ${entry.model} has been retired (end of life): ${probe.reason ?? ""}` }, 400);
+          }
+          if (probe.status === "unavailable") {
+            return c.json({ error: `model ${entry.model} is unavailable: ${probe.reason ?? ""}` }, 400);
+          }
         }
       }
     }
 
     // Single snapshot/write/restart for the whole batch
     const batchChanges = parsed.changes.map((change) => ({ agent: change.agent.trim(), entries: change.entries }));
-    const results = await lib.applyAndVerifyBatch(batchChanges);
+    const results = await lib.applyAndVerifyBatch(batchChanges, parsed.verification);
     const resultsRecord: Record<string, ApplyResult> = {};
     for (const [agent, result] of results) {
       resultsRecord[agent] = result;
@@ -179,6 +196,11 @@ export function createAgentModelsRoutes(deps: AgentModelsDeps): Hono {
     }
 
     const body: unknown = await c.req.json().catch(() => null);
+    const verificationRaw = parseSingleVerification(body);
+    if (typeof verificationRaw === "string" && verificationRaw.startsWith("verification")) {
+      return c.json({ error: verificationRaw }, 400);
+    }
+    const verification: VerificationMode = verificationRaw === "inference" ? "inference" : "readiness";
     const error = validateFallbackModels(body);
     if (error !== null) {
       return c.json({ error }, 400);
@@ -208,19 +230,21 @@ export function createAgentModelsRoutes(deps: AgentModelsDeps): Hono {
       return c.json({ error: "model is not available in the current environment catalog" }, 400);
     }
 
-    for (const entry of entries) {
-      const ref = parseModelReference(entry.model);
-      if (ref === null) continue;
-      const probe: ProbeResult = await probeModel(deps, ref.providerID, ref.modelID);
-      if (probe.status === "retired") {
-        return c.json({ error: `model ${entry.model} has been retired (end of life): ${probe.reason ?? ""}` }, 400);
-      }
-      if (probe.status === "unavailable") {
-        return c.json({ error: `model ${entry.model} is unavailable: ${probe.reason ?? ""}` }, 400);
+    if (verification === "inference") {
+      for (const entry of entries) {
+        const ref = parseModelReference(entry.model);
+        if (ref === null) continue;
+        const probe: ProbeResult = await probeModel(deps, ref.providerID, ref.modelID);
+        if (probe.status === "retired") {
+          return c.json({ error: `model ${entry.model} has been retired (end of life): ${probe.reason ?? ""}` }, 400);
+        }
+        if (probe.status === "unavailable") {
+          return c.json({ error: `model ${entry.model} is unavailable: ${probe.reason ?? ""}` }, 400);
+        }
       }
     }
 
-    const result = await reconciler.applyAgent(agent, entries);
+    const result = await reconciler.applyAgent(agent, entries, verification);
     return c.json(result);
   });
 
