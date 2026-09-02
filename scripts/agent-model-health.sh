@@ -55,8 +55,10 @@ health_record() {
   retry_after=0
   tmp="${AGENT_MODEL_HEALTH_FILE}.tmp.${BASHPID:-$$}.$RANDOM"
   case "$status" in
-    unavailable|mismatch) retry_after=$(( $(date +%s) + 900 )) ;;
-    retryable) retry_after=$(( $(date +%s) + 60 )) ;;
+    quota_exceeded) retry_after=$(( $(date +%s) + 900 )) ;;
+    unavailable|mismatch|retired) retry_after=$(( $(date +%s) + 86400 )) ;;
+    retryable) retry_after=$(( $(date +%s) + 300 )) ;;
+    healthy) retry_after=$(( $(date +%s) + 86400 )) ;;
   esac
   mkdir -p "$(dirname "$AGENT_MODEL_HEALTH_FILE")" || return 0
   (
@@ -93,10 +95,13 @@ health_quarantined() {
   cache_key="$(scoped_health_key "$model")"
   status="$(health_status "$model")"
   [ "$status" = retired ] && return 0
-  [[ "$status" = unavailable || "$status" = mismatch ]] || return 1
-  retry_after="$(jq -r --arg key "$cache_key" '.[$key].retryAfter // 0' "$AGENT_MODEL_HEALTH_FILE" 2>/dev/null)"
-  now="$(date +%s)"
-  [ "$retry_after" -gt "$now" ]
+  if [ "$status" = quota_exceeded ] || [ "$status" = unavailable ] || [ "$status" = mismatch ]; then
+    retry_after="$(jq -r --arg key "$cache_key" '.[$key].retryAfter // 0' "$AGENT_MODEL_HEALTH_FILE" 2>/dev/null)"
+    now="$(date +%s)"
+    [ "$retry_after" -gt "$now" ] && return 0
+    return 1
+  fi
+  return 1
 }
 
 verify_runtime() {
@@ -139,6 +144,11 @@ verify_runtime() {
   curl -sS -m 5 -H "Authorization: Basic $auth" -X DELETE "$endpoint/session/$session" >/dev/null 2>&1 || true
   http_code="${response##*$'\n'}"
   response="${response%$'\n'*}"
+  if printf '%s' "$response" | grep -qi -E "FreeUsageLimitError|free usage exceeded|insufficient_quota|credit_balance_exhausted|credit exhausted|spend_limit_exceeded|quota_exceeded"; then
+    VERIFY_FAILED=1
+    health_record "$expected" quota_exceeded "quota_exceeded: $(printf '%s' "$response" | tr -d '\n' | head -c 500)"
+    return 1
+  fi
   if [ "$http_code" = 410 ]; then
     VERIFY_FAILED=1
     health_record "$expected" retired "HTTP 410 model lifecycle response"
@@ -147,6 +157,11 @@ verify_runtime() {
   if [ "$http_code" = 404 ]; then
     VERIFY_FAILED=1
     health_record "$expected" unavailable "HTTP 404 model or account response"
+    return 1
+  fi
+  if [ "$http_code" = 429 ]; then
+    VERIFY_FAILED=1
+    health_record "$expected" retryable "HTTP 429 rate limited"
     return 1
   fi
   if [[ "$http_code" != 2* ]]; then
