@@ -43,6 +43,13 @@ export type ApplyResult =
       readonly requestVerified: ResolvedModel | null;
     }
   | {
+      readonly ok: true;
+      readonly status: "applied_with_quota_warning";
+      readonly resolved: ResolvedModel | null;
+      readonly requestVerified: ResolvedModel | null;
+      readonly warning: string;
+    }
+  | {
       readonly ok: false;
       readonly status: "runtime_mismatch";
       readonly configured: string;
@@ -66,3 +73,12 @@ export const OMO_CONFIG = "~/.omo/omo.jsonc";
 export const MANAGED_OPENCODE_DIR = "~/.config/openchamber/managed-opencode";
 export const CONFIGURABLE_NATIVE_AGENTS = ["general", "plan"] as const;
 export const VARIANTS = ["low", "medium", "high", "xhigh", "max"] as const;
+
+export type VerificationMode = "readiness" | "inference";
+export const VERIFICATION_MODES = ["readiness", "inference"] as const;
+
+export function parseVerificationMode(value: unknown): VerificationMode | null {
+  if (value === undefined) return "readiness";
+  if (typeof value === "string" && (value === "readiness" || value === "inference")) return value;
+  return null;
+}
