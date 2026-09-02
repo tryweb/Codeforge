@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { describe, expect, test } from "bun:test";
 import type { AgentModelsDeps } from "./agent-model-types";
 import {
+  classifyProbeResponse,
   computeProviderCredentialFingerprint,
   invalidateProbeCacheForProvider,
   pruneStaleProbeCacheForProvider,
@@ -47,7 +48,7 @@ function stubDeps(auth: AuthStore, initialCache: Record<string, unknown> = {}) {
     auth,
     calls,
     get probeCount() { return probeCount; },
-    readCache: () => JSON.parse(cache) as Record<string, unknown>,
+    readCache: (): Record<string, { retryAfter: number; observedAt: string; status: string }> => JSON.parse(cache),
     setProbeFailure: () => { probeExitCode = 1; },
   };
 }
@@ -147,5 +148,73 @@ describe("provider credential scoped model probe cache", () => {
     expect(fingerprint).toBe(createHash("sha256").update(JSON.stringify({ access: "access-a", accountId: "account-a", expires: 123, refresh: "refresh-a", type: "oauth" })).digest("hex"));
     expect(JSON.stringify(result)).not.toContain(fingerprint);
     expect(JSON.stringify(result)).not.toContain("access-a");
+  });
+
+  test("quota markers are classified as quota_exceeded in JSON and text", async () => {
+    const markers = [
+      "FreeUsageLimitError",
+      "free usage exceeded",
+      "insufficient_quota",
+      "credit_balance_exhausted",
+      "credit exhausted",
+      "spend_limit_exceeded",
+      "quota_exceeded",
+    ];
+    for (const marker of markers) {
+      const json = JSON.stringify({ info: { role: "assistant", error: marker } });
+      expect(classifyProbeResponse(json, "model").status).toBe("quota_exceeded");
+      expect(classifyProbeResponse(marker, "model").status).toBe("quota_exceeded");
+      expect(classifyProbeResponse(JSON.stringify({ info: { role: "assistant", error: { message: marker, code: 429 } } }), "model").status).toBe("quota_exceeded");
+    }
+  });
+
+  test("plain transient 429 remains retryable and is bounded to one Retry-After retry", async () => {
+    let callCount = 0;
+    const fixture = stubDeps({ provider: credential });
+    const originalExec = fixture.deps.exec;
+    const replacementExec: AgentModelsDeps["exec"] = async (command) => {
+      if (command.includes("agent-model-health.json")) return originalExec(command);
+      if (command.includes("auth.json")) return originalExec(command);
+      callCount += 1;
+      if (callCount === 1) {
+        return { stdout: JSON.stringify({ info: { role: "assistant", error: "429 rate limited, Retry-After: 2" } }), stderr: "", exitCode: 0 };
+      }
+      return { stdout: JSON.stringify({ info: { role: "assistant", modelID: "model", providerID: "provider" } }), stderr: "", exitCode: 0 };
+    };
+    Object.defineProperty(fixture.deps, "exec", { value: replacementExec });
+    const result = await probeModel(fixture.deps, "provider", "model");
+    expect(result.status).toBe("healthy");
+    expect(callCount).toBe(2);
+  });
+
+  test("unknown error remains retryable", async () => {
+    expect(classifyProbeResponse(JSON.stringify({ info: { role: "assistant", error: "some unknown failure" } }), "model").status).toBe("retryable");
+    expect(classifyProbeResponse("not json at all", "model").status).toBe("retryable");
+  });
+
+  test("quota result is cached for 900s and suppresses second probe", async () => {
+    const fixture = stubDeps({ provider: credential });
+    const quotaResponse = JSON.stringify({ info: { role: "assistant", error: "insufficient_quota" } });
+    let probeCalls = 0;
+    const originalExec = fixture.deps.exec;
+    const replacementExec: AgentModelsDeps["exec"] = async (command) => {
+      if (command.includes("agent-model-health.json")) return originalExec(command);
+      if (command.includes("auth.json")) return originalExec(command);
+      probeCalls += 1;
+      return { stdout: quotaResponse, stderr: "", exitCode: 0 };
+    };
+    Object.defineProperty(fixture.deps, "exec", { value: replacementExec });
+    const first = await probeModel(fixture.deps, "provider", "model");
+    expect(first.status).toBe("quota_exceeded");
+    const cache = fixture.readCache();
+    const key = Object.keys(cache)[0] ?? "";
+    const record = cache[key];
+    if (!record) throw new Error("missing cache record");
+    const ttl = record.retryAfter - Math.floor(new Date(record.observedAt).getTime() / 1000);
+    expect(ttl).toBe(900);
+    probeCalls = 0;
+    const second = await probeModel(fixture.deps, "provider", "model");
+    expect(second.status).toBe("quota_exceeded");
+    expect(probeCalls).toBe(0);
   });
 });

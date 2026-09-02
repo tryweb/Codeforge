@@ -10,7 +10,7 @@
 import { createHash } from "node:crypto";
 import type { AgentModelsDeps } from "./agent-model-types";
 
-export type ProbeStatus = "healthy" | "retired" | "unavailable" | "retryable" | "unreachable" | "mismatch";
+export type ProbeStatus = "healthy" | "retired" | "unavailable" | "retryable" | "unreachable" | "mismatch" | "quota_exceeded";
 
 export interface ProbeResult {
   readonly status: ProbeStatus;
@@ -29,6 +29,7 @@ const HEALTH_CACHE_DIR = "$HOME/.cache/openchamber";
 const HEALTH_CACHE_PATH = `${HEALTH_CACHE_DIR}/agent-model-health.json`;
 const CONFIRMED_TTL_SECONDS = 86_400;
 const RETRYABLE_TTL_SECONDS = 300;
+const QUOTA_TTL_SECONDS = 900;
 
 interface HealthRecord {
   providerID: string;
@@ -37,6 +38,24 @@ interface HealthRecord {
   reason: string;
   observedAt: string;
   retryAfter: number;
+}
+
+function hasQuotaMarker(message: string): boolean {
+  return /FreeUsageLimitError|free usage exceeded|insufficient_quota|credit_balance_exhausted|credit exhausted|spend_limit_exceeded|quota_exceeded/i.test(message);
+}
+
+function shouldRetryTransient(message: string): boolean {
+  if (hasQuotaMarker(message)) return false;
+  return /429|rate.?limit/i.test(message);
+}
+
+function parseRetryAfterDelayMs(message: string): number {
+  const match = message.match(/retry-?after[:\s]*([0-9]+)/i);
+  if (match) {
+    const value = parseInt(match[1], 10);
+    if (!Number.isNaN(value)) return Math.min(value, 60) * 1000;
+  }
+  return 0;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -142,6 +161,9 @@ export function classifyProbeResponse(stdout: string, modelID: string): ProbeRes
   try {
     parsed = JSON.parse(stdout);
   } catch {
+    if (/FreeUsageLimitError|free usage exceeded|insufficient_quota|credit_balance_exhausted|credit exhausted|spend_limit_exceeded|quota_exceeded/i.test(stdout)) {
+      return { status: "quota_exceeded", reason: stdout.slice(0, 2_000) };
+    }
     return { status: "retryable", reason: "probe response was not JSON" };
   }
 
@@ -162,6 +184,9 @@ export function classifyProbeResponse(stdout: string, modelID: string): ProbeRes
   const errored = assistants.find((info) => info.error !== undefined && info.error !== null);
   if (errored !== undefined) {
     const message = JSON.stringify(errored.error);
+    if (/FreeUsageLimitError|free usage exceeded|insufficient_quota|credit_balance_exhausted|credit exhausted|spend_limit_exceeded|quota_exceeded/i.test(message)) {
+      return { status: "quota_exceeded", reason: message };
+    }
     if (/410|end.of.life|retired|deprecated|no longer available/i.test(message)) {
       return { status: "retired", reason: message };
     }
@@ -224,9 +249,17 @@ export async function probeModel(
     return { status: "unreachable", reason: "managed opencode server unreachable" };
   }
 
-  const probe = classifyProbeResponse(result.stdout, modelID);
+  let probe = classifyProbeResponse(result.stdout, modelID);
+  if (probe.status === "retryable" && shouldRetryTransient(probe.reason ?? result.stdout)) {
+    const delayMs = parseRetryAfterDelayMs(probe.reason ?? result.stdout);
+    if (delayMs > 0) await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+    const retryResult = await deps.exec(buildProbeScript(auth, providerID, modelID), 90_000);
+    if (retryResult.exitCode === 0 && retryResult.stdout.trim()) {
+      probe = classifyProbeResponse(retryResult.stdout, modelID);
+    }
+  }
   if (probe.status !== "unreachable") {
-    const ttl = probe.status === "retryable" ? RETRYABLE_TTL_SECONDS : CONFIRMED_TTL_SECONDS;
+    const ttl = probe.status === "quota_exceeded" ? QUOTA_TTL_SECONDS : probe.status === "retryable" ? RETRYABLE_TTL_SECONDS : CONFIRMED_TTL_SECONDS;
     cache[cacheKey] = {
       providerID,
       fingerprint,
