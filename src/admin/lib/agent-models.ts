@@ -16,6 +16,7 @@ import {
   type ApplyResult,
   type FallbackModelEntry,
   type ResolvedModel,
+  type VerificationMode,
 } from "./agent-model-types";
 import { execInAiDev } from "./docker";
 import { readEnvFile } from "./env";
@@ -90,7 +91,10 @@ export function createAgentModelsLib(deps: AgentModelsDeps = REAL_DEPS) {
     return trimmed ? trimmed : null;
   }
 
-  async function verifyAppliedAgent(agent: string, entries: readonly FallbackModelEntry[]): Promise<ApplyResult> {
+  async function verifyAppliedAgent(agent: string, entries: readonly FallbackModelEntry[], verification: VerificationMode = "readiness", isAborted: () => boolean = () => false): Promise<ApplyResult> {
+    if (isAborted()) {
+      return { ok: false, status: "unverified", error: verification === "inference" ? "Apply timed out after 300 seconds; the configuration was written but verification did not complete. Check provider quota and try again." : "Apply timed out after 180 seconds; the configuration was written but readiness verification did not complete. Try again or check managed OpenCode health." };
+    }
     const password = getServerPassword();
     if (password === null) {
       return { ok: false, status: "unverified", error: "OPENCODE_SERVER_PASSWORD missing after restart" };
@@ -113,6 +117,26 @@ export function createAgentModelsLib(deps: AgentModelsDeps = REAL_DEPS) {
     const providerSnapshot = await live.fetchProviderSnapshot(password);
     if (!providerSnapshot.connectedProviders.includes(resolved.providerID)) {
       return { ok: false, status: "unverified", error: `provider ${resolved.providerID} is not connected` };
+    }
+    if (verification === "readiness") {
+      if (isAborted()) {
+        return { ok: false, status: "unverified", error: "Apply timed out after 180 seconds; the configuration was written but readiness verification did not complete. Try again or check managed OpenCode health." };
+      }
+      const configuredActual = `${resolved.providerID}/${resolved.modelID}`;
+      if (configuredActual !== configured) {
+        return {
+          ok: false,
+          status: "runtime_mismatch",
+          configured,
+          resolved,
+          requestVerified: null,
+          error: `Configured model ${configured} did not match assigned ${configuredActual}`,
+        };
+      }
+      return { ok: true, status: "verified", resolved, requestVerified: null };
+    }
+    if (isAborted()) {
+      return { ok: false, status: "unverified", error: "Apply timed out after 300 seconds; the configuration was written but verification did not complete. Check provider quota and try again." };
     }
     const requestVerified = await live.fetchSuccessfulRequestModel(password, agent);
     if (requestVerified === null) {
@@ -142,6 +166,9 @@ export function createAgentModelsLib(deps: AgentModelsDeps = REAL_DEPS) {
         error: `Configured model ${configured} is not a valid provider/model reference`,
       };
     }
+    if (isAborted()) {
+      return { ok: false, status: "unverified", error: "Apply timed out after 300 seconds; the configuration was written but verification did not complete. Check provider quota and try again." };
+    }
     const probe = await probeModel(deps, parsedConfigured.providerID, parsedConfigured.modelID);
     if (probe.status === "healthy") {
       return { ok: true, status: "verified", resolved, requestVerified };
@@ -154,6 +181,15 @@ export function createAgentModelsLib(deps: AgentModelsDeps = REAL_DEPS) {
         resolved,
         requestVerified,
         error: probe.reason ?? `Probe resolved a different model than ${configured}`,
+      };
+    }
+    if (probe.status === "quota_exceeded") {
+      return {
+        ok: true,
+        status: "applied_with_quota_warning",
+        resolved,
+        requestVerified,
+        warning: probe.reason ?? `provider quota exhausted for ${configured}`,
       };
     }
     if (probe.status === "retryable" || probe.status === "unreachable") {
@@ -176,80 +212,159 @@ export function createAgentModelsLib(deps: AgentModelsDeps = REAL_DEPS) {
     }
   }
 
-  async function applyAndVerifyBatch(changes: readonly AgentModelChange[]): Promise<ReadonlyMap<string, ApplyResult>> {
-    const results = new Map<string, ApplyResult>();
-    if (changes.length === 0) return results;
+  async function applyAndVerifyBatch(changes: readonly AgentModelChange[], verification: VerificationMode = "readiness"): Promise<ReadonlyMap<string, ApplyResult>> {
+    const backendTimeoutMs = verification === "inference" ? 300_000 : 180_000;
+    const timeoutError: ApplyResult = { ok: false, status: "unverified", error: verification === "inference" ? "Apply timed out after 300 seconds; the configuration was written but verification did not complete. Check provider quota and try again." : "Apply timed out after 180 seconds; the configuration was written but readiness verification did not complete. Try again or check managed OpenCode health." };
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    let timedOut = false;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => {
+        timedOut = true;
+        reject(new Error("timeout"));
+      }, backendTimeoutMs);
+    });
 
-    const snapshot = await snapshotAgentModelsConfig();
-    if (snapshot === null) {
-      for (const change of changes) {
-        results.set(change.agent, { ok: false, status: "write_failed", error: "could not snapshot ~/.omo/omo.jsonc before applying the model" });
+    const work = async (): Promise<ReadonlyMap<string, ApplyResult>> => {
+      const results = new Map<string, ApplyResult>();
+      if (changes.length === 0) return results;
+
+      const snapshot = await snapshotAgentModelsConfig();
+      if (timedOut) {
+        for (const change of changes) if (!results.has(change.agent)) results.set(change.agent, timeoutError);
+        return results;
       }
-      return results;
-    }
-
-    const write = await deps.exec(changes.map(({ agent, entries }) => buildJqWriteCommand(agent, entries)).join(" && "), 30_000);
-    if (write.exitCode !== 0) {
-      const rollback = await restoreAgentModelsConfig(snapshot);
-      for (const change of changes) {
-        results.set(change.agent, rollback.ok
-          ? { ok: false, status: "write_failed", error: write.stderr || write.stdout || "jq write failed" }
-          : { ok: false, status: "rollback_failed", error: `${write.stderr || write.stdout || "jq write failed"}; ${rollback.error ?? "rollback failed"}` });
-      }
-      return results;
-    }
-
-    const nativeSync = await syncNativeAgentOverrides();
-    if (!nativeSync.ok) {
-      const rollback = await restoreAgentModelsConfig(snapshot);
-      for (const change of changes) {
-        results.set(change.agent, rollback.ok
-          ? { ok: false, status: "write_failed", error: nativeSync.error ?? "native override synchronization failed" }
-          : { ok: false, status: "rollback_failed", error: `${nativeSync.error ?? "native override synchronization failed"}; ${rollback.error ?? "rollback failed"}` });
-      }
-      return results;
-    }
-    const restart = await deps.restart();
-    if (!restart.ok) {
-      const rollback = await restoreAgentModelsConfig(snapshot);
-      for (const change of changes) {
-        results.set(change.agent, rollback.ok
-          ? { ok: false, status: "restart_failed", error: restart.error ?? "restart failed" }
-          : { ok: false, status: "rollback_failed", error: `${restart.error ?? "restart failed"}; ${rollback.error ?? "rollback failed"}` });
-      }
-      return results;
-    }
-
-    for (const change of changes) {
-      results.set(change.agent, await verifyAppliedAgent(change.agent, change.entries));
-    }
-
-    const probeFailure = [...results.entries()].find(([, result]) => !result.ok && result.status === "probe_failed");
-    if (probeFailure !== undefined) {
-      const probeFailureError = probeFailure[1].ok ? "model probe failed" : probeFailure[1].error;
-      const rollback = await restoreAgentModelsConfig(snapshot);
-      const recovery = rollback.ok ? await deps.restart() : { ok: false, error: "recovery restart skipped" };
-      if (!rollback.ok || !recovery.ok) {
+      if (snapshot === null) {
         for (const change of changes) {
-          results.set(change.agent, {
-            ok: false,
-            status: "rollback_failed",
-            error: `${probeFailureError}; ${rollback.error ?? recovery.error ?? "rollback failed"}`,
-          });
+          results.set(change.agent, { ok: false, status: "write_failed", error: "could not snapshot ~/.omo/omo.jsonc before applying the model" });
         }
-      } else {
-        for (const [agent, result] of results) {
-          if (agent !== probeFailure[0]) {
-            results.set(agent, { ok: false, status: "rollback_failed", error: `batch rolled back after ${probeFailure[0]} probe failure` });
+        return results;
+      }
+
+      const write = await deps.exec(changes.map(({ agent, entries }) => buildJqWriteCommand(agent, entries)).join(" && "), 30_000);
+      if (timedOut) {
+        for (const change of changes) if (!results.has(change.agent)) results.set(change.agent, timeoutError);
+        return results;
+      }
+      if (write.exitCode !== 0) {
+        const rollback = await restoreAgentModelsConfig(snapshot);
+        for (const change of changes) {
+          results.set(change.agent, rollback.ok
+            ? { ok: false, status: "write_failed", error: write.stderr || write.stdout || "jq write failed" }
+            : { ok: false, status: "rollback_failed", error: `${write.stderr || write.stdout || "jq write failed"}; ${rollback.error ?? "rollback failed"}` });
+        }
+        return results;
+      }
+
+      const nativeSync = await syncNativeAgentOverrides();
+      if (timedOut) {
+        for (const change of changes) if (!results.has(change.agent)) results.set(change.agent, timeoutError);
+        return results;
+      }
+      if (!nativeSync.ok) {
+        const rollback = await restoreAgentModelsConfig(snapshot);
+        for (const change of changes) {
+          results.set(change.agent, rollback.ok
+            ? { ok: false, status: "write_failed", error: nativeSync.error ?? "native override synchronization failed" }
+            : { ok: false, status: "rollback_failed", error: `${nativeSync.error ?? "native override synchronization failed"}; ${rollback.error ?? "rollback failed"}` });
+        }
+        return results;
+      }
+      const restart = await deps.restart();
+      if (timedOut) {
+        for (const change of changes) if (!results.has(change.agent)) results.set(change.agent, timeoutError);
+        return results;
+      }
+      if (!restart.ok) {
+        const rollback = await restoreAgentModelsConfig(snapshot);
+        for (const change of changes) {
+          results.set(change.agent, rollback.ok
+            ? { ok: false, status: "restart_failed", error: restart.error ?? "restart failed" }
+            : { ok: false, status: "rollback_failed", error: `${restart.error ?? "restart failed"}; ${rollback.error ?? "rollback failed"}` });
+        }
+        return results;
+      }
+
+      const quotaModels = new Set<string>();
+      const quotaWarningByModel = new Map<string, ApplyResult>();
+      for (const change of changes) {
+        if (timedOut) {
+          if (!results.has(change.agent)) results.set(change.agent, timeoutError);
+          continue;
+        }
+        const configured = change.entries[0]?.model;
+        if (verification === "inference" && configured !== undefined && quotaModels.has(configured)) {
+          const cached = quotaWarningByModel.get(configured);
+          if (cached !== undefined) {
+            results.set(change.agent, cached);
+            continue;
+          }
+        }
+        if (timedOut) {
+          if (!results.has(change.agent)) results.set(change.agent, timeoutError);
+          continue;
+        }
+        const result = await verifyAppliedAgent(change.agent, change.entries, verification, () => timedOut);
+        if (timedOut && !results.has(change.agent)) {
+          results.set(change.agent, timeoutError);
+          continue;
+        }
+        results.set(change.agent, result);
+        if (result.ok && result.status === "applied_with_quota_warning" && configured !== undefined) {
+          quotaModels.add(configured);
+          quotaWarningByModel.set(configured, result);
+        }
+      }
+
+      if (timedOut) {
+        for (const change of changes) if (!results.has(change.agent)) results.set(change.agent, timeoutError);
+        return results;
+      }
+
+      const probeFailure = [...results.entries()].find(([, result]) => !result.ok && result.status === "probe_failed");
+      if (probeFailure !== undefined) {
+        if (timedOut) {
+          for (const change of changes) if (!results.has(change.agent)) results.set(change.agent, timeoutError);
+          return results;
+        }
+        const probeFailureError = probeFailure[1].ok ? "model probe failed" : probeFailure[1].error;
+        const rollback = await restoreAgentModelsConfig(snapshot);
+        const recovery = rollback.ok ? await deps.restart() : { ok: false, error: "recovery restart skipped" };
+        if (!rollback.ok || !recovery.ok) {
+          for (const change of changes) {
+            results.set(change.agent, {
+              ok: false,
+              status: "rollback_failed",
+              error: `${probeFailureError}; ${rollback.error ?? recovery.error ?? "rollback failed"}`,
+            });
+          }
+        } else {
+          for (const [agent, result] of results) {
+            if (agent !== probeFailure[0]) {
+              results.set(agent, { ok: false, status: "rollback_failed", error: `batch rolled back after ${probeFailure[0]} probe failure` });
+            }
           }
         }
       }
+      return results;
+    };
+
+    try {
+      const result = await Promise.race([work(), timeoutPromise]);
+      if (timeoutId) clearTimeout(timeoutId);
+      return result;
+    } catch (error: unknown) {
+      if (timeoutId) clearTimeout(timeoutId);
+      if (timedOut) {
+        const results = new Map<string, ApplyResult>();
+        for (const change of changes) results.set(change.agent, timeoutError);
+        return results;
+      }
+      throw error;
     }
-    return results;
   }
 
-  async function applyAndVerify(agent: string, entries: readonly FallbackModelEntry[]): Promise<ApplyResult> {
-    return (await applyAndVerifyBatch([{ agent, entries }])).get(agent)
+  async function applyAndVerify(agent: string, entries: readonly FallbackModelEntry[], verification: VerificationMode = "readiness"): Promise<ApplyResult> {
+    return (await applyAndVerifyBatch([{ agent, entries }], verification)).get(agent)
       ?? { ok: false, status: "write_failed", error: "agent model apply returned no result" };
   }
 

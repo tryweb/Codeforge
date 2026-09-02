@@ -330,7 +330,7 @@ describe("applyAndVerify", () => {
       },
     ]);
     const lib = createAgentModelsLib(deps);
-    const result = await lib.applyAndVerify("explore", [{ model: "openai/gpt-5.6-luna-fast" }]);
+    const result = await lib.applyAndVerify("explore", [{ model: "openai/gpt-5.6-luna-fast" }], "inference");
     expect(result).toMatchObject({
       ok: true,
       status: "verified",
@@ -349,7 +349,7 @@ describe("applyAndVerify", () => {
       { match: /\/session\b/, stdout: JSON.stringify({ info: { role: "assistant", modelID: "gpt-5.6-luna-fast", providerID: "openai" } }) },
       { match: /title:\"model availability probe\"/, stdout: JSON.stringify({ info: { role: "assistant", error: "404 unavailable" } }) },
     ]);
-    const result = await createAgentModelsLib(ctx.deps).applyAndVerify("explore", [{ model: "openai/gpt-5.6-luna-fast" }]);
+    const result = await createAgentModelsLib(ctx.deps).applyAndVerify("explore", [{ model: "openai/gpt-5.6-luna-fast" }], "inference");
     expect(result).toMatchObject({ ok: false, status: "probe_failed" });
     expect(ctx.restartCount).toBe(2);
     expect(ctx.calls.some((command) => command.includes(`cat '${SNAPSHOT_FILE}'`))).toBe(true);
@@ -365,7 +365,7 @@ describe("applyAndVerify", () => {
       { match: /\/session\b/, stdout: JSON.stringify({ info: { role: "assistant", modelID: "gpt-5.6-luna-fast", providerID: "openai" } }) },
       { match: /title:\"model availability probe\"/, stdout: JSON.stringify({ info: { role: "assistant", error: "temporary" } }) },
     ]);
-    const result = await createAgentModelsLib(ctx.deps).applyAndVerify("explore", [{ model: "openai/gpt-5.6-luna-fast" }]);
+    const result = await createAgentModelsLib(ctx.deps).applyAndVerify("explore", [{ model: "openai/gpt-5.6-luna-fast" }], "inference");
     expect(result).toMatchObject({ ok: false, status: "unverified" });
     expect(ctx.restartCount).toBe(1);
     expect(ctx.calls.some((command) => command.includes(`cat '${SNAPSHOT_FILE}'`))).toBe(false);
@@ -381,7 +381,7 @@ describe("applyAndVerify", () => {
       { match: /\/session\b/, stdout: JSON.stringify({ info: { role: "assistant", modelID: "gpt-5.6-luna-fast", providerID: "openai" } }) },
       { match: /title:\"model availability probe\"/, stdout: JSON.stringify({ info: { role: "assistant", error: "410 retired" } }) },
     ]);
-    const result = await createAgentModelsLib(ctx.deps).applyAndVerify("explore", [{ model: "openai/gpt-5.6-luna-fast" }]);
+    const result = await createAgentModelsLib(ctx.deps).applyAndVerify("explore", [{ model: "openai/gpt-5.6-luna-fast" }], "inference");
     expect(result).toMatchObject({ ok: false, status: "probe_failed" });
     expect(ctx.restartCount).toBe(2);
     expect(ctx.calls.some((command) => command.includes(`cat '${SNAPSHOT_FILE}'`))).toBe(true);
@@ -397,7 +397,7 @@ describe("applyAndVerify", () => {
       { match: /\/session\b/, stdout: JSON.stringify({ info: { role: "assistant", modelID: "gpt-5.6-luna-fast", providerID: "openai" } }) },
       { match: /title:\"model availability probe\"/, stdout: JSON.stringify({ info: { role: "assistant", modelID: "other", providerID: "openai" } }) },
     ]);
-    const result = await createAgentModelsLib(ctx.deps).applyAndVerify("explore", [{ model: "openai/gpt-5.6-luna-fast" }]);
+    const result = await createAgentModelsLib(ctx.deps).applyAndVerify("explore", [{ model: "openai/gpt-5.6-luna-fast" }], "inference");
     expect(result).toMatchObject({ ok: false, status: "runtime_mismatch" });
     expect(ctx.restartCount).toBe(1);
     expect(ctx.calls.some((command) => command.includes(`cat '${SNAPSHOT_FILE}'`))).toBe(false);
@@ -417,7 +417,7 @@ describe("applyAndVerify", () => {
       restartCount += 1;
       return restartCount === 1 ? { ok: true } : { ok: false, error: "recovery failed" };
     } });
-    const result = await createAgentModelsLib(ctx.deps).applyAndVerify("explore", [{ model: "openai/gpt-5.6-luna-fast" }]);
+    const result = await createAgentModelsLib(ctx.deps).applyAndVerify("explore", [{ model: "openai/gpt-5.6-luna-fast" }], "inference");
     expect(result).toMatchObject({ ok: false, status: "rollback_failed" });
     expect(ctx.calls.some((command) => command.includes(`cat '${SNAPSHOT_FILE}'`))).toBe(true);
     ctx.cleanup();
@@ -433,7 +433,7 @@ describe("applyAndVerify", () => {
       { match: /title:\"model availability probe\"/, stdout: JSON.stringify({ info: { role: "assistant", error: "404 unavailable" } }) },
       { match: /cat.*omo\.jsonc/, stdout: "", stderr: "restore failed", exitCode: 1 },
     ]);
-    const result = await createAgentModelsLib(ctx.deps).applyAndVerify("explore", [{ model: "openai/gpt-5.6-luna-fast" }]);
+    const result = await createAgentModelsLib(ctx.deps).applyAndVerify("explore", [{ model: "openai/gpt-5.6-luna-fast" }], "inference");
     expect(result).toMatchObject({ ok: false, status: "rollback_failed" });
     expect(ctx.restartCount).toBe(1);
     ctx.cleanup();
@@ -445,7 +445,7 @@ describe("applyAndVerify", () => {
       { stdout: "", exitCode: 1, stderr: "jq: parse error" }, // write fails
     ]);
     const lib = createAgentModelsLib(deps);
-    const result = await lib.applyAndVerify("explore", [{ model: "claude-opus-5" }]);
+    const result = await lib.applyAndVerify("explore", [{ model: "claude-opus-5" }], "inference");
     expect(result).toMatchObject({ ok: false, status: "write_failed", error: "jq: parse error" });
     expect(restartCount).toBe(0);
     cleanup();
@@ -460,7 +460,7 @@ describe("applyAndVerify", () => {
       { restart: async () => ({ ok: false, error: "compose failed" }) },
     );
     const lib = createAgentModelsLib(deps);
-    const result = await lib.applyAndVerify("explore", [{ model: "claude-opus-5" }]);
+    const result = await lib.applyAndVerify("explore", [{ model: "claude-opus-5" }], "inference");
     expect(result).toMatchObject({ ok: false, status: "restart_failed", error: "compose failed" });
     expect(restartCount).toBe(0);
     // snapshot restored back into the container
@@ -475,7 +475,7 @@ describe("applyAndVerify", () => {
       { stdout: "", exitCode: 2 }, // fetch fails
     ]);
     const lib = createAgentModelsLib(ctx.deps);
-    const result = await lib.applyAndVerify("explore", [{ model: "claude-opus-5" }]);
+    const result = await lib.applyAndVerify("explore", [{ model: "claude-opus-5" }], "inference");
     expect(result.ok).toBe(false);
     expect(result).toMatchObject({ status: "unverified" });
     expect(ctx.restartCount).toBe(1); // no rollback restart
@@ -503,7 +503,7 @@ describe("applyAndVerify", () => {
     const lib = createAgentModelsLib(ctx.deps);
     const result = await lib.applyAndVerify("librarian", [
       { model: "opencode/nemotron-3.5-lightning-free" },
-    ]);
+    ], "inference");
     expect(result).toMatchObject({
       ok: false,
       status: "runtime_mismatch",
@@ -579,5 +579,70 @@ describe("applyAndVerify", () => {
     expect(result).toEqual({ ok: false, status: "write_failed", error: "native sync failed" });
     expect(restartCount).toBe(0);
     expect(calls.some((command) => command.includes(`cat '${SNAPSHOT_FILE}'`))).toBe(true);
+  });
+
+  test("readiness verification issues zero model-message calls", async () => {
+    const agentsJson = JSON.stringify([{ name: "explore", model: { modelID: "gpt-5.6-luna-fast", providerID: "openai" } }]);
+    const { deps, calls } = stubDeps([
+      { stdout: "/tmp/snap" },
+      { stdout: "" },
+      { stdout: agentsJson },
+      { match: /\/provider\b/, stdout: JSON.stringify({ connected: ["openai"], all: [] }) },
+    ]);
+    const lib = createAgentModelsLib(deps);
+    const result = await lib.applyAndVerify("explore", [{ model: "openai/gpt-5.6-luna-fast" }], "readiness");
+    expect(result.ok).toBe(true);
+    expect(result.status).toBe("verified");
+    expect(calls.some((c) => c.includes("/session/") && c.includes("message"))).toBe(false);
+    expect(calls.some((c) => c.includes("title:\"model availability probe\""))).toBe(false);
+  });
+
+  test("full-operation timeout returns unverified, clears timer, and does not continue probe", async () => {
+    const originalSetTimeout = globalThis.setTimeout;
+    const originalClearTimeout = globalThis.clearTimeout;
+    let clearCalled = false;
+    let timeoutFired = false;
+    const mockSetTimeout = (cb: () => void, ms: number): ReturnType<typeof originalSetTimeout> => {
+      if (ms === 180000 || ms === 300000) {
+        timeoutFired = true;
+        return originalSetTimeout(cb, 10);
+      }
+      return originalSetTimeout(cb, ms);
+    }
+    const mockClearTimeout = (id: ReturnType<typeof originalSetTimeout>): void => {
+      clearCalled = true;
+      return originalClearTimeout(id);
+    }
+    Object.defineProperty(globalThis, "setTimeout", { value: mockSetTimeout, writable: true, configurable: true });
+    Object.defineProperty(globalThis, "clearTimeout", { value: mockClearTimeout, writable: true, configurable: true });
+    try {
+      const fixture = stubDeps([
+        { stdout: "/tmp/snap" },
+        { stdout: "" },
+        { stdout: JSON.stringify([{ name: "explore", model: { modelID: "gpt-5.6-luna-fast", providerID: "openai" } }]), },
+        { match: /\/provider\b/, stdout: JSON.stringify({ connected: ["openai"], all: [] }) },
+      ]);
+      const execOriginal = fixture.deps.exec;
+      const callsRef = fixture.calls;
+      const trackingExec: AgentModelsDeps["exec"] = async (command, timeoutMs) => {
+        if (command.includes("/agent") || command.includes("/provider")) {
+          await Bun.sleep(50);
+          return execOriginal(command, timeoutMs);
+        }
+        return execOriginal(command, timeoutMs);
+      };
+      const deps2 = { exec: trackingExec, restart: fixture.deps.restart, readEnv: fixture.deps.readEnv };
+      const lib = createAgentModelsLib(deps2);
+      const result = await lib.applyAndVerify("explore", [{ model: "openai/gpt-5.6-luna-fast" }], "readiness");
+      expect(timeoutFired).toBe(true);
+      expect(result.status).toBe("unverified");
+      if (result.ok) throw new Error("expected timeout result");
+      expect(result.error).toContain("timed out");
+      expect(clearCalled).toBe(true);
+      expect(callsRef.some((c) => c.includes("title:\"model availability probe\""))).toBe(false);
+    } finally {
+      Object.defineProperty(globalThis, "setTimeout", { value: originalSetTimeout, writable: true, configurable: true });
+      Object.defineProperty(globalThis, "clearTimeout", { value: originalClearTimeout, writable: true, configurable: true });
+    }
   });
 });
