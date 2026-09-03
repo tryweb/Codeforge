@@ -555,6 +555,7 @@ describe("applyAndVerify", () => {
     expect(calls[syncIndex]).toContain('"$HOME/.omo/omo.jsonc"');
     expect(calls[syncIndex]).not.toContain('"~/.omo/omo.jsonc"');
     expect(calls[syncIndex]).toContain('code=$?; rm -f "$tmp"; exit "$code"');
+    expect(calls[syncIndex]).toContain('^[^/[:space:]]+/[^[:space:]]+$');
     expect(restartIndex).toBeGreaterThan(syncIndex);
   });
 

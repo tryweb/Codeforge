@@ -13,8 +13,8 @@ merge_native_agent_overrides() {
     | .[1] as $omo
      | reduce ["general", "plan"][] as $name ($opencode;
         ($omo.agents[$name] // {}) as $override
-        | if (($override.model | type) == "string"
-              and ($override.model | test("^[^/[:space:]]+/[^/[:space:]]+$"))) then
+        | if (        ($override.model | type) == "string"
+              and ($override.model | test("^[^/[:space:]]+/[^[:space:]]+$"))) then
             .agent = (.agent // {})
             | .agent[$name].model = $override.model
             | if (($override.variant | type) == "string" and ($override.variant | length) > 0) then

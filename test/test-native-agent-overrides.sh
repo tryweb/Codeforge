@@ -58,6 +58,11 @@ merge_native_agent_overrides "$opencode_config" "$omo_config"
 assert_eq "provider-less model is rejected" "false" "$(jq '.agent | has("general")' "$opencode_config")"
 
 base_config > "$opencode_config"
+printf '{"agents":{"general":{"model":"openrouter/dots-studio/dots-3-note-preview:free"}}}\n' > "$omo_config"
+merge_native_agent_overrides "$opencode_config" "$omo_config"
+assert_eq "org-scoped multi-slash model merged" "openrouter/dots-studio/dots-3-note-preview:free" "$(jq -r '.agent.general.model' "$opencode_config")"
+
+base_config > "$opencode_config"
 printf '{ invalid json\n' > "$omo_config"
 before="$(sha256sum "$opencode_config")"
 merge_native_agent_overrides "$opencode_config" "$omo_config"
