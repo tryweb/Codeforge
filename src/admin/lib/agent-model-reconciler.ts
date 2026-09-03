@@ -204,7 +204,7 @@ export function createAgentModelReconciler(deps: AgentModelsDeps) {
           ? await probe(primary.model)
           : !connected.has(parsed.providerID) ? null : await probe(primary.model);
         observedStatus = status?.status ?? "not_checked";
-        if (status?.status === "healthy" || (status !== null && !["unavailable", "retired"].includes(status.status))) {
+        if (status?.status === "healthy" || (status !== null && !["unavailable", "retired", "wrong_endpoint"].includes(status.status))) {
           desired = [primary];
         } else {
           const candidates = sortedCandidates(agent, snapshot.catalog, capabilities, null);
@@ -216,7 +216,7 @@ export function createAgentModelReconciler(deps: AgentModelsDeps) {
         if (resolved !== undefined && resolvedRef !== null && connected.has(resolved.providerID)) {
           const status = await probe(resolvedRef);
           observedStatus = status.status;
-          if (status.status === "healthy" || !["unavailable", "retired"].includes(status.status)) {
+          if (status.status === "healthy" || !["unavailable", "retired", "wrong_endpoint"].includes(status.status)) {
             desired = [];
           }
         }
