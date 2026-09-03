@@ -1,6 +1,39 @@
 ## [Unreleased]
 
 
+## [1.18.0] - 2026-09-03
+
+### Added
+- Admin-managed LSP server configuration (catalog, version selection, entrypoint lsp block, reconciler + apply)
+- Bump buildx 0.36.1→0.37.0, opencode 1.18.25→1.18.27, glab 1.115.0→1.116.0, playwright-mcp 0.0.79→0.0.80, gh 2.98.0→2.99.0, openspec 1.11.0→1.12.0
+- Add agent model verification modes
+
+### Fixed
+- Sync native overrides for multi-slash model IDs
+- Escape agent model confirmation newlines
+- Expose agent model verification controls
+- Apply inference verification for reconciler changes
+- Prevent agent model apply quota hangs
+- Handle provider quota during model probing
+- Preserve verified agent history mapping
+- Bound agent model history collection
+
+### Documentation
+- Archive agent model quota-hang change
+- Sync agent model quota-hang specifications
+- Document agent model history scan policy
+
+### Changed
+- Upgrade Docker Buildx from 0.36.1 to 0.37.0.
+- Upgrade OpenCode from 1.18.25 to 1.18.27.
+- Upgrade GitHub CLI from 2.98.0 to 2.99.0.
+- Upgrade GitLab CLI from 1.115.0 to 1.116.0.
+
+### Tests
+- Cover agent model apply flow end to end
+- Extend agent model health coverage
+- Update agent model history fixtures
+
 ## [1.17.0] - 2026-09-01
 
 ### Added
@@ -1800,7 +1833,7 @@
 
 ## Format
 
-[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.17.0...HEAD
+[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.18.0...HEAD
 [0.3.0]: https://github.com/tryweb/ai-engkit/releases/tag/v0.3.0
 [0.3.3]: https://github.com/tryweb/ai-engkit/compare/v0.3.0...v0.3.3
 [0.5.0]: https://github.com/tryweb/ai-engkit/compare/v0.3.3...v0.5.0
@@ -1962,3 +1995,4 @@
 [1.16.7]: https://github.com/tryweb/ai-engkit/compare/v1.16.6...v1.16.7
 [1.16.8]: https://github.com/tryweb/ai-engkit/compare/v1.16.7...v1.16.8
 [1.17.0]: https://github.com/tryweb/ai-engkit/compare/v1.16.8...v1.17.0
+[1.18.0]: https://github.com/tryweb/ai-engkit/compare/v1.17.0...v1.18.0
