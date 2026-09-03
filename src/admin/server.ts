@@ -29,6 +29,7 @@ import { DashboardPage } from "./views/dashboard";
 import { getSelfContainerRef, dockerCommand, execInAiDev } from "./lib/docker";
 import { createToolStatusProbe } from "./lib/project-tool-status";
 import leanctxRoutes from "./routes/leanctx";
+import lspRoutes from "./routes/lsp";
 import { getAgentStatus } from "./agent";
 import { readLeanCtxConfig } from "./lib/leanctx";
 import { deriveDashboardRuntimeState, readAppliedSnapshot } from "./lib/leanctx-applied-snapshot";
@@ -131,6 +132,7 @@ app.route("/", secretsRoutes);
 app.route("/", providersRoutes);
 app.route("/", openChamberRoutes);
 app.route("/", leanctxRoutes);
+app.route("/", lspRoutes);
 
 // Dashboard main page — gathers data directly instead of HTTP loopback
 app.get("/", async (c) => {

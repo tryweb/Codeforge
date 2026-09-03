@@ -157,6 +157,7 @@ graph TB
 | Status | `GET /api/status` | Aggregated system health summary |
 | Health | `GET /healthz` | Liveness probe |
 | OpenAPI | `GET /api/openapi.json` | API specification |
+| LSP Server Management | `GET /lsp`, `GET /api/lsp`, `PUT /api/lsp`, `POST /api/lsp/apply` | Manage the OpenCode-facing LSP catalog, enable/pin servers, and reconcile against installed state |
 
 ### Upgrade Pipeline
 
@@ -203,6 +204,29 @@ flowchart LR
 | `CENTER_TLS_CA` | *(empty)* | Path to CA PEM for mTLS to center |
 | `CENTER_TLS_CERT` | *(empty)* | Path to client cert PEM for mTLS |
 | `CENTER_TLS_KEY` | *(empty)* | Path to client key PEM for mTLS |
+
+### LSP Server Management
+
+The ai-admin dashboard manages the OpenCode-facing language servers (the `lsp` block of the generated `opencode.json`) from a typed **catalog** in `src/admin/lib/lsp-catalog.ts`. Supported servers are known/shipped with the image; the catalog declares the npm package, the binary command, the file extensions it serves, and whether it is enabled by default.
+
+User intent is expressed as a structured JSON override var in `.env`:
+
+```bash
+# .env — LSP_SERVERS overrides the baseline catalog; absent = default (unpinned, disabled unless default-enabled)
+LSP_SERVERS='{"typescript":{"enabled":true,"version":"6.0.0"},"biome":{"enabled":true,"version":null}}'
+```
+
+- `version: null` means *latest (unpinned)*; a concrete version pins that exact release.
+- A missing/unknown key falls back to the catalog baseline — except built-in-backed servers (`typescript`, `yaml-ls`, `pyright`), whose `enabled:false` is normalized to managed (`true`).
+- No `LSP_SERVERS` at all ⇒ non-backed servers disabled/unpinned; backed servers resolve to managed.
+
+Installation rides the existing startup package mechanism. `src/admin/lib/lsp-reconciler.ts` computes the **desired** set (catalog + overrides) against the **observed** state (globally installed npm versions + the generated `lsp` block), reporting drift per server:
+
+- `missing_install` — an enabled server is not installed;
+- `version_mismatch` — an enabled pinned server's installed version differs;
+- `not_enabled_in_lsp` — an enabled server is missing from the `lsp` block.
+
+The Admin **LSP Servers** page (`views/lsp.tsx`, mounted under the auth guard at `/lsp`) lists the catalog with live observed state, lets the operator enable servers and pin versions (choosing from registry-discovered versions, newest first with an incremental "Show more"), and triggers an **apply** (`POST /api/lsp/apply`) that installs changed servers via `bun install -g` through `BUN_PACKAGES` and merges the enabled servers into the generated `opencode.json` `lsp` block. On failure the persisted `.env` state is left unchanged. On every successful apply the Admin also pushes both vars to `lsp-managed.env` in the opencode-config volume, and `entrypoint.d/02-init-config.sh` regenerates the `lsp` block at startup from the enabled entries, reading `BUN_PACKAGES`/`LSP_SERVERS` from that file only when the container environment does not already define them.
 
 ---
 

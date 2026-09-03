@@ -187,6 +187,84 @@ th { color: var(--text-muted); font-weight: 500; font-size: var(--text-sm); text
   }
 }
 
+/* LSP server table — desktop keeps the full 6-column table; headers never wrap */
+.lsp-table-wrap { min-width: 0; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+#lsp-table { min-width: 0; }
+#lsp-table th { white-space: nowrap; }
+.lsp-status { min-width: 28px; justify-content: center; }
+.lsp-status [aria-hidden="true"] { line-height: 1; }
+
+/* Screen-reader-only text (pairs with aria-label on icon-only status) */
+.visually-hidden {
+  position: absolute; width: 1px; height: 1px;
+  margin: -1px; padding: 0; border: 0;
+  clip: rect(0 0 0 0); clip-path: inset(50%);
+  overflow: hidden; white-space: nowrap;
+}
+
+/* LSP table on phones: stacked labeled cards (mirrors .agent-models-table-wrap) */
+@media (max-width: 768px) {
+  .lsp-table-wrap { overflow: visible; }
+  .lsp-table-wrap #lsp-table,
+  .lsp-table-wrap #lsp-table > tbody,
+  .lsp-table-wrap #lsp-table > tbody > tr,
+  .lsp-table-wrap #lsp-table > tbody > tr > td {
+    display: block;
+    width: 100%;
+    min-width: 0;
+  }
+  .lsp-table-wrap #lsp-table > thead { display: none; }
+  .lsp-table-wrap #lsp-table > tbody > tr[data-key] {
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .lsp-table-wrap #lsp-table > tbody > tr[data-key]:last-child { border-bottom: 0; }
+  .lsp-table-wrap #lsp-table > tbody > tr > td {
+    display: grid;
+    grid-template-columns: minmax(7rem, 38%) minmax(0, 1fr);
+    align-items: start;
+    gap: 12px;
+    padding: 7px 0;
+    border: 0;
+    overflow-wrap: anywhere;
+  }
+  .lsp-table-wrap #lsp-table > tbody > tr > td::before {
+    content: attr(data-label);
+    color: var(--text-muted);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    line-height: 1.35;
+    text-transform: uppercase;
+  }
+  .lsp-table-wrap #lsp-table > tbody > tr > td > code {
+    min-width: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .lsp-table-wrap #lsp-table > tbody > tr > td[data-label="Version"] {
+    display: block;
+  }
+  .lsp-table-wrap #lsp-table > tbody > tr > td[data-label="Version"]::before {
+    display: block;
+    margin-bottom: 4px;
+  }
+  .lsp-table-wrap #lsp-table > tbody > tr > td[data-label="Version"] .lsp-version {
+    width: 100%;
+    min-height: 44px;
+  }
+  .lsp-table-wrap #lsp-table > tbody > tr > td[data-label="Status"] .lsp-status,
+  .lsp-table-wrap #lsp-table > tbody > tr > td[data-label="Enabled"] .switch {
+    min-height: 44px;
+    min-width: 44px;
+    align-items: center;
+  }
+  .lsp-table-wrap #lsp-table > tbody > tr > td[data-label="Enabled"] .lsp-toggle {
+    width: 24px;
+    height: 24px;
+  }
+}
+
 /* Status badges */
 .badge {
   display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 12px;

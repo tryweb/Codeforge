@@ -241,6 +241,13 @@ if command -v lean-ctx &>/dev/null; then
   fi
 fi
 
+# Admin persists LSP_SERVERS to lsp-managed.env inside the opencode-config
+# volume on every Apply; import it here when the container environment does
+# not already define LSP_SERVERS, so compose values keep precedence.
+if [ -z "${LSP_SERVERS:-}" ]; then
+  LSP_SERVERS="$(grep -E '^LSP_SERVERS=' "$HOME/.config/opencode/lsp-managed.env" 2>/dev/null | tail -n 1 | cut -d= -f2- || true)"
+fi
+
 # --- OpenCode config ---
 mkdir -p "$OPCODE_CONFIG_DIR"
 OPCODE_CONFIG_FILE="$OPCODE_CONFIG_DIR/opencode.json"
@@ -248,19 +255,45 @@ OPCODE_CONFIG_FILE="$OPCODE_CONFIG_DIR/opencode.json"
 # Always regenerate opencode.json from OPENCODE_PLUGINS to ensure consistency
 PLUGINS="$(normalize_omo_plugin_versions "${OPENCODE_PLUGINS:-oh-my-openagent}")"
 PLUGIN_JSON=$(echo "$PLUGINS" | tr ',' '\n' | jq -R . | jq -s .)
+# Catalog of admin-controlled LSP servers (id -> command/extensions),
+# mirroring src/admin/lib/lsp-catalog.ts. Version pinning is applied via
+# BUN_PACKAGES in 01-install-packages.sh, not in this lsp block.
+LSP_CATALOG_JSON=$(cat <<'JSON'
+{
+  "typescript": { "command": ["typescript-language-server", "--stdio"], "extensions": [".ts", ".tsx", ".js", ".jsx", ".mts", ".cts"] },
+  "json": { "command": ["vscode-json-language-server", "--stdio"], "extensions": [".json", ".jsonc"] },
+  "css": { "command": ["vscode-css-language-server", "--stdio"], "extensions": [".css", ".scss", ".less"] },
+  "html": { "command": ["vscode-html-language-server", "--stdio"], "extensions": [".html", ".htm"] },
+  "yaml-ls": { "command": ["yaml-language-server", "--stdio"], "extensions": [".yaml", ".yml"] },
+  "dockerfile": { "command": ["docker-langserver", "--stdio"], "extensions": [".dockerfile", ".Dockerfile"] },
+  "biome": { "command": ["biome", "lsp-proxy"], "extensions": [".js", ".jsx", ".ts", ".tsx", ".json"] },
+  "pyright": { "command": ["pyright-langserver", "--stdio"], "extensions": [".py", ".pyi"] }
+}
+JSON
+)
+
+# Build the opencode.json lsp block: always-on marksman plus each enabled
+# LSP_SERVERS entry (mapped to its catalog command/extensions). Unknown keys
+# and disabled entries are dropped; invalid or absent LSP_SERVERS yields just
+# marksman.
+if [ -n "${LSP_SERVERS:-}" ]; then
+  ENABLED_LSP=$(printf '%s' "$LSP_SERVERS" | jq --argjson catalog "$LSP_CATALOG_JSON" \
+    '[ (to_entries | map(if .key == "yaml" then .key = "yaml-ls" else . end))[] | select(.value.enabled == true) | select($catalog[.key] != null) | { (.key): $catalog[.key] } ] | add // {}' 2>/dev/null || echo "{}")
+else
+  ENABLED_LSP="{}"
+fi
+LSP_BLOCK=$(jq -n --argjson enabled "$ENABLED_LSP" \
+  '{ marksman: { command: ["marksman", "server"], extensions: [".md", ".markdown"] } } * $enabled')
+
 OPCODE_CONFIG=$(jq -n \
   --argjson plugins "$PLUGIN_JSON" \
+  --argjson lsp "$LSP_BLOCK" \
   --arg playwright_version "${PLAYWRIGHT_VERSION}" \
   --arg playwright_mcp_version "${PLAYWRIGHT_MCP_VERSION}" \
   '{
     "$schema": "https://opencode.ai/config.json",
     plugin: $plugins,
-    lsp: {
-      marksman: {
-        command: ["marksman", "server"],
-        extensions: [".md", ".markdown"]
-      }
-    },
+    lsp: $lsp,
     mcp: {
       codegraph: {
         type: "local",

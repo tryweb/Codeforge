@@ -21,6 +21,7 @@ const NAV_ITEMS = [
   { href: "/providers", label: "Providers", icon: "🔌" },
   { href: "/env", label: "Environment", icon: "⚙" },
   { href: "/leanctx", label: "LeanCTX Config", icon: "📐" },
+  { href: "/lsp", label: "LSP Servers", icon: "🧩" },
   { href: "/upgrade", label: "Upgrade", icon: "▲" },
 ];
 
