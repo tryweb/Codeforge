@@ -1,12 +1,15 @@
+import { unlink } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { describe, expect, test } from "bun:test";
 import type { AgentModelsDeps } from "./agent-model-types";
 import {
   classifyProbeResponse,
   computeProviderCredentialFingerprint,
+  buildProbeScript,
   invalidateProbeCacheForProvider,
   pruneStaleProbeCacheForProvider,
   probeModel,
+  sanitizeProbeReason,
 } from "./model-probe";
 
 type AuthStore = Record<string, unknown>;
@@ -15,13 +18,14 @@ function stubDeps(auth: AuthStore, initialCache: Record<string, unknown> = {}) {
   let cache = JSON.stringify(initialCache);
   let probeCount = 0;
   let probeExitCode = 0;
+  let probeFailureOutput = "probe failed";
   const calls: string[] = [];
   const deps: Pick<AgentModelsDeps, "exec" | "readEnv"> = {
     exec: async (command: string) => {
       calls.push(command);
       if (command.includes("auth.json")) {
-        const match = command.match(/\.\[\"([^\"]+)\"\]/);
-        const providerID = match?.[1] ?? "";
+        const encoded = command.match(/printf '%s' '([^']+)' \| base64 -d/)?.[1] ?? "";
+        const providerID = Buffer.from(encoded, "base64").toString("utf8");
         const entry = auth[providerID];
         return { stdout: entry === undefined ? "" : JSON.stringify(entry), stderr: "", exitCode: 0 };
       }
@@ -34,7 +38,7 @@ function stubDeps(auth: AuthStore, initialCache: Record<string, unknown> = {}) {
         return { stdout: cache, stderr: "", exitCode: 0 };
       }
       probeCount += 1;
-      if (probeExitCode !== 0) return { stdout: "", stderr: "probe failed", exitCode: probeExitCode };
+      if (probeExitCode !== 0) return { stdout: "", stderr: probeFailureOutput, exitCode: probeExitCode };
       return {
         stdout: JSON.stringify({ info: { role: "assistant", modelID: "model", providerID: "provider" } }),
         stderr: "",
@@ -48,13 +52,94 @@ function stubDeps(auth: AuthStore, initialCache: Record<string, unknown> = {}) {
     auth,
     calls,
     get probeCount() { return probeCount; },
-    readCache: (): Record<string, { retryAfter: number; observedAt: string; status: string }> => JSON.parse(cache),
-    setProbeFailure: () => { probeExitCode = 1; },
+    readCache: (): Record<string, { retryAfter: number; observedAt: string; status: string; reason?: string }> => JSON.parse(cache),
+    setProbeFailure: (output = "probe failed") => { probeExitCode = 1; probeFailureOutput = output; },
   };
 }
 
 const credential = { type: "oauth", access: "access-a", refresh: "refresh-a", expires: 123, accountId: "account-a" };
 
+const observedNvidia410Payload = [{
+  info: {
+    role: "assistant",
+    modelID: "deepseek-ai/deepseek-v4-flash",
+    providerID: "nvidia",
+    error: {
+      name: "APIError",
+      data: {
+        message: 'Gone: {"status":410,"detail":"The model has reached its end of life and is no longer available."}',
+        statusCode: 410,
+        responseBody: '{"status":410,"detail":"The model has reached its end of life and is no longer available."}',
+      },
+    },
+  },
+  parts: [],
+}];
+
+test("generated jq filter matches the observed NVIDIA 410 payload", async () => {
+  const script = buildProbeScript("encoded-auth", "nvidia", "deepseek-ai/deepseek-v4-flash");
+  const filterLine = script.split("\n").find((line) => line.includes("test("));
+  const filter = filterLine?.match(/jq -e '([^']+)'/)?.[1];
+  expect(filter).toBeDefined();
+  const path = `/tmp/model-probe-${crypto.randomUUID()}.json`;
+  await Bun.write(path, JSON.stringify(observedNvidia410Payload));
+  try {
+    const result = Bun.spawnSync(["jq", "-e", filter ?? "", path], { stdout: "pipe", stderr: "pipe" });
+    expect({ exitCode: result.exitCode, stderr: new TextDecoder().decode(result.stderr) }).toEqual({ exitCode: 0, stderr: "" });
+  } finally {
+    await unlink(path);
+  }
+});
+
+test("classifies the observed NVIDIA 410 payload as retired", () => {
+  const result = classifyProbeResponse(JSON.stringify(observedNvidia410Payload), "nvidia", "deepseek-ai/deepseek-v4-flash");
+  expect(result.status).toBe("retired");
+  expect(result.reason).toContain("410");
+});
+
+
+test("classifies NVIDIA Function not found for account as wrong endpoint", () => {
+  const payload = JSON.stringify([{
+    info: {
+      role: "assistant",
+      error: {
+        data: {
+          message: "Function 123e4567-e89b-12d3-a456-426614174000: Not found for account test-account",
+          statusCode: 404,
+        },
+      },
+    },
+  }]);
+
+  expect(classifyProbeResponse(payload, "nvidia", "google/gemma-3-12b-it")).toEqual({
+    status: "wrong_endpoint",
+    reason: expect.stringContaining("Not found for account"),
+  });
+});
+
+test("classifies plaintext endpoint 404 as wrong endpoint", () => {
+  expect(classifyProbeResponse("404 page not found", "nvidia", "google/google-paligemma")).toEqual({
+    status: "wrong_endpoint",
+    reason: "404 page not found",
+  });
+});
+
+test("classifies JSON endpoint 404 as wrong endpoint", () => {
+  expect(classifyProbeResponse(JSON.stringify({ info: { role: "assistant", error: "404 page not found" } }), "nvidia", "meta/esmfold").status).toBe("wrong_endpoint");
+});
+
+test("classifies tool unsupported responses as unavailable", () => {
+  expect(classifyProbeResponse("tool use is not supported for this model", "openrouter", "model").status).toBe("unavailable");
+  expect(classifyProbeResponse(JSON.stringify({ info: { role: "assistant", error: "Function calling is not supported" } }), "openrouter", "model").status).toBe("unavailable");
+});
+
+test("classifies non-JSON NVIDIA 410 responses as retired", () => {
+  expect(classifyProbeResponse("Gone: 410 — the model has reached its end of life", "nvidia", "model").status).toBe("retired");
+});
+
+test("preserves the credential label while redacting its value", () => {
+  expect(sanitizeProbeReason("api_key=secret-value")).toBe("api_key=[redacted]");
+});
 describe("provider credential scoped model probe cache", () => {
   test("same fingerprint and model reuses the cached result", async () => {
     const fixture = stubDeps({ provider: credential });
@@ -150,6 +235,17 @@ describe("provider credential scoped model probe cache", () => {
     expect(JSON.stringify(result)).not.toContain("access-a");
   });
 
+  test("provider IDs are passed to jq without shell interpolation", async () => {
+    const providerID = "nvidia'\"; echo pwned; #";
+    const fixture = stubDeps({ [providerID]: credential });
+
+    const fingerprint = await computeProviderCredentialFingerprint(fixture.deps, providerID);
+
+    expect(fingerprint).toBe(createHash("sha256").update(JSON.stringify({ access: "access-a", accountId: "account-a", expires: 123, refresh: "refresh-a", type: "oauth" })).digest("hex"));
+    expect(fixture.calls[0]).not.toContain(providerID);
+    expect(fixture.calls[0]).toContain("--arg provider");
+  });
+
   test("quota markers are classified as quota_exceeded in JSON and text", async () => {
     const markers = [
       "FreeUsageLimitError",
@@ -159,6 +255,7 @@ describe("provider credential scoped model probe cache", () => {
       "credit exhausted",
       "spend_limit_exceeded",
       "quota_exceeded",
+      "Key limit exceeded (total limit)",
     ];
     for (const marker of markers) {
       const json = JSON.stringify({ info: { role: "assistant", error: marker } });
@@ -168,7 +265,15 @@ describe("provider credential scoped model probe cache", () => {
     }
   });
 
-  test("plain transient 429 remains retryable and is bounded to one Retry-After retry", async () => {
+  test("session status free-tier retry records are terminal quota failures", () => {
+    const status = JSON.stringify({ session: { type: "retry", message: "Free usage exceeded, subscribe to Go" } });
+    const keyedStatus = JSON.stringify({ session_123: { type: "retry", message: "Free usage exceeded, subscribe to Go" } });
+
+    expect(classifyProbeResponse(status, "provider", "model").status).toBe("quota_exceeded");
+    expect(classifyProbeResponse(keyedStatus, "provider", "model").status).toBe("quota_exceeded");
+  });
+
+  test("rate-limit responses are terminal and preserve their reason", async () => {
     let callCount = 0;
     const fixture = stubDeps({ provider: credential });
     const originalExec = fixture.deps.exec;
@@ -183,8 +288,106 @@ describe("provider credential scoped model probe cache", () => {
     };
     Object.defineProperty(fixture.deps, "exec", { value: replacementExec });
     const result = await probeModel(fixture.deps, "provider", "model");
+    expect(result.status).toBe("quota_exceeded");
+    expect(result.reason).toContain("rate limited");
+    expect(callCount).toBe(1);
+  });
+
+  test("preserves a rate-limit reason from a non-JSON probe response", () => {
+    const result = classifyProbeResponse("429 Rate limit exceeded; Retry-After: 60", "provider", "model");
+
+    expect(result.status).toBe("quota_exceeded");
+    expect(result.reason).toContain("Rate limit exceeded");
+  });
+
+  test("preserves and classifies curl timeout diagnostics", async () => {
+    const fixture = stubDeps({ provider: credential });
+    const originalExec = fixture.deps.exec;
+    const replacementExec: AgentModelsDeps["exec"] = async (command) => {
+      if (command.includes("agent-model-health.json") || command.includes("auth.json")) return originalExec(command);
+      return { stdout: "", stderr: "curl: (28) Operation timed out after 90000 milliseconds", exitCode: 28 };
+    };
+    Object.defineProperty(fixture.deps, "exec", { value: replacementExec });
+
+    const result = await probeModel(fixture.deps, "provider", "model");
+
+    expect(result.status).toBe("timeout");
+    expect(result.reason).toContain("Operation timed out");
+  });
+
+  test("redacts credentials while preserving a useful failure reason", () => {
+    const result = classifyProbeResponse("Rate limit exceeded; Authorization: Basic c2Vuc2l0aXZl; sk-secret-token-value", "provider", "model");
+
+    expect(result.reason).toContain("Rate limit exceeded");
+    expect(result.reason).not.toContain("c2Vuc2l0aXZl");
+    expect(result.reason).not.toContain("sk-secret-token-value");
+  });
+
+  test("probe script preserves session and message diagnostics", () => {
+    const script = buildProbeScript("encoded-auth", "provider", "model");
+
+    expect(script).toContain("CREATE=");
+    expect(script).toContain("prompt_async");
+    expect(script).not.toContain("POST \"$BASE/session/$SID/message\"");
+    expect(script).toContain("$BASE/session/$SID/message");
+    expect(script).toContain("$BASE/session/status");
+    expect(script).toContain("sleep 0.5");
+    expect(script).toContain("seq 1 120");
+    expect(script).toContain("-X DELETE \"$BASE/session/$SID\"");
+    expect(script).toContain("2>&1 || true");
+    expect(script).toContain("LAST_ERROR");
+    expect(script).toContain("AUTH_B64=");
+    expect(script).not.toContain('AUTH="Basic encoded-auth"');
+    expect(script).toContain('test("\\\\S")');
+    expect(script.indexOf("$BASE/session/status")).toBeLessThan(script.indexOf("$BASE/session/$SID/message"));
+    expect(script).toContain(".info.role? == \"assistant\"");
+    expect(script).toContain("to_entries");
+    expect(script).toContain("busy");
+    expect(script).toContain(".parts[]?.text?");
+  });
+
+  test("probe script does not embed raw auth or model identifiers", () => {
+    const auth = "secret'\"; echo pwned; #";
+    const providerID = "nvidia'\"; echo pwned; #";
+    const modelID = "model'\"; echo pwned; #";
+    const script = buildProbeScript(auth, providerID, modelID);
+
+    expect(script).not.toContain(auth);
+    expect(script).not.toContain(providerID);
+    expect(script).not.toContain(modelID);
+    expect(script).toContain("AUTH_B64=");
+  });
+
+  test("timeout diagnostics survive reload through the probe cache", async () => {
+    const fixture = stubDeps({ provider: credential });
+    fixture.setProbeFailure("curl: (28) Operation timed out after 90000 milliseconds");
+
+    const result = await probeModel(fixture.deps, "provider", "model");
+    const cached = fixture.readCache();
+    const record = cached[Object.keys(cached)[0] ?? ""];
+
+    expect(result).toEqual({ status: "timeout", reason: "curl: (28) Operation timed out after 90000 milliseconds" });
+    expect(record?.status).toBe("timeout");
+    expect(record?.reason).toContain("Operation timed out");
+  });
+
+  test("non-healthy cache entries without reasons are re-probed", async () => {
+    const fingerprint = createHash("sha256").update(JSON.stringify({ access: "access-a", accountId: "account-a", expires: 123, refresh: "refresh-a", type: "oauth" })).digest("hex");
+    const fixture = stubDeps({ provider: credential }, {
+      [`provider|${fingerprint}|provider/model`]: {
+        providerID: "provider",
+        fingerprint,
+        status: "timeout",
+        reason: "",
+        observedAt: new Date().toISOString(),
+        retryAfter: Math.floor(Date.now() / 1000) + 300,
+      },
+    });
+
+    const result = await probeModel(fixture.deps, "provider", "model");
+
     expect(result.status).toBe("healthy");
-    expect(callCount).toBe(2);
+    expect(fixture.probeCount).toBe(1);
   });
 
   test("unknown error remains retryable", async () => {
