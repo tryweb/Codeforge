@@ -340,3 +340,287 @@ describe("createAgentModelsRoutes — verification mode", () => {
     cleanup();
   });
 });
+
+describe("createAgentModelsRoutes — POST /api/agent-models/verify", () => {
+  test("verifies all configured agents by default and returns shape with summary", async () => {
+    const { deps, calls, cleanup } = stubDeps([
+      { match: /jq -c '\.agents/, stdout: '{"plan":{"model":"opencode/big-pickle"},"explore":{"model":"opencode/big-pickle"}}' },
+      { match: /connected-providers\.json/, stdout: '{"connected":["opencode"]}' },
+      { match: /provider-models\.json/, stdout: "opencode/big-pickle\n" },
+      {
+        match: /\/agent\b/,
+        stdout: JSON.stringify([
+          { name: "plan", mode: "subagent", model: { modelID: "big-pickle", providerID: "opencode" } },
+          { name: "explore", mode: "subagent", model: { modelID: "big-pickle", providerID: "opencode" } },
+        ]),
+      },
+      { match: /\$BASE\/session/, stdout: JSON.stringify({ info: { role: "assistant", modelID: "big-pickle", providerID: "opencode", parts: [{ type: "text", text: "OK" }] } }) },
+    ]);
+    const app = createAgentModelsRoutes(deps);
+    const res = await app.request("http://localhost/api/agent-models/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json() as { verification: string; results: Record<string, { model: string | null; status: string; reason?: string; verification: string }>; summary: { total: number; healthy: number; unconfigured: number; failed: number; verification: string } };
+    expect(data.verification).toBe("inference");
+    expect(Object.keys(data.results).sort()).toEqual(["explore", "plan"]);
+    for (const entry of Object.values(data.results)) {
+      expect(entry.model).toBe("opencode/big-pickle");
+      expect(entry.status).toBe("healthy");
+      expect(entry.verification).toBe("inference");
+    }
+    expect(data.summary).toEqual({ total: 2, healthy: 2, unconfigured: 0, failed: 0, verification: "inference" });
+    expect(calls.some((c) => c.includes(".agents[$agent].model = $model"))).toBe(false);
+    expect(calls.some((c) => c.includes("native-agent-overrides"))).toBe(false);
+    cleanup();
+  });
+
+  test("verifies selected single agent without touching others", async () => {
+    const { deps, calls, cleanup } = stubDeps([
+      { match: /jq -c '\.agents/, stdout: '{"plan":{"model":"opencode/big-pickle"},"explore":{"model":"opencode/big-pickle"}}' },
+      { match: /connected-providers\.json/, stdout: '{"connected":["opencode"]}' },
+      { match: /provider-models\.json/, stdout: "opencode/big-pickle\n" },
+      {
+        match: /\/agent\b/,
+        stdout: JSON.stringify([
+          { name: "plan", mode: "subagent", model: { modelID: "big-pickle", providerID: "opencode" } },
+          { name: "explore", mode: "subagent", model: { modelID: "big-pickle", providerID: "opencode" } },
+        ]),
+      },
+      { match: /\$BASE\/session/, stdout: JSON.stringify({ info: { role: "assistant", modelID: "big-pickle", providerID: "opencode", parts: [{ type: "text", text: "OK" }] } }) },
+    ]);
+    const app = createAgentModelsRoutes(deps);
+    const res = await app.request("http://localhost/api/agent-models/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ agents: ["plan"] }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json() as { results: Record<string, unknown> };
+    expect(Object.keys(data.results)).toEqual(["plan"]);
+    expect((data.results["plan"] as { model: string }).model).toBe("opencode/big-pickle");
+    const probeCalls = calls.filter((c) => c.includes("model availability probe"));
+    expect(probeCalls.length).toBeGreaterThan(0);
+    cleanup();
+  });
+
+  test("returns unconfigured without probing for agent without primary model", async () => {
+    const { deps, calls, cleanup } = stubDeps([
+      { match: /jq -c '\.agents/, stdout: '{"plan":{"model":"opencode/big-pickle"},"general":{}}' },
+      { match: /connected-providers\.json/, stdout: '{"connected":["opencode"]}' },
+      { match: /provider-models\.json/, stdout: "opencode/big-pickle\n" },
+      {
+        match: /\/agent\b/,
+        stdout: JSON.stringify([
+          { name: "plan", mode: "subagent", model: { modelID: "big-pickle", providerID: "opencode" } },
+          { name: "general", mode: "subagent", model: null },
+        ]),
+      },
+    ]);
+    const app = createAgentModelsRoutes(deps);
+    const res = await app.request("http://localhost/api/agent-models/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ agents: ["general"] }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json() as { results: Record<string, { model: string | null; status: string; reason?: string }>; summary: { unconfigured: number } };
+    expect(data.results["general"].model).toBeNull();
+    expect(data.results["general"].status).toBe("unconfigured");
+    expect(data.results["general"].reason).toContain("no configured");
+    expect(data.summary.unconfigured).toBe(1);
+    expect(calls.some((c) => c.includes("model availability probe"))).toBe(false);
+    cleanup();
+  });
+
+  test("deduplicates probe for agents sharing the same model", async () => {
+    const probeMarker = "$BASE/session";
+    const { deps, calls, cleanup } = stubDeps([
+      { match: /jq -c '\.agents/, stdout: '{"plan":{"model":"opencode/big-pickle"},"explore":{"model":"opencode/big-pickle"}}' },
+      { match: /connected-providers\.json/, stdout: '{"connected":["opencode"]}' },
+      { match: /provider-models\.json/, stdout: "opencode/big-pickle\n" },
+      {
+        match: /\/agent\b/,
+        stdout: JSON.stringify([
+          { name: "plan", mode: "subagent", model: { modelID: "big-pickle", providerID: "opencode" } },
+          { name: "explore", mode: "subagent", model: { modelID: "big-pickle", providerID: "opencode" } },
+        ]),
+      },
+      { match: /\$BASE\/session/, stdout: JSON.stringify({ info: { role: "assistant", modelID: "big-pickle", providerID: "opencode", parts: [{ type: "text", text: "OK" }] } }) },
+    ]);
+    const app = createAgentModelsRoutes(deps);
+    const res = await app.request("http://localhost/api/agent-models/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ agents: ["plan", "explore"] }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json() as { results: Record<string, { status: string }> };
+    expect(data.results["plan"].status).toBe("healthy");
+    expect(data.results["explore"].status).toBe("healthy");
+    const sessionCalls = calls.filter((c) => c.includes(probeMarker));
+    const healthCacheReads = calls.filter((c) => c.includes("agent-model-health.json"));
+    expect(sessionCalls.length).toBeGreaterThan(0);
+    const distinctProbeBuilds = calls.filter((c) => c.includes("model availability probe")).length;
+    expect(distinctProbeBuilds).toBe(1);
+    expect(healthCacheReads.length).toBeGreaterThan(0);
+    cleanup();
+  });
+
+  test("is read-only: does not write config or restart and omo.jsonc is byte-identical before and after", async () => {
+    const beforeSnapshot = '{"plan":{"model":"opencode/big-pickle"}}';
+    const { deps, calls, cleanup } = stubDeps([
+      { match: /jq -c '\.agents/, stdout: beforeSnapshot },
+      { match: /connected-providers\.json/, stdout: '{"connected":["opencode"]}' },
+      { match: /provider-models\.json/, stdout: "opencode/big-pickle\n" },
+      {
+        match: /\/agent\b/,
+        stdout: JSON.stringify([{ name: "plan", mode: "subagent", model: { modelID: "big-pickle", providerID: "opencode" } }]),
+      },
+      { match: /\$BASE\/session/, stdout: JSON.stringify({ info: { role: "assistant", modelID: "big-pickle", providerID: "opencode", parts: [{ type: "text", text: "OK" }] } }) },
+      { match: /cat ~\/\.omo\/omo\.jsonc/, stdout: beforeSnapshot },
+    ]);
+    let restarted = false;
+    const guardedDeps = { ...deps, restart: async () => { restarted = true; return { ok: true as const }; } };
+    const app = createAgentModelsRoutes(guardedDeps);
+    const beforeCalls = calls.length;
+    const res = await app.request("http://localhost/api/agent-models/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ agents: ["plan"] }),
+    });
+    expect(res.status).toBe(200);
+    expect(restarted).toBe(false);
+    expect(calls.some((c) => c.includes(".agents[$agent].model = $model"))).toBe(false);
+    expect(calls.some((c) => c.includes("native-agent-overrides"))).toBe(false);
+    expect(calls.some((c) => c.includes("mktemp /tmp/omo.jsonc.snapshot"))).toBe(false);
+    const afterConfigCalls = calls.filter((c) => c.includes("jq -c '.agents"));
+    expect(afterConfigCalls.length).toBeGreaterThan(0);
+    for (const call of afterConfigCalls) {
+      expect(call).not.toContain("write");
+    }
+    const secondRead = await guardedDeps.exec("jq -c '.agents // {}' ~/.omo/omo.jsonc 2>/dev/null || echo '{}'", 10_000);
+    expect(secondRead.stdout).toBe(beforeSnapshot);
+    void beforeCalls;
+    cleanup();
+  });
+
+  test("rejects invalid agents selection with 400", async () => {
+    const { deps, calls, cleanup } = stubDeps([
+      { match: /jq -c '\.agents/, stdout: '{"plan":{"model":"opencode/big-pickle"}}' },
+      { match: /connected-providers\.json/, stdout: '{"connected":["opencode"]}' },
+      { match: /provider-models\.json/, stdout: "opencode/big-pickle\n" },
+      { match: /\/agent\b/, stdout: JSON.stringify([{ name: "plan", mode: "subagent", model: { modelID: "big-pickle", providerID: "opencode" } }]) },
+    ]);
+    const app = createAgentModelsRoutes(deps);
+    const res = await app.request("http://localhost/api/agent-models/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ agents: ["unknown-agent"] }),
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toContain("configurable live subagent");
+    expect(calls.some((c) => c.includes("model availability probe"))).toBe(false);
+    cleanup();
+  });
+
+  test("rejects malformed agents array and invalid verification with 400", async () => {
+    const { deps, cleanup } = stubDeps([]);
+    const app = createAgentModelsRoutes(deps);
+    const badAgents = await app.request("http://localhost/api/agent-models/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ agents: "plan" }),
+    });
+    expect(badAgents.status).toBe(400);
+    expect((await badAgents.json()).error).toContain("agents must be");
+    const badVerification = await app.request("http://localhost/api/agent-models/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ verification: "bad" }),
+    });
+    expect(badVerification.status).toBe(400);
+    expect((await badVerification.json()).error).toContain("verification");
+    const badName = await app.request("http://localhost/api/agent-models/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ agents: ["BAD NAME"] }),
+    });
+    expect(badName.status).toBe(400);
+    cleanup();
+  });
+
+  test("enforces bounded target count with 400 when exceeding probe budget", async () => {
+    const manyAgents = Array.from({ length: 13 }, (_, i) => `agent${i}`);
+    const config: Record<string, { model: string }> = {};
+    const liveAgents: Array<{ name: string; mode: string; model: { modelID: string; providerID: string } }> = [];
+    for (const agent of manyAgents) {
+      config[agent] = { model: `opencode/model-${agent}` };
+      liveAgents.push({ name: agent, mode: "subagent", model: { modelID: `model-${agent}`, providerID: "opencode" } });
+    }
+    const { deps, cleanup } = stubDeps([
+      { match: /jq -c '\.agents/, stdout: JSON.stringify(config) },
+      { match: /connected-providers\.json/, stdout: '{"connected":["opencode"]}' },
+      { match: /provider-models\.json/, stdout: manyAgents.map((a) => `opencode/model-${a}`).join("\n") + "\n" },
+      { match: /\/agent\b/, stdout: JSON.stringify(liveAgents) },
+    ]);
+    const app = createAgentModelsRoutes(deps);
+    const res = await app.request("http://localhost/api/agent-models/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ agents: manyAgents }),
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toContain("exceeds limit");
+    cleanup();
+  });
+
+  test("readiness verification does not issue inference probes", async () => {
+    const { deps, calls, cleanup } = stubDeps([
+      { match: /jq -c '\.agents/, stdout: '{"plan":{"model":"opencode/big-pickle"}}' },
+      { match: /connected-providers\.json/, stdout: '{"connected":["opencode"]}' },
+      { match: /provider-models\.json/, stdout: "opencode/big-pickle\n" },
+      { match: /\/agent\b/, stdout: JSON.stringify([{ name: "plan", mode: "subagent", model: { modelID: "big-pickle", providerID: "opencode" } }]) },
+    ]);
+    const app = createAgentModelsRoutes(deps);
+    const res = await app.request("http://localhost/api/agent-models/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ agents: ["plan"], verification: "readiness" }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json() as { verification: string; results: Record<string, { verification: string }> };
+    expect(data.verification).toBe("readiness");
+    expect(data.results["plan"].verification).toBe("readiness");
+    expect(calls.some((c) => c.includes("model availability probe"))).toBe(false);
+    cleanup();
+  });
+
+  test("defaults to inference when body is empty and handles explicit inference", async () => {
+    const { deps, cleanup } = stubDeps([
+      { match: /jq -c '\.agents/, stdout: '{"plan":{"model":"opencode/big-pickle"}}' },
+      { match: /connected-providers\.json/, stdout: '{"connected":["opencode"]}' },
+      { match: /provider-models\.json/, stdout: "opencode/big-pickle\n" },
+      { match: /\/agent\b/, stdout: JSON.stringify([{ name: "plan", mode: "subagent", model: { modelID: "big-pickle", providerID: "opencode" } }]) },
+      { match: /\$BASE\/session/, stdout: JSON.stringify({ info: { role: "assistant", modelID: "big-pickle", providerID: "opencode", parts: [{ type: "text", text: "OK" }] } }) },
+    ]);
+    const app = createAgentModelsRoutes(deps);
+    const empty = await app.request("http://localhost/api/agent-models/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    expect(empty.status).toBe(200);
+    expect((await empty.json() as { verification: string }).verification).toBe("inference");
+    const explicit = await app.request("http://localhost/api/agent-models/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ agents: ["plan"], verification: "inference" }),
+    });
+    expect(explicit.status).toBe(200);
+    expect((await explicit.json() as { verification: string }).verification).toBe("inference");
+    cleanup();
+  });
+});

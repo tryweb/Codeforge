@@ -71,6 +71,53 @@ function parseSingleVerification(body: unknown): VerificationMode | string {
   return verification;
 }
 
+function probeFailureMessage(model: string, probe: ProbeResult): string {
+  const reason = probe.reason ?? "unknown probe failure";
+  if (probe.status === "retired") return `model ${model} has been retired (end of life): ${reason}`;
+  if (probe.status === "wrong_endpoint") {
+    const hint = /404\s*page\s*not\s*found/i.test(reason)
+      ? model.startsWith("nvidia/")
+        ? " Use the model's NVIDIA VLM or Biology endpoint instead of the LLM chat endpoint."
+        : " The provider does not expose this model through the configured endpoint."
+      : " The catalog entry is not deployed for this account's LLM endpoint.";
+    return `model ${model} is not usable through this endpoint: ${reason}.${hint}`;
+  }
+  return `model ${model} is unavailable: ${reason}`;
+}
+
+const MAX_VERIFY_TARGETS = 12;
+const VERIFY_TOTAL_DEADLINE_MS = 300_000;
+
+function parseVerifyBody(body: unknown): { readonly agents: readonly string[] | null; readonly verification: VerificationMode } | string {
+  if (body === null || body === undefined) return { agents: null, verification: "inference" };
+  if (typeof body !== "object" || Array.isArray(body)) return "Request body must be a JSON object";
+  const record = body as Record<string, unknown>;
+  let agents: readonly string[] | null = null;
+  if (record.agents !== undefined) {
+    if (!Array.isArray(record.agents)) return "agents must be an array of valid agent names";
+    const raw = record.agents as unknown[];
+    if (raw.length === 0) {
+      agents = null;
+    } else {
+      const cleaned: string[] = [];
+      for (const entry of raw) {
+        if (typeof entry !== "string" || entry.trim().length === 0 || !AGENT_KEY_PATTERN.test(entry.trim())) {
+          return "agents must be an array of valid agent names";
+        }
+        cleaned.push(entry.trim());
+      }
+      agents = [...new Set(cleaned)];
+    }
+  }
+  let verification: VerificationMode = "inference";
+  if (record.verification !== undefined) {
+    const parsed = parseVerificationMode(record.verification);
+    if (parsed === null) return "verification must be \"readiness\" or \"inference\"";
+    verification = parsed;
+  }
+  return { agents, verification };
+}
+
 export function createAgentModelsRoutes(deps: AgentModelsDeps): Hono {
   const lib = createAgentModelsLib(deps);
   const reconciler = createAgentModelReconciler(deps);
@@ -169,11 +216,8 @@ export function createAgentModelsRoutes(deps: AgentModelsDeps): Hono {
           const ref = parseModelReference(entry.model);
           if (ref === null) continue;
           const probe: ProbeResult = await probeModel(deps, ref.providerID, ref.modelID);
-          if (probe.status === "retired") {
-            return c.json({ error: `model ${entry.model} has been retired (end of life): ${probe.reason ?? ""}` }, 400);
-          }
-          if (probe.status === "unavailable") {
-            return c.json({ error: `model ${entry.model} is unavailable: ${probe.reason ?? ""}` }, 400);
+          if (probe.status === "retired" || probe.status === "wrong_endpoint" || probe.status === "unavailable") {
+            return c.json({ error: probeFailureMessage(entry.model, probe) }, 400);
           }
         }
       }
@@ -235,17 +279,119 @@ export function createAgentModelsRoutes(deps: AgentModelsDeps): Hono {
         const ref = parseModelReference(entry.model);
         if (ref === null) continue;
         const probe: ProbeResult = await probeModel(deps, ref.providerID, ref.modelID);
-        if (probe.status === "retired") {
-          return c.json({ error: `model ${entry.model} has been retired (end of life): ${probe.reason ?? ""}` }, 400);
-        }
-        if (probe.status === "unavailable") {
-          return c.json({ error: `model ${entry.model} is unavailable: ${probe.reason ?? ""}` }, 400);
+        if (probe.status === "retired" || probe.status === "wrong_endpoint" || probe.status === "unavailable") {
+          return c.json({ error: probeFailureMessage(entry.model, probe) }, 400);
         }
       }
     }
 
     const result = await reconciler.applyAgent(agent, entries, verification);
     return c.json(result);
+  });
+
+  agentModels.post("/api/agent-models/verify", async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = parseVerifyBody(body);
+    if (typeof parsed === "string") {
+      return c.json({ error: parsed }, 400);
+    }
+    const { agents: requestedAgents, verification } = parsed;
+    const password = lib.getServerPassword();
+    if (password === null) return c.json({ error: "OPENCODE_SERVER_PASSWORD is not set in .env" }, 409);
+    const state = await collectAgentModelState(lib, password);
+
+    const configurableNames = new Set(state.agents.map((entry) => entry.name));
+    const configuredByAgent = new Map<string, string | null>();
+    for (const entry of state.agents) {
+      const primary = entry.configured[0]?.model ?? null;
+      configuredByAgent.set(entry.name, primary);
+    }
+
+    let targetAgents: readonly string[];
+    if (requestedAgents === null || requestedAgents.length === 0) {
+      targetAgents = state.agents.filter((entry) => (configuredByAgent.get(entry.name) ?? null) !== null).map((entry) => entry.name);
+    } else {
+      const unknown = requestedAgents.find((agent) => !configurableNames.has(agent));
+      if (unknown !== undefined) {
+        return c.json({ error: `agent ${unknown} is not a configurable live subagent` }, 400);
+      }
+      targetAgents = requestedAgents;
+    }
+
+    if (targetAgents.length === 0) {
+      return c.json({ verification, results: {}, summary: { total: 0, healthy: 0, unconfigured: 0, failed: 0, verification } });
+    }
+
+    if (targetAgents.length > MAX_VERIFY_TARGETS) {
+      return c.json({ error: `too many agents to verify: ${targetAgents.length} exceeds limit ${MAX_VERIFY_TARGETS}` }, 400);
+    }
+
+    const distinctModels = new Set<string>();
+    for (const agent of targetAgents) {
+      const model = configuredByAgent.get(agent) ?? null;
+      if (model !== null) distinctModels.add(model);
+    }
+    if (distinctModels.size > MAX_VERIFY_TARGETS) {
+      return c.json({ error: `too many distinct models to verify: ${distinctModels.size} exceeds limit ${MAX_VERIFY_TARGETS}` }, 400);
+    }
+
+    const probeCache = new Map<string, ProbeResult>();
+    const deadlineAt = Date.now() + VERIFY_TOTAL_DEADLINE_MS;
+
+    async function probeForModel(model: string): Promise<ProbeResult> {
+      const cached = probeCache.get(model);
+      if (cached !== undefined) return cached;
+      const ref = parseModelReference(model);
+      if (ref === null) {
+        const result: ProbeResult = { status: "unavailable", reason: "invalid model reference" };
+        probeCache.set(model, result);
+        return result;
+      }
+      if (verification === "readiness") {
+        const result: ProbeResult = { status: "healthy", reason: "readiness verification does not probe" };
+        probeCache.set(model, result);
+        return result;
+      }
+      const remainingMs = deadlineAt - Date.now();
+      if (remainingMs <= 0) {
+        const result: ProbeResult = { status: "timeout", reason: "verification deadline exceeded" };
+        probeCache.set(model, result);
+        return result;
+      }
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const deadline = new Promise<ProbeResult>((resolve) => {
+        timer = setTimeout(() => resolve({ status: "timeout", reason: "verification deadline exceeded" }), remainingMs);
+      });
+      let result: ProbeResult;
+      try {
+        result = await Promise.race([probeModel(deps, ref.providerID, ref.modelID), deadline]);
+      } finally {
+        if (timer !== undefined) clearTimeout(timer);
+      }
+      probeCache.set(model, result);
+      return result;
+    }
+
+    const results: Record<string, { readonly model: string | null; readonly status: string; readonly reason?: string; readonly verification: VerificationMode }> = {};
+    for (const agent of targetAgents) {
+      const model = configuredByAgent.get(agent) ?? null;
+      if (model === null) {
+        results[agent] = { model: null, status: "unconfigured", reason: "agent has no configured primary model", verification };
+        continue;
+      }
+      const probe = await probeForModel(model);
+      results[agent] = { model, status: probe.status, ...(probe.reason !== undefined ? { reason: probe.reason } : {}), verification };
+    }
+
+    const summary = {
+      total: targetAgents.length,
+      healthy: Object.values(results).filter((entry) => entry.status === "healthy").length,
+      unconfigured: Object.values(results).filter((entry) => entry.status === "unconfigured").length,
+      failed: Object.values(results).filter((entry) => entry.status !== "healthy" && entry.status !== "unconfigured").length,
+      verification,
+    };
+
+    return c.json({ verification, results, summary });
   });
 
   agentModels.get("/api/agent-models/verify-model", async (c) => {
