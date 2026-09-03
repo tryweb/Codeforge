@@ -330,6 +330,7 @@ const PORT = parseInt(Bun.env.ADMIN_PORT || "8080", 10);
 export default {
   port: PORT,
   fetch: app.fetch,
+  idleTimeout: 255,
 };
 
 // Bun binds the declarative server after module evaluation; defer the agent until the next event-loop turn.
