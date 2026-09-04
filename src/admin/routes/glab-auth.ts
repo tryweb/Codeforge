@@ -6,7 +6,6 @@ import {
   logoutGlab,
   normalizeHostname,
 } from "../lib/glab-auth";
-import { GitLabAuthPage } from "../views/glab-auth";
 
 const glabAuth = new Hono();
 
@@ -57,12 +56,6 @@ glabAuth.post("/api/auth/glab/logout", async (c) => {
   const hostname = body.hostname || "";
   await logoutGlab(hostname);
   return c.json({ ok: true });
-});
-
-glabAuth.get("/auth/gitlab", async (c) => {
-  const instances = await listGlabInstances();
-  const anyAuth = instances.some((i) => i.authenticated);
-  return c.html(GitLabAuthPage(instances, anyAuth ? "authenticated" : "not authenticated"));
 });
 
 export default glabAuth;

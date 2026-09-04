@@ -6,23 +6,17 @@ import { readFileSync } from "node:fs";
 const NAV_ITEMS = [
   { href: "/", label: "Dashboard", icon: "⊞" },
   { href: "/projects", label: "Projects", icon: "◰" },
-  { href: "/openchamber", label: "OpenChamber", icon: "◉" },
   { href: "/separator", label: "", icon: "" },
-  { href: "/auth/github", label: "GitHub Auth", icon: "◆" },
-  { href: "/auth/gitlab", label: "GitLab Auth", icon: "◇" },
-  { href: "/separator2", label: "", icon: "" },
-  { href: "/git-config", label: "Git Config", icon: "⚡" },
-  { href: "/ssh-keys", label: "SSH Keys", icon: "🔑" },
-  { href: "/separator3", label: "", icon: "" },
-  { href: "/versions", label: "Versions", icon: "↻" },
-  { href: "/agent", label: "Center Connection", icon: "⇄" },
+  { href: "/auth/git-hosting", label: "Git Hosting", icon: "⬣" },
+  { href: "/providers", label: "Providers", icon: "🔌" },
   { href: "/agent-models", label: "Agent Models", icon: "◈" },
   { href: "/secrets", label: "Secrets", icon: "🔐" },
-  { href: "/providers", label: "Providers", icon: "🔌" },
-  { href: "/env", label: "Environment", icon: "⚙" },
+  { href: "/separator3", label: "", icon: "" },
+  { href: "/upgrade", label: "Versions & Upgrade", icon: "▲" },
   { href: "/leanctx", label: "LeanCTX Config", icon: "📐" },
   { href: "/lsp", label: "LSP Servers", icon: "🧩" },
-  { href: "/upgrade", label: "Upgrade", icon: "▲" },
+  { href: "/agent", label: "Center Connection", icon: "⇄" },
+  { href: "/openchamber", label: "OpenChamber", icon: "◉" },
 ];
 
 const ASSET_DATE = "20260816";
@@ -103,12 +97,14 @@ export const Layout: FC<LayoutProps> = ({ title, children, currentPath }) => {
                       <span>{item.label}</span>
                     </a>
               ))}
-              <a href="#" onclick="document.getElementById('about-modal').style.display='flex';return false;" style="margin-top:auto;">
-                <span>🛈</span><span>About</span>
-              </a>
-              <a href="/api/logout" style="margin-top:8px;border-top:1px solid var(--border);padding-top:16px;">
-                <span>⏻</span><span>Logout</span>
-              </a>
+              <div class="nav-icons">
+                <a href="#" onclick="document.getElementById('about-modal').style.display='flex';return false;" aria-label="About">
+                  <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="8" cy="8" r="6.5" /><line x1="8" y1="7" x2="8" y2="11" stroke-linecap="round" /><circle cx="8" cy="5" r="0.8" fill="currentColor" stroke="none" /></svg><span class="visually-hidden">About</span>
+                </a>
+                <a href="/api/logout" aria-label="Logout">
+                  <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M6 2.5h-2.5v11H6" stroke-linecap="round" stroke-linejoin="round" /><path d="M11 5.5 13.5 8 11 10.5" stroke-linecap="round" stroke-linejoin="round" /><line x1="13" y1="8" x2="6.5" y2="8" stroke-linecap="round" /></svg><span class="visually-hidden">Logout</span>
+                </a>
+              </div>
             </nav>
           </aside>
           <div class="nav-backdrop" id="nav-backdrop"></div>

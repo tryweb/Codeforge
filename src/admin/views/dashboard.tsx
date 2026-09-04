@@ -30,6 +30,7 @@ interface DashboardData {
   glab_auth: string;
   git_user: string;
   project_count: number;
+  ssh_key_count: number;
   center?: DashboardCenterSummary;
   runtimeProfile?: DashboardRuntimeProfile;
   providerSummary?: ProviderSummary;
@@ -109,17 +110,21 @@ const DashboardContent: FC<{ data: DashboardData }> = ({ data }) => {
           <span class="site-summary__label">Projects</span>
           <strong class="site-summary__value">{data.project_count}</strong>
         </a>
-        <a href="/auth/github" class="site-summary__item site-summary__item--link" aria-label={`GitHub ${data.gh_auth}`}>
+        <a href="/auth/git-hosting" class="site-summary__item site-summary__item--link" aria-label={`GitHub ${data.gh_auth}`}>
           <span class="site-summary__label">GitHub</span>
           <StatusPill tone={data.gh_auth === "authenticated" ? "success" : "warning"} label={data.gh_auth === "authenticated" ? "✓" : "✗"} ariaLabel={`GitHub ${data.gh_auth}`} />
         </a>
-        <a href="/auth/gitlab" class="site-summary__item site-summary__item--link" aria-label={`GitLab ${data.glab_auth}`}>
+        <a href="/auth/git-hosting" class="site-summary__item site-summary__item--link" aria-label={`GitLab ${data.glab_auth}`}>
           <span class="site-summary__label">GitLab</span>
           <StatusPill tone={data.glab_auth === "authenticated" ? "success" : "warning"} label={data.glab_auth === "authenticated" ? "✓" : "✗"} ariaLabel={`GitLab ${data.glab_auth}`} />
         </a>
-        <a href="/git-config" class="site-summary__item site-summary__item--link" aria-label={data.git_user ? `Git ${data.git_user}` : "Git not configured"}>
+        <a href="/auth/git-hosting" class="site-summary__item site-summary__item--link" aria-label={data.git_user ? `Git ${data.git_user}` : "Git not configured"}>
           <span class="site-summary__label">Git</span>
           <span class={`site-summary__value${data.git_user ? "" : " text-muted"}`}>{data.git_user || "not configured"}</span>
+        </a>
+        <a href="/ssh-keys" class="site-summary__item site-summary__item--link" aria-label={`SSH keys ${data.ssh_key_count}`}>
+          <span class="site-summary__label">SSH Keys</span>
+          <StatusPill tone={data.ssh_key_count > 0 ? "success" : "warning"} label={String(data.ssh_key_count)} ariaLabel={`SSH keys ${data.ssh_key_count}`} />
         </a>
         <a href={center.href} class="site-summary__item site-summary__item--link" aria-label={center.ariaLabel}>
           <span class="site-summary__label">Center</span>
@@ -363,7 +368,7 @@ const DashboardContent: FC<{ data: DashboardData }> = ({ data }) => {
               <td>{name}</td>
               <td>
                 {name === "AI-EngKit" ? (
-                  <a href="/versions" aria-label={`AI-EngKit version ${version}`}><code>{version}</code></a>
+                  <a href="/upgrade" aria-label={`AI-EngKit version ${version}`}><code>{version}</code></a>
                 ) : (
                   <code>{version}</code>
                 )}
@@ -373,6 +378,9 @@ const DashboardContent: FC<{ data: DashboardData }> = ({ data }) => {
             </tr>
           ))}
         </table>
+        <p class="text-sm text-muted" style="margin-top:12px;">
+          <a href="/env">Advanced: raw .env editor</a> for variables without a dedicated settings page.
+        </p>
         {isUpgrading && (
           <div id="upgrade-inline-progress" style="margin-top:12px;">
             <div class="progress-bar mb-4"><div class="fill" id="inline-progress-fill" style={`width:${data.upgrade_progress_pct}%;`} /></div>

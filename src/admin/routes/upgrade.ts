@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { runUpgrade, getState, getStatus, subscribe, getEventLog } from "../lib/upgrade";
 import { readEnvFile, writeEnvFile, deleteEnvVar } from "../lib/env";
 import { discoverGhcrVersions, isFormalReleaseTag, type GhcrDiscoveryResult } from "../lib/ghcr-versions";
+import { loadVersionsPageData } from "./versions";
 import { UpgradePage } from "../views/upgrade";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -227,9 +228,12 @@ export function createUpgradeRoutes(options: Partial<UpgradeRoutesDeps> = {}): H
     return c.body(stream);
   });
 
-  upgrade.get("/upgrade", (c) => {
+  upgrade.get("/upgrade", async (c) => {
     const ver = deps.readVersion();
-    return c.html(UpgradePage({ devBuild: ver === "dev" }));
+    const baseUrl = c.req.url.replace("/upgrade", "");
+    const cookie = c.req.header("cookie") || "";
+    const { versionsByCategory, imageMeta } = await loadVersionsPageData(baseUrl, cookie ? { cookie } : {});
+    return c.html(UpgradePage({ devBuild: ver === "dev", versionsByCategory, imageMeta }));
   });
 
   return upgrade;

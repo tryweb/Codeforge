@@ -1,10 +1,12 @@
 import type { FC } from "hono/jsx";
 import { html } from "hono/html";
 import { Layout } from "./layout";
+import { VersionsContent, type VersionsViewData } from "./versions";
 
-const UpgradeContent: FC<{ devBuild?: boolean }> = ({ devBuild }) => (
+const UpgradeContent: FC<{ devBuild?: boolean } & Partial<VersionsViewData>> = ({ devBuild, versionsByCategory = {}, imageMeta = {} }) => (
   <div>
     <h2 style="margin-bottom:24px;">Upgrade Engine</h2>
+    <VersionsContent versionsByCategory={versionsByCategory} imageMeta={imageMeta} />
     <div id="status-banner" />
     <div class="card">
       <h3>Current Version</h3>
@@ -270,10 +272,10 @@ const UpgradeContent: FC<{ devBuild?: boolean }> = ({ devBuild }) => (
     `}</script>
   </div>
 );
-export function UpgradePage({ devBuild }: { devBuild?: boolean }) {
+export function UpgradePage({ devBuild, versionsByCategory = {}, imageMeta = {} }: { devBuild?: boolean } & Partial<VersionsViewData>) {
   return (
     <Layout title="Upgrade" currentPath="/upgrade">
-      <UpgradeContent devBuild={devBuild} />
+      <UpgradeContent devBuild={devBuild} versionsByCategory={versionsByCategory} imageMeta={imageMeta} />
     </Layout>
   );
 }

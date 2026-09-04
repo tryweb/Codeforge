@@ -102,13 +102,13 @@ else
   fail "GET /api/versions missing categories: core=$HAS_CORE cli=$HAS_CLI mcp=$HAS_MCP plugin=$HAS_PLUGIN (tools=$TOOL_COUNT)"
 fi
 
-# 7. /versions page renders categorized cards
-VERSIONS_HTML=$(curl -s -b "$COOKIE_JAR" "$BASE/versions" 2>/dev/null || echo "")
-assert_contains "Versions page lists Core tools" "Core" "$VERSIONS_HTML"
-assert_contains "Versions page lists CLI tools" "CLI" "$VERSIONS_HTML"
-assert_contains "Versions page lists MCP tools" "MCP" "$VERSIONS_HTML"
-assert_contains "Versions page lists Plugin tools" "Plugin" "$VERSIONS_HTML"
-assert_contains "Versions page has Image Metadata card" "Image Metadata" "$VERSIONS_HTML"
+# 7. /upgrade page embeds the component versions cards (merged Versions & Upgrade)
+VERSIONS_HTML=$(curl -s -b "$COOKIE_JAR" "$BASE/upgrade" 2>/dev/null || echo "")
+assert_contains "Upgrade page lists Core tools" "Core" "$VERSIONS_HTML"
+assert_contains "Upgrade page lists CLI tools" "CLI" "$VERSIONS_HTML"
+assert_contains "Upgrade page lists MCP tools" "MCP" "$VERSIONS_HTML"
+assert_contains "Upgrade page lists Plugin tools" "Plugin" "$VERSIONS_HTML"
+assert_contains "Upgrade page has Image Metadata card" "Image Metadata" "$VERSIONS_HTML"
 
 # 8. Mobile navigation elements present in Layout-wrapped pages
 assert_contains "Layout has #nav-toggle button" "nav-toggle" "$VERSIONS_HTML"

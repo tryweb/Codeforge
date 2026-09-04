@@ -178,6 +178,7 @@ describe("dashboard polish — dev Latest hidden and AI Runtime header removed",
       glab_auth: "authenticated",
       git_user: "test",
       project_count: 2,
+      ssh_key_count: 1,
       leanctx: null,
       gain: null,
       valueReport: null,
@@ -392,11 +393,12 @@ describe("dashboard polish — dev Latest hidden and AI Runtime header removed",
 
     expect(html.includes('href="/projects" class="site-summary__item site-summary__item--link"')).toBe(true);
     expect(html.includes('href="/projects" class="card card--link"')).toBe(true);
-    expect(html.includes('href="/auth/github"')).toBe(true);
-    expect(html.includes('href="/auth/gitlab"')).toBe(true);
-    expect(html.includes('href="/git-config"')).toBe(true);
+    expect(html.includes('href="/auth/git-hosting"')).toBe(true);
+    expect(html.includes('href="/ssh-keys"')).toBe(true);
+    expect(html.includes('aria-label="SSH keys 1"')).toBe(true);
     expect(html.includes('aria-label="Git not configured"')).toBe(true);
-    expect(html.includes('href="/versions"')).toBe(true);
+    expect(html.includes('href="/upgrade"')).toBe(true);
+    expect(html.includes('href="/env"')).toBe(true);
     expect(html.includes('class="dashboard__ops-row"')).toBe(true);
   });
 });

@@ -14,6 +14,7 @@ import upgradeRoutes from "./routes/upgrade";
 import projectRoutes from "./routes/projects";
 import ghAuthRoutes from "./routes/gh-auth";
 import glabAuthRoutes from "./routes/glab-auth";
+import gitHostingRoutes from "./routes/git-hosting";
 import gitConfigRoutes from "./routes/git-config";
 import sshKeyRoutes from "./routes/ssh-keys";
 import adminRoutes from "./routes/admin";
@@ -27,6 +28,7 @@ import { getUpdateCheck } from "./routes/versions";
 import { getStatus as getUpgradeStatus } from "./lib/upgrade";
 import { DashboardPage } from "./views/dashboard";
 import { getSelfContainerRef, dockerCommand, execInAiDev } from "./lib/docker";
+import { listKeys } from "./lib/ssh-keys";
 import { createToolStatusProbe } from "./lib/project-tool-status";
 import leanctxRoutes from "./routes/leanctx";
 import lspRoutes from "./routes/lsp";
@@ -125,6 +127,7 @@ app.route("/", upgradeRoutes);
 app.route("/", projectRoutes);
 app.route("/", ghAuthRoutes);
 app.route("/", glabAuthRoutes);
+app.route("/", gitHostingRoutes);
 app.route("/", gitConfigRoutes);
 app.route("/", sshKeyRoutes);
 app.route("/", adminRoutes);
@@ -148,7 +151,7 @@ app.get("/", async (c) => {
     }
   };
 
-  const [containerRunning, uptime, ghResult, glabResult, gitResult, projectsResult] =
+  const [containerRunning, uptime, ghResult, glabResult, gitResult, projectsResult, sshKeys] =
     await Promise.all([
       isAiDevRunning(),
       getAiDevUptime(),
@@ -156,6 +159,7 @@ app.get("/", async (c) => {
       exec("glab auth status 2>&1 || true", 10_000),
       exec("git config --global user.name 2>/dev/null || echo ''", 10_000),
       exec("ls ~/workspace/ 2>/dev/null | wc -l || echo '0'", 10_000),
+      listKeys(exec).catch(() => []),
     ]);
 
   const ghAuth = ghResult.stdout.includes("Logged in") || ghResult.stderr.includes("Logged in")
@@ -164,6 +168,7 @@ app.get("/", async (c) => {
     ? "authenticated" : "not authenticated";
   const gitUser = gitResult.stdout.trim();
   const projectCount = parseInt(projectsResult.stdout.trim() || "0", 10);
+  const sshKeyCount = sshKeys.length;
   const toolStatus = createToolStatusProbe({ command: execInAiDev, workspaceRoot: "/home/devuser/workspace" });
   const [leanctx, gain, valueReport, proveReport, savingsReport] = await Promise.all([
     toolStatus.probeSite(), toolStatus.probeGain(),
@@ -283,6 +288,7 @@ app.get("/", async (c) => {
       glab_auth: glabAuth,
       git_user: gitUser,
       project_count: projectCount,
+      ssh_key_count: sshKeyCount,
       center: centerSummary,
       runtimeProfile: finalRuntime,
       providerSummary: finalProvider,

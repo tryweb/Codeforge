@@ -1,5 +1,4 @@
 import type { FC } from "hono/jsx";
-import { Layout } from "./layout";
 
 const categoryLabels: Record<string, string> = {
   core: "Core",
@@ -31,7 +30,7 @@ const CategoryCard: FC<{ title: string; tools: Record<string, string> }> = ({ ti
   </div>
 );
 
-const VersionsContent: FC<{
+export const VersionsContent: FC<{
   versionsByCategory: Record<string, Record<string, string>>;
   imageMeta: Record<string, string>;
 }> = ({ versionsByCategory, imageMeta }) => (
@@ -55,13 +54,7 @@ const VersionsContent: FC<{
   </div>
 );
 
-export function VersionsPage(
-  versionsByCategory: Record<string, Record<string, string>>,
-  imageMeta: Record<string, string>,
-) {
-  return (
-    <Layout title="Versions" currentPath="/versions">
-      <VersionsContent versionsByCategory={versionsByCategory} imageMeta={imageMeta} />
-    </Layout>
-  );
+export interface VersionsViewData {
+  versionsByCategory: Record<string, Record<string, string>>;
+  imageMeta: Record<string, string>;
 }

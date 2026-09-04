@@ -112,6 +112,7 @@ export function getProductionRestartAdminSource(): string {
       glab_auth: "authenticated",
       git_user: "test",
       project_count: 0,
+      ssh_key_count: 0,
       leanctx: null,
       gain: null,
       valueReport: null,

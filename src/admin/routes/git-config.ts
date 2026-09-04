@@ -1,6 +1,5 @@
 import { Hono } from "hono";
 import { readGlobalConfig, setGlobalConfig } from "../lib/git-config";
-import { GitConfigPage } from "../views/git-config";
 
 const gitConfig = new Hono();
 
@@ -19,11 +18,6 @@ gitConfig.put("/api/git/config", async (c) => {
     return c.json({ error: result.error }, 500);
   }
   return c.json({ ok: true });
-});
-
-gitConfig.get("/git-config", async (c) => {
-  const config = await readGlobalConfig();
-  return c.html(GitConfigPage(config));
 });
 
 export default gitConfig;

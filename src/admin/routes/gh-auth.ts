@@ -1,7 +1,6 @@
 import { Hono } from "hono";
 import { execInAiDev } from "../lib/docker";
 import { getGhStatus, startDeviceFlow, logoutGh } from "../lib/gh-auth";
-import { GitHubAuthPage } from "../views/gh-auth";
 
 const ghAuth = new Hono();
 
@@ -54,11 +53,6 @@ ghAuth.post("/api/auth/gh/start", async (c) => {
 ghAuth.post("/api/auth/gh/logout", async (c) => {
   await logoutGh();
   return c.json({ ok: true });
-});
-
-ghAuth.get("/auth/github", async (c) => {
-  const status = await getGhStatus();
-  return c.html(GitHubAuthPage(status));
 });
 
 export default ghAuth;
