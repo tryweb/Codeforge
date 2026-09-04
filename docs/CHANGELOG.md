@@ -1,6 +1,21 @@
 ## [Unreleased]
 
 
+## [1.18.2] - 2026-09-05
+
+### Added
+- Bump Docker 29.7.2→29.8.0, Compose 5.5.0→5.5.1, OpenCode 1.18.27→1.18.28, OpenChamber 1.22.0→1.22.1, gh 2.99.0→2.100.0
+
+### Documentation
+- Add OpenCode V2 migration watch
+
+### Changed
+- Upgrade Docker Engine from 29.7.2 to 29.8.0.
+- Upgrade Docker Compose from 5.5.0 to 5.5.1.
+- Upgrade OpenCode from 1.18.27 to 1.18.28.
+- Upgrade OpenChamber from 1.22.0 to 1.22.1.
+- Upgrade GitHub CLI from 2.99.0 to 2.100.0.
+
 ## [1.18.1] - 2026-09-04
 
 ### Added
@@ -1838,7 +1853,7 @@
 
 ## Format
 
-[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.18.1...HEAD
+[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.18.2...HEAD
 [0.3.0]: https://github.com/tryweb/ai-engkit/releases/tag/v0.3.0
 [0.3.3]: https://github.com/tryweb/ai-engkit/compare/v0.3.0...v0.3.3
 [0.5.0]: https://github.com/tryweb/ai-engkit/compare/v0.3.3...v0.5.0
@@ -2002,3 +2017,4 @@
 [1.17.0]: https://github.com/tryweb/ai-engkit/compare/v1.16.8...v1.17.0
 [1.18.0]: https://github.com/tryweb/ai-engkit/compare/v1.17.0...v1.18.0
 [1.18.1]: https://github.com/tryweb/ai-engkit/compare/v1.18.0...v1.18.1
+[1.18.2]: https://github.com/tryweb/ai-engkit/compare/v1.18.1...v1.18.2
