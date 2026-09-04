@@ -73,6 +73,8 @@ If no file exists for the topic, create a new kebab-case markdown file.
 
 ## Writing Rules
 
+- Write every **new** entry in **English** (complete English sentences). Existing Chinese entries are kept as-is; only new sections added to an existing entry must be English.
+- Commands, paths, file names, versions, error text, env vars, line numbers stay verbatim (they are English already and never translated).
 - Prefer facts over summaries.
 - Prefer short paragraphs and bullets over long prose.
 - Preserve concrete terms exactly: error text, env vars, commands, paths, versions.

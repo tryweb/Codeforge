@@ -15,6 +15,10 @@ This is not a raw task log. Task-local notes still belong in `.sisyphus/notepads
 - `tooling/` — environment, build, CI/CD, CLI, and automation behaviors
 - `troubleshooting/` — bugs, failure modes, and concrete fixes
 
+## Language Policy
+
+Write every **new** entry, and every new section added to an existing entry, in **English** (complete English sentences). Technical terms are naturally English (`docker compose`, `config.toml`); commands, paths, file names, version numbers, and line numbers stay verbatim in any language. Existing Chinese entries are **not** retroactively rewritten — the policy applies forward only.
+
 ## Entry Standard
 
 Each file should follow the same shape:
