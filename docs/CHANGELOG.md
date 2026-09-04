@@ -1,6 +1,11 @@
 ## [Unreleased]
 
 
+## [1.18.1] - 2026-09-04
+
+### Added
+- Consolidate sidebar menu from 16 to 11 items
+
 ## [1.18.0] - 2026-09-03
 
 ### Added
@@ -1833,7 +1838,7 @@
 
 ## Format
 
-[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.18.0...HEAD
+[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.18.1...HEAD
 [0.3.0]: https://github.com/tryweb/ai-engkit/releases/tag/v0.3.0
 [0.3.3]: https://github.com/tryweb/ai-engkit/compare/v0.3.0...v0.3.3
 [0.5.0]: https://github.com/tryweb/ai-engkit/compare/v0.3.3...v0.5.0
@@ -1996,3 +2001,4 @@
 [1.16.8]: https://github.com/tryweb/ai-engkit/compare/v1.16.7...v1.16.8
 [1.17.0]: https://github.com/tryweb/ai-engkit/compare/v1.16.8...v1.17.0
 [1.18.0]: https://github.com/tryweb/ai-engkit/compare/v1.17.0...v1.18.0
+[1.18.1]: https://github.com/tryweb/ai-engkit/compare/v1.18.0...v1.18.1
