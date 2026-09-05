@@ -1483,7 +1483,7 @@ describe("query result contracts", () => {
     const passwordValues = Object.fromEntries(
       PASSWORD_KEYS.map((key) => [key, `${key}-super-secret-value-12345`]),
     );
-    const source = {
+    const source: Record<string, string> = {
       ...passwordValues,
       PROVIDER_KEY_HINT: RAW_KEY_MATERIAL,
       WORKSPACE_PATH: "/home/devuser/workspace",

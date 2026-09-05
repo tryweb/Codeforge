@@ -1,11 +1,11 @@
-import { describe, expect, mock, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
+import { createRealCommandDeps } from "./commands";
 
 // Focused tests for the REAL restartContainer implementation inside
 // createRealCommandDeps (the dispatch-level tests in commands.test.ts mock
 // restartContainer away). Capture the real modules first so the mock
 // factories do not re-enter the interception loop.
 
-const realDocker = await import("../lib/docker");
 
 const dockerCalls: Array<{ cmd: string; timeout: number }> = [];
 const runCommandCalls: Array<{ args: string[]; timeout: number }> = [];
@@ -14,8 +14,7 @@ let bindSources: Record<string, string | null> = {
   "/opt/ai-engkit/compose.yml": "/root/docker-compose.yml",
 };
 
-mock.module("../lib/docker", () => ({
-  ...realDocker,
+const restartDeps = {
   getComposeProject: async () => "test-proj",
   getSelfBindSource: async (dest: string) => bindSources[dest] ?? null,
   dockerCommand: async (cmd: string, timeout: number) => {
@@ -26,7 +25,7 @@ mock.module("../lib/docker", () => ({
     runCommandCalls.push({ args, timeout });
     return { exitCode: 0, stdout: "", stderr: "" };
   },
-}));
+};
 
 // Force the compose branch even in dev environments where
 // /opt/ai-engkit/compose.yml does not exist.
@@ -50,8 +49,7 @@ describe("real restartContainer", () => {
   test("ai-admin pulls the latest image, then recreates from compose via a helper container", async () => {
     dockerCalls.length = 0;
     runCommandCalls.length = 0;
-    const { createRealCommandDeps } = await import("./commands");
-    const deps = createRealCommandDeps(() => true);
+    const deps = createRealCommandDeps(() => true, restartDeps);
     const result = await deps.restartContainer("ai-admin");
 
     expect(result.success).toBe(true);
@@ -66,8 +64,7 @@ describe("real restartContainer", () => {
     dockerCalls.length = 0;
     runCommandCalls.length = 0;
     bindSources = {};
-    const { createRealCommandDeps } = await import("./commands");
-    const deps = createRealCommandDeps(() => true);
+    const deps = createRealCommandDeps(() => true, restartDeps);
     const result = await deps.restartContainer("ai-admin");
 
     expect(result.success).toBe(false);
@@ -82,8 +79,7 @@ describe("real restartContainer", () => {
   test("ai-dev recreates from compose without pulling (upgrade flow owns fetching)", async () => {
     dockerCalls.length = 0;
     runCommandCalls.length = 0;
-    const { createRealCommandDeps } = await import("./commands");
-    const deps = createRealCommandDeps(() => true);
+    const deps = createRealCommandDeps(() => true, restartDeps);
     const result = await deps.restartContainer("ai-dev");
 
     expect(result.success).toBe(true);
@@ -94,8 +90,7 @@ describe("real restartContainer", () => {
   test("unknown service is rejected", async () => {
     dockerCalls.length = 0;
     runCommandCalls.length = 0;
-    const { createRealCommandDeps } = await import("./commands");
-    const deps = createRealCommandDeps(() => true);
+    const deps = createRealCommandDeps(() => true, restartDeps);
     const result = await deps.restartContainer("bogus");
 
     expect(result.success).toBe(false);

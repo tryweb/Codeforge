@@ -155,6 +155,13 @@ export interface CommandDispatcher {
 
 type RestartService = "ai-dev" | "ai-admin";
 
+interface RealRestartDeps {
+  getComposeProject: typeof getComposeProject;
+  getSelfBindSource: typeof getSelfBindSource;
+  dockerCommand: typeof dockerCommand;
+  runCommand: typeof runCommand;
+}
+
 /** Restart modes accepted by provider key commands (default: graceful). */
 export type RestartMode = "graceful" | "force";
 
@@ -1081,7 +1088,7 @@ export function createCommandDispatcher(sender: CommandSender, deps: CommandDeps
       const result = await run();
       sender.send(buildAck(env.id, {
         status: result.ok ? "success" : "failure",
-        message: result.ok ? (result.message ?? "done") : result.error,
+        message: result.ok ? (result.message ?? "done") : ("error" in result ? result.error : "action failed"),
         started_at: startedAt,
         finished_at: deps.now(),
       }));
@@ -1105,27 +1112,24 @@ export function createCommandDispatcher(sender: CommandSender, deps: CommandDeps
   async function executeSshKeyAdd(env: Envelope, payload: SshKeyAddPayload): Promise<void> {
     await executeAction(env, async () => {
       const result = await deps.sshAddKey(payload.name, payload.keyType, payload.passphrase);
-      return result.ok
-        ? { ok: true, message: `SSH key ${payload.name} added` }
-        : { ok: false, error: result.error };
+      if ("error" in result) return { ok: false, error: result.error };
+      return { ok: true, message: `SSH key ${payload.name} added` };
     });
   }
 
   async function executeSshKeyDelete(env: Envelope, payload: SshKeyDeletePayload): Promise<void> {
     await executeAction(env, async () => {
       const result = await deps.sshDeleteKey(payload.name);
-      return result.ok
-        ? { ok: true, message: `SSH key ${payload.name} deleted` }
-        : { ok: false, error: result.error };
+      if ("error" in result) return { ok: false, error: result.error };
+      return { ok: true, message: `SSH key ${payload.name} deleted` };
     });
   }
 
   async function executeGitConfigSet(env: Envelope, payload: GitConfigSetPayload): Promise<void> {
     await executeAction(env, async () => {
       const result = await deps.gitSetConfig(payload.key, payload.value);
-      return result.ok
-        ? { ok: true, message: `git config ${payload.key} updated` }
-        : { ok: false, error: result.error };
+      if ("error" in result) return { ok: false, error: result.error };
+      return { ok: true, message: `git config ${payload.key} updated` };
     });
   }
 
@@ -1173,9 +1177,8 @@ export function createCommandDispatcher(sender: CommandSender, deps: CommandDeps
   async function executeGlabInstanceAdd(env: Envelope, payload: GlabInstanceAddPayload): Promise<void> {
     await executeAction(env, async () => {
       const result = await deps.glabAddInstance(payload.hostname, payload.token);
-      return result.ok
-        ? { ok: true, message: `GitLab instance ${payload.hostname} connected` }
-        : { ok: false, error: result.error };
+      if ("error" in result) return { ok: false, error: result.error };
+      return { ok: true, message: `GitLab instance ${payload.hostname} connected` };
     });
   }
 
@@ -1202,27 +1205,24 @@ export function createCommandDispatcher(sender: CommandSender, deps: CommandDeps
   async function executeProjectEnable(env: Envelope, payload: ProjectNamePayload): Promise<void> {
     await executeAction(env, async () => {
       const result = await deps.projectEnable(payload.name);
-      return result.ok
-        ? { ok: true, message: `Project ${payload.name} enabled` }
-        : { ok: false, error: result.error };
+      if ("error" in result) return { ok: false, error: result.error };
+      return { ok: true, message: `Project ${payload.name} enabled` };
     });
   }
 
   async function executeProjectDisable(env: Envelope, payload: ProjectNamePayload): Promise<void> {
     await executeAction(env, async () => {
       const result = await deps.projectDisable(payload.name);
-      return result.ok
-        ? { ok: true, message: `Project ${payload.name} disabled` }
-        : { ok: false, error: result.error };
+      if ("error" in result) return { ok: false, error: result.error };
+      return { ok: true, message: `Project ${payload.name} disabled` };
     });
   }
 
   async function executeProjectEnableFeature(env: Envelope, payload: ProjectFeaturePayload): Promise<void> {
     await executeAction(env, async () => {
       const result = await deps.projectEnableFeature(payload.name, payload.feature);
-      return result.ok
-        ? { ok: true, message: `Project ${payload.name} feature ${payload.feature} enabled` }
-        : { ok: false, error: result.error };
+      if ("error" in result) return { ok: false, error: result.error };
+      return { ok: true, message: `Project ${payload.name} feature ${payload.feature} enabled` };
     });
   }
 
@@ -1242,7 +1242,7 @@ export function createCommandDispatcher(sender: CommandSender, deps: CommandDeps
       const result = await deps.projectCreate(payload.name, { gitInit: payload.gitInit, gitRemote: payload.gitRemote });
       sender.send(buildAck(env.id, {
         status: result.ok ? "success" : "failure",
-        message: result.ok ? `Project ${payload.name} created` : result.error,
+        message: result.ok ? `Project ${payload.name} created` : ("error" in result ? result.error : "Project creation failed"),
         started_at: startedAt,
         finished_at: deps.now(),
       }));
@@ -1272,7 +1272,7 @@ export function createCommandDispatcher(sender: CommandSender, deps: CommandDeps
       const result = await deps.projectSetRemote(payload.name, payload.remote);
       sender.send(buildAck(env.id, {
         status: result.ok ? "success" : "failure",
-        message: result.ok ? `Project ${payload.name} remote set` : result.error,
+        message: result.ok ? `Project ${payload.name} remote set` : ("error" in result ? result.error : "Project remote update failed"),
         started_at: startedAt,
         finished_at: deps.now(),
       }));
@@ -1300,9 +1300,9 @@ export function createCommandDispatcher(sender: CommandSender, deps: CommandDeps
   async function finishProjectSync(env: Envelope, payload: ProjectSyncPayload, startedAt: string): Promise<void> {
     try {
       const result = await deps.projectSync(payload.add, payload.remove);
-      const message = result.ok
-        ? `Project sync complete (${result.messages?.length ?? 0} changes)`
-        : result.error;
+      const message = "error" in result
+        ? result.error
+        : `Project sync complete (${result.messages?.length ?? 0} changes)`;
       sender.send(buildAck(env.id, {
         status: result.ok ? "success" : "failure",
         message,
@@ -1352,11 +1352,11 @@ export function createCommandDispatcher(sender: CommandSender, deps: CommandDeps
         return;
       }
       const result = await deps.applyAgentModel(payload.agent, payload.entries);
-      const message = result.ok
-        ? result.status === "cleared"
+      const message = "error" in result
+        ? result.error
+        : result.status === "cleared"
           ? `Agent model cleared for ${payload.agent}; automatic selection restored`
-          : `Agent model applied for ${payload.agent}`
-        : result.error;
+          : `Agent model applied for ${payload.agent}`;
       sender.send(buildAck(env.id, {
         status: result.ok ? "success" : "failure",
         message,
@@ -1680,8 +1680,15 @@ export function createCommandDispatcher(sender: CommandSender, deps: CommandDeps
 /** Create production command dependencies backed by shared read and action helpers. */
 export function createRealCommandDeps(
   composeFileExists: (path: string) => boolean = existsSync,
+  restartDeps: Partial<RealRestartDeps> = {},
 ): CommandDeps {
   const agentModelsLib = createAgentModelsLib(AGENT_MODEL_REAL_DEPS);
+  const {
+    getComposeProject: resolveComposeProject = getComposeProject,
+    getSelfBindSource: resolveSelfBindSource = getSelfBindSource,
+    dockerCommand: runDockerCommand = dockerCommand,
+    runCommand: runHostCommand = runCommand,
+  } = restartDeps;
   return {
     isUpgradeRunning: () => getState() === "running",
     runUpgrade: async () => {
@@ -1694,7 +1701,7 @@ export function createRealCommandDeps(
     },
     restartAiDev: async () => {
       const result = await restartRealAiDev();
-      return result.ok ? { success: true } : { success: false, message: result.error };
+      return "error" in result ? { success: false, message: result.error } : { success: true };
     },
     restartContainer: async (service) => {
       try {
@@ -1705,21 +1712,21 @@ export function createRealCommandDeps(
         // service from compose so a newly pulled image is applied. A plain
         // `docker restart` keeps the container on its old image.
         if (composeFileExists(COMPOSE_FILE)) {
-          const project = await getComposeProject();
+          const project = await resolveComposeProject();
           if (service === "ai-admin") {
             // ai-admin has no upgrade flow; fetch the latest tag so the
             // recreate below applies the newest published image. Best-effort:
             // a registry outage must not block the restart itself.
-            await dockerCommand(`pull ${resolveImageRef()} 2>&1`, 120_000);
+            await runDockerCommand(`pull ${resolveImageRef()} 2>&1`, 120_000);
             // Recreate ai-admin from a helper container (mirroring
             // POST /api/admin/restart): compose run in-place stops the very
             // container executing it, killing the agent mid-recreate.
-            const envSource = await getSelfBindSource(ENV_FILE);
-            const composeSource = await getSelfBindSource(COMPOSE_FILE);
+            const envSource = await resolveSelfBindSource(ENV_FILE);
+            const composeSource = await resolveSelfBindSource(COMPOSE_FILE);
             if (!envSource || !composeSource) {
               return { success: false, message: "Failed to resolve host bind sources for ai-admin restart" };
             }
-            const helperResult = await runCommand(
+            const helperResult = await runHostCommand(
               [
                 "docker", "run", "--rm", "--user", "0",
                 "--entrypoint", "/usr/local/bin/docker",
@@ -1738,7 +1745,7 @@ export function createRealCommandDeps(
               ? { success: true }
               : { success: false, message: helperResult.stderr || helperResult.stdout || "ai-admin compose recreate failed" };
           }
-          const result = await dockerCommand(
+          const result = await runDockerCommand(
             `compose -p ${project} --env-file ${ENV_FILE} -f ${COMPOSE_FILE} up -d --force-recreate ai-dev 2>&1`,
             120_000,
           );
@@ -1779,7 +1786,7 @@ export function createRealCommandDeps(
     waitForIdleSessions: () => waitForIdleSessions(probeIdleViaOpenCodeServer),
     gracefulRestartAiDev: async () => {
       const result = await restartRealAiDev();
-      return result.ok ? { success: true } : { success: false, message: result.error };
+      return "error" in result ? { success: false, message: result.error } : { success: true };
     },
     setSecret: realSetSecretValue,
     sshAddKey: realSshAddKey,
