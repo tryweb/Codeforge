@@ -36,7 +36,7 @@ test("P1 upgrade page exposes status and does not start a destructive upgrade", 
   await signIn(page);
   await page.goto("/upgrade");
 
-  await expect(page.locator("main h2")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Upgrade Engine" })).toBeVisible();
   const status = await page.request.get("/api/upgrade/status");
   expect(status.ok()).toBe(true);
   expect((await status.json()).state).toBeDefined();
@@ -99,7 +99,7 @@ test("P2 settings pages expose OpenChamber, Git, and SSH controls", async ({ pag
     data: { showOpenCodeUpdateNotifications: originalValue },
   });
 
-  await page.goto("/git-config");
+  await page.goto("/auth/git-hosting");
   await expect(page.locator("#user-name")).toBeVisible();
   await expect(page.locator("#user-email")).toBeVisible();
 
