@@ -6,14 +6,24 @@ set -uo pipefail
 # Tests login -> dashboard flow via HTTP (server-rendered HTML)
 # ============================================================
 
-ADMIN_PORT="${ADMIN_PORT:-8080}"
+ADMIN_PORT="${ADMIN_DEV_PORT:-8081}"
+# Resolve the admin container: prefer the legacy name (matches dev setups),
+# then fall back to the compose service label, which survives container_name
+# overrides.
+ADMIN_CONTAINER="ai-engkit-admin-dev"
+if ! docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "$ADMIN_CONTAINER"; then
+  ADMIN_CONTAINER="$(docker ps --filter 'label=com.docker.compose.project=dev' --filter 'label=com.docker.compose.service=ai-admin' --filter 'status=running' --format '{{.Names}}' 2>/dev/null | head -n 1)"
+fi
+ADMIN_CONTAINER="${ADMIN_CONTAINER:-ai-engkit-admin-dev}"
 # In DooD (Docker-out-of-Docker) mode, use the bridge gateway
 if [ -n "${ADMIN_BASE_URL:-}" ]; then
   BASE="$ADMIN_BASE_URL"
 elif [ -f /.dockerenv ] || grep -q docker /proc/1/cgroup 2>/dev/null; then
-  GATEWAY=$(docker network inspect ai-engkit_default --format '{{range .IPAM.Config}}{{.Gateway}}{{end}}' 2>/dev/null || echo "172.20.0.1")
+  NETWORK=$(docker compose -p dev -f docker-compose.dev.yml config --format json | jq -r '.networks.default.name // "dev_default"')
+  GATEWAY=$(docker network inspect "$NETWORK" --format '{{range .IPAM.Config}}{{.Gateway}}{{end}}' 2>/dev/null || echo "172.20.0.1")
   # Resolve published host port from container (DooD: gateway needs host port, not container port)
-  PUBLISHED_PORT=$(docker port "ai-engkit-admin-dev" 8080/tcp 2>/dev/null | head -1 | sed 's/.*://' || echo "$ADMIN_PORT")
+  PUBLISHED_PORT=$(docker port "$ADMIN_CONTAINER" 8080/tcp 2>/dev/null | head -1 | sed 's/.*://')
+  PUBLISHED_PORT="${PUBLISHED_PORT:-$ADMIN_PORT}"
   BASE="http://${GATEWAY}:${PUBLISHED_PORT}"
 else
   BASE="http://localhost:${ADMIN_PORT}"
@@ -27,6 +37,16 @@ pass() { PASS=$((PASS+1)); echo -e "  ${GREEN}PASS${NC} $1"; }
 fail() { FAIL=$((FAIL+1)); echo -e "  ${RED}FAIL${NC} $1"; }
 assert_contains() { local label="$1" n="$2" h="$3"; if echo "$h" | grep -qi "$n"; then pass "$label"; else fail "$label (expected '$n')"; fi; }
 assert_not_contains() { local label="$1" n="$2" h="$3"; if echo "$h" | grep -qi "$n"; then fail "$label (unexpected '$n')"; else pass "$label"; fi; }
+
+COMPOSE_PROJECT="$(docker inspect "$ADMIN_CONTAINER" --format '{{index .Config.Labels "com.docker.compose.project"}}' 2>/dev/null || true)"
+if [ -z "$COMPOSE_PROJECT" ]; then
+  fail "cannot read Compose project label for container '$ADMIN_CONTAINER'; refusing to test an unknown container"
+  exit 1
+fi
+if [ "$COMPOSE_PROJECT" != "dev" ]; then
+  fail "refusing to test non-dev Compose project '$COMPOSE_PROJECT'"
+  exit 1
+fi
 
 rm -f "$COOKIE_JAR"
 
@@ -391,7 +411,7 @@ TOOL_PROJ="e2e-tool-$(date +%s)"
 # overrides (CI renames the container to "ci-test").
 AI_DEV_CONTAINER="${AI_DEV_CONTAINER:-ai-engkit-dev}"
 if [ "$AI_DEV_CONTAINER" = "ai-engkit-dev" ] && ! docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "$AI_DEV_CONTAINER"; then
-  AI_DEV_CONTAINER="$(docker ps --filter 'label=com.docker.compose.service=ai-dev' --filter 'status=running' --format '{{.Names}}' 2>/dev/null | head -n 1)"
+  AI_DEV_CONTAINER="$(docker ps --filter 'label=com.docker.compose.project=dev' --filter 'label=com.docker.compose.service=ai-dev' --filter 'status=running' --format '{{.Names}}' 2>/dev/null | head -n 1)"
 fi
 AI_DEV_CONTAINER="${AI_DEV_CONTAINER:-ai-engkit-dev}"
 e2e_project_cleanup() {

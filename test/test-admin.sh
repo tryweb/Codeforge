@@ -11,7 +11,7 @@ set -uo pipefail
 # overrides.
 CONTAINER="${1:-ai-engkit-admin-dev}"
 if [ "$CONTAINER" = "ai-engkit-admin-dev" ] && ! docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "$CONTAINER"; then
-  CONTAINER="$(docker ps --filter 'label=com.docker.compose.service=ai-admin' --filter 'status=running' --format '{{.Names}}' 2>/dev/null | head -n 1)"
+  CONTAINER="$(docker ps --filter 'label=com.docker.compose.project=dev' --filter 'label=com.docker.compose.service=ai-admin' --filter 'status=running' --format '{{.Names}}' 2>/dev/null | head -n 1)"
 fi
 CONTAINER="${CONTAINER:-ai-engkit-admin-dev}"
 PASS=0
@@ -43,19 +43,31 @@ assert_contains() {
   fi
 }
 
+COMPOSE_PROJECT="$(docker inspect "$CONTAINER" --format '{{index .Config.Labels "com.docker.compose.project"}}' 2>/dev/null || true)"
+if [ -z "$COMPOSE_PROJECT" ]; then
+  fail "cannot read Compose project label for container '$CONTAINER'; refusing to test an unknown container"
+  exit 1
+fi
+if [ "$COMPOSE_PROJECT" != "dev" ]; then
+  fail "refusing to test non-dev Compose project '$COMPOSE_PROJECT'"
+  exit 1
+fi
+
 # Get HTTP status code without -f (to capture 4xx/5xx codes)
 get_code() {
   curl -s -o /dev/null -w "%{http_code}" "$1" 2>/dev/null || echo "000"
 }
 
-ADMIN_PORT="${ADMIN_PORT:-8080}"
+ADMIN_PORT="${ADMIN_DEV_PORT:-8081}"
 # In DooD (Docker-out-of-Docker) mode, use the bridge gateway
 if [ -n "${ADMIN_BASE_URL:-}" ]; then
   BASE="$ADMIN_BASE_URL"
 elif [ -f /.dockerenv ] || grep -q docker /proc/1/cgroup 2>/dev/null; then
-  GATEWAY=$(docker network inspect ai-engkit_default --format '{{range .IPAM.Config}}{{.Gateway}}{{end}}' 2>/dev/null || echo "172.20.0.1")
+  NETWORK=$(docker compose -p dev -f docker-compose.dev.yml config --format json | jq -r '.networks.default.name // "dev_default"')
+  GATEWAY=$(docker network inspect "$NETWORK" --format '{{range .IPAM.Config}}{{.Gateway}}{{end}}' 2>/dev/null || echo "172.20.0.1")
   # Resolve published host port from container (DooD: gateway needs host port, not container port)
-  PUBLISHED_PORT=$(docker port "$CONTAINER" 8080/tcp 2>/dev/null | head -1 | sed 's/.*://' || echo "$ADMIN_PORT")
+  PUBLISHED_PORT=$(docker port "$CONTAINER" 8080/tcp 2>/dev/null | head -1 | sed 's/.*://')
+  PUBLISHED_PORT="${PUBLISHED_PORT:-$ADMIN_PORT}"
   BASE="http://${GATEWAY}:${PUBLISHED_PORT}"
 else
   BASE="http://localhost:${ADMIN_PORT}"

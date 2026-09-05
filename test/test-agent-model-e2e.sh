@@ -12,7 +12,7 @@ set -uo pipefail
 
 CONTAINER="${1:-ai-engkit-dev}"
 if [ "$CONTAINER" = "ai-engkit-dev" ] && ! docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "$CONTAINER"; then
-  CONTAINER="$(docker ps --filter 'label=com.docker.compose.service=ai-dev' --filter 'status=running' --format '{{.Names}}' 2>/dev/null | head -n 1)"
+  CONTAINER="$(docker ps --filter 'label=com.docker.compose.project=dev' --filter 'label=com.docker.compose.service=ai-dev' --filter 'status=running' --format '{{.Names}}' 2>/dev/null | head -n 1)"
 fi
 CONTAINER="${CONTAINER:-ai-engkit-dev}"
 
@@ -26,6 +26,16 @@ NC='\033[0m'
 
 pass() { PASS=$((PASS + 1)); echo -e "  ${GREEN}PASS${NC} $1"; }
 fail() { FAIL=$((FAIL + 1)); echo -e "  ${RED}FAIL${NC} $1"; }
+
+COMPOSE_PROJECT="$(docker inspect "$CONTAINER" --format '{{index .Config.Labels "com.docker.compose.project"}}' 2>/dev/null || true)"
+if [ -z "$COMPOSE_PROJECT" ]; then
+  fail "cannot read Compose project label for container '$CONTAINER'; refusing to test an unknown container"
+  exit 1
+fi
+if [ "$COMPOSE_PROJECT" != "dev" ]; then
+  fail "refusing to test non-dev Compose project '$COMPOSE_PROJECT'"
+  exit 1
+fi
 
 assert_eq() {
   local label="$1" expected="$2" actual="$3"
