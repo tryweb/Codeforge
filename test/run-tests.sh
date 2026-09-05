@@ -12,10 +12,10 @@ set -uo pipefail
 # overrides such as CI's "ci-test". A positional arg still wins.
 CONTAINER="${1:-ai-engkit-dev}"
 if [ "$CONTAINER" = "ai-engkit-dev" ] && ! docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "$CONTAINER"; then
-  CONTAINER="$(docker ps --filter 'label=com.docker.compose.service=ai-dev' --filter 'status=running' --format '{{.Names}}' 2>/dev/null | head -n 1)"
+  CONTAINER="$(docker ps --filter 'label=com.docker.compose.project=dev' --filter 'label=com.docker.compose.service=ai-dev' --filter 'status=running' --format '{{.Names}}' 2>/dev/null | head -n 1)"
 fi
 CONTAINER="${CONTAINER:-ai-engkit-dev}"
-CHAMBER_PORT="${CHAMBER_PORT:-8001}"
+CHAMBER_PORT="${CHAMBER_DEV_PORT:-8001}"
 PASS=0
 FAIL=0
 SKIP=0
@@ -28,6 +28,20 @@ NC='\033[0m'
 pass() { PASS=$((PASS + 1)); echo -e "  ${GREEN}PASS${NC} $1"; }
 fail() { FAIL=$((FAIL + 1)); echo -e "  ${RED}FAIL${NC} $1"; }
 skip() { SKIP=$((SKIP + 1)); echo -e "  ${YELLOW}SKIP${NC} $1"; }
+
+if [ -z "$CONTAINER" ]; then
+  fail "no ai-dev container selected (expected a running container in Compose project 'dev')"
+  exit 1
+fi
+COMPOSE_PROJECT="$(docker inspect "$CONTAINER" --format '{{index .Config.Labels "com.docker.compose.project"}}' 2>/dev/null || true)"
+if [ -z "$COMPOSE_PROJECT" ]; then
+  fail "cannot read Compose project label for container '$CONTAINER'; refusing to test an unknown container"
+  exit 1
+fi
+if [ "$COMPOSE_PROJECT" != "dev" ]; then
+  fail "refusing to test non-dev Compose project '$COMPOSE_PROJECT'"
+  exit 1
+fi
 
 AUTHORITY_GUIDANCE_TEST="$(dirname "${BASH_SOURCE[0]}")/authority-guidance.test.sh"
 if [ -x "$AUTHORITY_GUIDANCE_TEST" ] && "$AUTHORITY_GUIDANCE_TEST" >/dev/null 2>&1; then

@@ -8,15 +8,13 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-# Resolve the ai-dev container: prefer the legacy name (matches compose.yml),
-# then fall back to the compose service label, which survives container_name
-# overrides.
-CONTAINER="${CONTAINER_NAME:-ai-engkit}"
-if [ "$CONTAINER" = "ai-engkit" ] && ! docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "$CONTAINER"; then
-  CONTAINER="$(docker ps --filter 'label=com.docker.compose.service=ai-dev' --filter 'status=running' --format '{{.Names}}' 2>/dev/null | head -n 1)"
+CONTAINER="${CONTAINER_NAME:-ai-engkit-dev}"
+if [ "$CONTAINER" = "ai-engkit-dev" ] && ! docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "$CONTAINER"; then
+  CONTAINER="$(docker ps --filter 'label=com.docker.compose.project=dev' --filter 'label=com.docker.compose.service=ai-dev' --filter 'status=running' --format '{{.Names}}' 2>/dev/null | head -n 1)"
 fi
-CONTAINER="${CONTAINER:-ai-engkit}"
-CHAMBER_PORT="${CHAMBER_PORT:-8000}"
+CONTAINER="${CONTAINER:-ai-engkit-dev}"
+CHAMBER_DEV_PORT="${CHAMBER_DEV_PORT:-8001}"
+export CHAMBER_DEV_PORT
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -25,16 +23,16 @@ NC='\033[0m'
 
 echo -e "${GREEN}=== Step 1: Cleanup ===${NC}"
 cd "$PROJECT_DIR"
-docker-compose down --remove-orphans 2>/dev/null || true
-docker-compose down -v --remove-orphans 2>/dev/null || true
+docker compose -p dev -f docker-compose.dev.yml down --remove-orphans 2>/dev/null || true
+docker compose -p dev -f docker-compose.dev.yml down -v --remove-orphans 2>/dev/null || true
 sleep 2
 
 echo -e "${GREEN}=== Step 2: Build ===${NC}"
-docker-compose build --no-cache
+docker compose -p dev -f docker-compose.dev.yml build --no-cache
 echo -e "${GREEN}Build complete${NC}"
 
 echo -e "${GREEN}=== Step 3: Start ===${NC}"
-docker-compose up -d
+docker compose -p dev -f docker-compose.dev.yml up -d
 echo "Waiting for services to stabilize..."
 sleep 20
 
@@ -51,7 +49,7 @@ fi
 
 echo ""
 echo -e "${YELLOW}=== Step 5: Cleanup ===${NC}"
-docker-compose down --remove-orphans 2>/dev/null || true
+docker compose -p dev -f docker-compose.dev.yml down --remove-orphans 2>/dev/null || true
 echo -e "${YELLOW}Services stopped${NC}"
 
 exit $TEST_EXIT
