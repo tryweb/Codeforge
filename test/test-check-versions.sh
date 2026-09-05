@@ -19,7 +19,7 @@
 #   * bare-tag fetch fails, v-tag succeeds   => row resolves (not check_failed)
 #
 # Also asserts .github/workflows/dependency-update.yml tracks BUN_VERSION and
-# expects 13 pins (12 existing + BUN_VERSION).
+# expects 15 pins (14 existing + BUN_VERSION).
 #
 # Exits 0 when all cases pass, 1 otherwise. Currently RED: the checker has no
 # BUN_VERSION support yet, and the workflow has 12 pins / no BUN_VERSION.
@@ -111,7 +111,7 @@ fi
 
 # Count pinned case arms of the form:  NAME_VERSION)   source='...'
 pin_count="$(grep -cE '^[[:space:]]+[A-Z_]+_VERSION\)[[:space:]]+source=' "$WORKFLOW")"
-assert_eq "ci-workflow-expects-13-pins" "13" "$pin_count"
+assert_eq "ci-workflow-expects-15-pins" "15" "$pin_count"
 
 echo ""
 echo "passed: $PASS    failed: $FAIL"
