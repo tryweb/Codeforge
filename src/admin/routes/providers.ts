@@ -64,7 +64,7 @@ async function restoreProviderAuth(name: string, previousAuthKey: string | null)
   }
   try {
     const restart = await restartAiDev();
-    if (!restart.ok) failures.push("rollback restart failed");
+    if ("error" in restart) failures.push("rollback restart failed");
   } catch {
     failures.push("rollback restart failed");
   }
@@ -94,7 +94,7 @@ providers.put("/api/providers/:name", async (c) => {
 
   const envVars = readEnvFile();
   const parsed = parseProviders(envVars[PROVIDER_ENV_KEY] ?? "");
-  if (!parsed.ok) {
+  if ("error" in parsed) {
     return c.json({ error: `OPENCODE_PROVIDER is not valid JSON: ${parsed.error}` }, 400);
   }
 
@@ -121,7 +121,7 @@ providers.delete("/api/providers/:name", (c) => {
   const name = c.req.param("name");
   const envVars = readEnvFile();
   const parsed = parseProviders(envVars[PROVIDER_ENV_KEY] ?? "");
-  if (!parsed.ok) {
+  if ("error" in parsed) {
     return c.json({ error: `OPENCODE_PROVIDER is not valid JSON: ${parsed.error}` }, 400);
   }
   if (!(name in parsed.providers)) return c.json({ error: "Provider not found" }, 404);
@@ -177,7 +177,7 @@ providers.post("/api/providers/:name/keys", async (c) => {
     try {
       await applyActiveKey(name, key.value);
       const restart = await restartAiDev();
-      if (!restart.ok) throw new Error(restart.error ?? "Restart failed");
+      if ("error" in restart) throw new Error(restart.error);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to apply key";
       const failures = deleteProviderKey(name, key.id) ? [] : ["registry key removal failed"];
@@ -227,7 +227,7 @@ providers.delete("/api/providers/:name/keys/:keyId", async (c) => {
         await clearProviderCache();
       }
       const restart = await restartAiDev();
-      if (!restart.ok) throw new Error(restart.error ?? "Restart failed");
+      if ("error" in restart) throw new Error(restart.error);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to sync auth store";
       return c.json({ error: `Key deleted but auth store sync failed: ${message}` }, 500);
@@ -265,7 +265,7 @@ providers.put("/api/providers/:name/keys/:keyId/active", async (c) => {
     try {
       await applyActiveKey(name, key.value);
       const restart = await restartAiDev();
-      if (!restart.ok) throw new Error(restart.error ?? "Restart failed");
+      if ("error" in restart) throw new Error(restart.error);
     } catch (err) {
       const failures: string[] = [];
       if (!setActiveProviderKey(name, previousActive)) failures.push("registry selection restore failed");

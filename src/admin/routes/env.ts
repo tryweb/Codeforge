@@ -24,7 +24,7 @@ env.put("/api/env/:key", async (c) => {
 
   if (key === PROVIDER_ENV_KEY) {
     const parsed = parseProviders(value);
-    if (!parsed.ok) {
+    if ("error" in parsed) {
       return c.json({ error: `OPENCODE_PROVIDER must be valid JSON: ${parsed.error}` }, 400);
     }
   }
@@ -50,7 +50,7 @@ env.post("/api/env/from-template", async (c) => {
 
 env.post("/api/env/restart", async (c) => {
   const result = await restartAiDev();
-  if (!result.ok) return c.json({ error: result.error }, 500);
+  if ("error" in result) return c.json({ error: result.error }, 500);
   return c.json({ ok: true });
 });
 

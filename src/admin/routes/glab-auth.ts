@@ -27,7 +27,7 @@ glabAuth.post("/api/auth/glab/start", async (c) => {
 
   if (token) {
     const result = await loginGlabWithToken(hostname, token);
-    if (!result.ok) {
+    if ("error" in result) {
       return c.json({ error: result.error }, 500);
     }
     return c.json({ ok: true });

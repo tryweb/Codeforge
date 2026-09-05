@@ -14,7 +14,7 @@ gitConfig.put("/api/git/config", async (c) => {
   if (!key || !value) return c.json({ error: "Key and value required" }, 400);
 
   const result = await setGlobalConfig(key, value);
-  if (!result.ok) {
+  if ("error" in result) {
     return c.json({ error: result.error }, 500);
   }
   return c.json({ ok: true });
