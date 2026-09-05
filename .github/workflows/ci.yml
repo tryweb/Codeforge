@@ -64,6 +64,21 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Load built image
+        run: docker load -i /tmp/image.tar
+
+      - name: Create .env for Compose validation
+        run: cp .env.example .env
+
+      - name: Compose isolation guard
+        run: bash test/test-compose-isolation.sh
+
+      - name: Admin unit tests
+        run: docker run --rm ai-engkit:ci bun --cwd /opt/admin test
+
+      - name: Admin typecheck
+        run: docker run --rm ai-engkit:ci bun run --cwd /opt/admin typecheck
+
       - name: Upload image artifact
         uses: actions/upload-artifact@v7
         with:
@@ -146,6 +161,12 @@ jobs:
 
           # === 3. Admin UI — smoke tests ===
           ADMIN_BASE_URL="http://localhost:8081" ./test/test-admin-ui.sh
+
+      - name: Admin unit tests (integration)
+        run: docker exec ci-test bun --cwd /opt/admin test
+
+      - name: Admin typecheck (integration)
+        run: docker exec ci-test bun run --cwd /opt/admin typecheck
 
       - name: Collect logs on failure
         if: failure()

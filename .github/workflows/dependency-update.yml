@@ -410,6 +410,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      - name: Create .env for Compose validation
+        run: cp .env.example .env
+
+      - name: Verify Compose isolation guard
+        run: bash test/test-compose-isolation.sh
+
       - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v4
 
@@ -444,6 +450,12 @@ jobs:
           load: true
           tags: ai-engkit:updated
           build-args: ${{ steps.build-args.outputs.args }}
+
+      - name: Run admin unit tests (updated image)
+        run: docker run --rm ai-engkit:updated bun --cwd /opt/admin test
+
+      - name: Typecheck admin (updated image)
+        run: docker run --rm ai-engkit:updated bun run --cwd /opt/admin typecheck
 
       - name: Save updated image artifact
         run: docker save ai-engkit:updated -o /tmp/updated-image.tar
@@ -492,6 +504,12 @@ jobs:
           chmod +x test/run-tests.sh
           ./test/run-tests.sh ci-test 2>&1 | tee test-output.txt
           echo "test-result=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+
+      - name: Run admin unit tests (ci-test)
+        run: docker exec ci-test bun --cwd /opt/admin test
+
+      - name: Typecheck admin (ci-test)
+        run: docker exec ci-test bun run --cwd /opt/admin typecheck
 
       - name: Upload test results
         if: always()
