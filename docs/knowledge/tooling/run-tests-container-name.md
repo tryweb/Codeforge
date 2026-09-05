@@ -1,48 +1,87 @@
-# test/run-tests.sh 的 container name 偵測與 dev compose 不一致
+# Dev test container resolution and Compose project isolation
 
 ## Context
 
-執行整合測試時，container name 若與 `docker-compose.dev.yml` 不符，會產生誤導性失敗。有兩種獨立觸發路徑：手動執行不帶參數（預設值不符），以及 check-updates skill 的自動偵測（抓到 admin container）。
+Dev integration tests must run against the `dev` Compose project only. An
+unscoped container lookup can resolve a production container when dev is
+stopped, and an unscoped `docker compose -f docker-compose.dev.yml` command
+resolves the project from the directory name instead of `dev`.
 
 ## Problem
 
-**路徑 1 — 預設值不符：** `test/run-tests.sh` 第 10 行預設 `CONTAINER="${1:-ai-dev}"`，但 `docker-compose.dev.yml` 定義 `container_name: ai-engkit-dev`。直接執行 `bash test/run-tests.sh` 報錯：
+Two historical failure modes:
 
-```
-OCI runtime exec failed: exec failed: unable to start container process: exec: "./test/run-tests.sh": stat ./test/run-tests.sh: no such file or directory
-```
+1. **Wrong default name:** `test/run-tests.sh` once defaulted to `ai-dev`
+   while `docker-compose.dev.yml` defines `container_name: ai-engkit-dev`,
+   so a bare invocation targeted a nonexistent container.
+2. **Listing-order detection:** automation once used
+   `docker compose ps --format '{{.Name}}' | head -1`, which returns the
+   admin container first (Compose definition order) and produced false
+   test failures on the wrong container.
 
-**路徑 2 — 自動偵測抓錯 container：** `.opencode/skills/check-updates/SKILL.md` 第 115 行用 `docker compose -p dev -f docker-compose.dev.yml ps --format '{{.Name}}' | head -1` 自動偵測 container name。`docker compose ps` 依 compose 定義順序列出，第一個是 `ai-engkit-admin-dev`（admin service）。測試在 admin container 上執行**不會**報 OCI error，而是 OpenChamber 測試大量失敗（假失敗），容易被誤判為真實回歸。
+A related DooD pitfall: `PUBLISHED_PORT=$(docker port ... | head -1 | sed ... || echo "$ADMIN_PORT")`
+only falls back when the pipeline exits non-zero. Empty output still built a
+malformed `http://<gateway>:` URL.
 
 ## Solution
 
-一律明確傳入 `ai-engkit-dev`：
-
-```bash
-bash test/run-tests.sh ai-engkit-dev
-```
-
-自動化腳本（如 check-updates skill）不得用 `docker compose ps | head -1` 推斷 container，應寫死 dev service 的 container name。
+- Default container name is `ai-engkit-dev`; a positional argument still
+  wins. When the default name is not running, scripts fall back to label
+  discovery scoped to the dev project:
+  `docker ps --filter 'label=com.docker.compose.project=dev' --filter 'label=com.docker.compose.service=ai-dev' --filter 'status=running'`.
+  Admin scripts use `service=ai-admin` with the same project filter.
+- The check-updates skill resolves the service without depending on listing
+  order: `docker compose -p dev -f docker-compose.dev.yml ps -q ai-dev`.
+- Mutating or admin scripts (`run-tests.sh`, `test-admin.sh`,
+  `test-admin-ui.sh`, `test-agent-model-e2e.sh`) refuse non-dev Compose
+  projects via the `com.docker.compose.project` inspect label.
+  `run-tests.sh` additionally fails closed when no container is selected or
+  the project label is unreadable.
+- Dev tests use only `ADMIN_DEV_PORT` (default `8081`) and
+  `CHAMBER_DEV_PORT` (default `8001`); production `ADMIN_PORT` and
+  `CHAMBER_PORT` are intentionally ignored to prevent inherited production
+  environment values from redirecting dev tests.
+  `test-full.sh` exports the effective `CHAMBER_DEV_PORT` before invoking
+  `run-tests.sh`.
+- Published-port resolution uses an explicit empty fallback:
+  `PUBLISHED_PORT="${PUBLISHED_PORT:-$ADMIN_PORT}"`, so empty `docker port`
+  output can never build a malformed URL.
+- `test/test-compose-isolation.sh` guards all of the above: tool preflight,
+  `-p dev` on every dev Compose invocation, project-scoped label fallbacks,
+  no hardcoded admin `docker port` names, no `|| echo` port fallbacks, and
+  no production network names.
 
 ## Why It Works
 
-測試腳本用 `docker exec "$CONTAINER"` 操作目標 container。OpenChamber 測試需要 port 3000（`ai-engkit-dev` 持有），在 admin container 上執行因缺少對應環境而假失敗；預設值 `ai-dev` 則直接找不到 container。兩種情況都只能靠明確傳入正確名稱解決。
+Label filters survive `container_name` overrides (CI renames containers),
+while the project filter keeps discovery inside `dev`. The refusal guards
+turn a wrong-container run into an immediate, explicit failure instead of
+silent false results. Explicit empty-port fallback handles the case `|| echo`
+misses.
 
 ## Side Effects / Tradeoffs
 
-- 若使用 `docker-compose.yml`（正式部署），container name 可能不同，需要對應調整。
+- Tests require the `dev` Compose project; a container without Compose
+  labels is refused rather than tested.
+- `test-full.sh` still performs real `down`/`build`/`up` cycles; the
+  isolation guard itself is read-only.
 
 ## Evidence
 
-- `bash test/run-tests.sh`（無參數）→ OCI exec 錯誤
-- check-updates 自動偵測到 `ai-engkit-admin-dev` → 140 PASS / 8 FAIL（假失敗）
-- 重跑 `./test/run-tests.sh ai-engkit-dev` → 151 PASS / 0 FAIL（Docker 29.7.1 bump 驗證）
+- `bash -n` clean on all touched scripts.
+- `test/test-compose-isolation.sh` passes on the hardened tree and matches
+  synthetic regressions (hardcoded `docker port`, `|| echo` fallback,
+  unscoped `docker compose -f`, project-less label filter).
 
 ## Related Files
 
-- `test/run-tests.sh` (line 10: `CONTAINER="${1:-ai-dev}"`)
-- `docker-compose.dev.yml` (line 9: `container_name: ai-engkit-dev`)
-- `.opencode/skills/check-updates/SKILL.md` (line 115: `docker compose ps | head -1` 偵測)
+- `test/run-tests.sh` (default/label/positional resolution, fail-closed project refusal, `CHAMBER_DEV_PORT` precedence)
+- `test/test-admin.sh` (admin label resolution, project refusal, `ADMIN_DEV_PORT` precedence, empty-port fallback)
+- `test/test-admin-ui.sh` (admin label resolution, project refusal, scoped ai-dev fallback, empty-port fallback)
+- `test/test-full.sh` (`CHAMBER_DEV_PORT` fallback and export)
+- `test/test-memory-e2e.sh`, `test/test-agent-model-e2e.sh`, `test/leanctx-reliability-gate.sh` (project-scoped ai-dev discovery)
+- `test/test-compose-isolation.sh` (isolation guard)
+- `.opencode/skills/check-updates/SKILL.md` (order-independent `ps -q ai-dev` resolution)
 
 ## Tags
 
