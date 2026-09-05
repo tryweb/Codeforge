@@ -1,4 +1,4 @@
-import { describe, expect, test, beforeEach } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { createUpgradeRoutes, type UpgradeRoutesDeps } from "./upgrade";
 import type { GhcrDiscoveryResult } from "../lib/ghcr-versions";
 import type { UpgradeEvent } from "../lib/upgrade";
