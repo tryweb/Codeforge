@@ -299,7 +299,7 @@ describe("agent model reconciler", () => {
     const ctx = fixture(config, provider, agents, { alpha: healthy("p", "alpha") });
     const result = await createAgentModelReconciler(ctx.deps).reconcileAll();
     expect(result.changed).toBe(2);
-    expect(result.agents.sort()).toEqual(["general", "sisyphus-junior"]);
+    expect([...result.agents].sort()).toEqual(["general", "sisyphus-junior"]);
     ctx.cleanup();
   });
 

@@ -257,8 +257,8 @@ export function createAgentModelReconciler(deps: AgentModelsDeps) {
       results.push({
         agent,
         status: result.status,
-        error: "error" in result ? result.error : null,
-        resolved: "resolved" in result ? result.resolved : null,
+        error: "error" in result ? result.error ?? null : null,
+        resolved: "resolved" in result ? result.resolved ?? null : null,
       });
     }
     return {
