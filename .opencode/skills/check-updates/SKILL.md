@@ -158,8 +158,8 @@ for i in $(seq 1 30); do
 done
 sleep 5
 
-# Detect the actual container name
-CONTAINER=$(docker compose -p dev -f docker-compose.dev.yml ps --format '{{.Name}}' 2>/dev/null | head -1)
+# Resolve the ai-dev service inside the dev project; do not depend on Compose listing order.
+CONTAINER=$(docker compose -p dev -f docker-compose.dev.yml ps -q ai-dev 2>/dev/null)
 
 # Run tests
 ./test/run-tests.sh "$CONTAINER"
