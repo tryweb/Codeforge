@@ -38,7 +38,7 @@ const REAL_MANAGED_DEPS: ManagedRestartDeps = {
 
 export async function restartAiDev(
   deps: AiDevRestartDeps = REAL_DEPS,
-): Promise<{ readonly ok: boolean; readonly error?: string }> {
+): Promise<{ readonly ok: true } | { readonly ok: false; readonly error: string }> {
   try {
     if (deps.composeFileExists(COMPOSE_FILE)) {
       const project = await deps.getComposeProject();
@@ -61,7 +61,7 @@ export async function restartAiDev(
 
 export async function restartManagedOpenCode(
   deps: ManagedRestartDeps = REAL_MANAGED_DEPS,
-): Promise<{ readonly ok: boolean; readonly error?: string }> {
+): Promise<{ readonly ok: true } | { readonly ok: false; readonly error: string }> {
   const noRestart = deps.readEnv()["RECONCILE_STARTUP_NO_RESTART"] === "1";
   if (noRestart) {
     const passwordNoKill = deps.readEnv()["OPENCODE_SERVER_PASSWORD"] ?? "";
