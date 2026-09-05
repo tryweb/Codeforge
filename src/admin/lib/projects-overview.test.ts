@@ -143,6 +143,9 @@ describe("collectProjectOverviews", () => {
         }),
         probeSite: async () => null,
         probeGain: async () => null,
+        probeValueReport: async () => null,
+        probeProveReport: async () => null,
+        probeSavingsReport: async () => null,
         invalidate: () => {},
       };
 
@@ -164,6 +167,9 @@ describe("collectProjectOverviews", () => {
         probe: async () => ({ codegraph: { initialized: false } }),
         probeSite: async () => null,
         probeGain: async () => null,
+        probeValueReport: async () => null,
+        probeProveReport: async () => null,
+        probeSavingsReport: async () => null,
         invalidate: () => {},
       };
 
@@ -212,6 +218,9 @@ describe("collectProjectOverviews", () => {
         probe: async () => { throw new Error("probe boom"); },
         probeSite: async () => null,
         probeGain: async () => null,
+        probeValueReport: async () => null,
+        probeProveReport: async () => null,
+        probeSavingsReport: async () => null,
         invalidate: () => {},
       };
 

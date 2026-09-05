@@ -7,7 +7,7 @@ import {
   readDisabledProjects,
   type SettingsCommand,
 } from "./openchamber-projects";
-import { checkFeature, collectProjectOverviews, listProjects, type ProjectCommand } from "./projects-overview";
+import { checkFeature, collectProjectOverviews, listProjects } from "./projects-overview";
 
 export type ProjectCommand = SettingsCommand;
 
@@ -114,13 +114,13 @@ export async function createProject(
   // Recreating a project clears any previous disabled state so the disabled
   // list never masks a project the user just created.
   const reenabled = await mergeDisabledProject(command, disabledPath, name, "enable");
-  if (!reenabled.ok) {
+  if ("error" in reenabled) {
     return { ok: false, error: `Project created, but its disabled state could not be cleared: ${reenabled.error}` };
   }
 
   // Register in OpenChamber so it appears automatically without manual "Add project".
   const registration = await registerWithOpenChamber(command, settingsPath, workspaceRoot, name);
-  if (!registration.ok) {
+  if ("error" in registration) {
     return { ok: false, error: `Project created, but OpenChamber registration failed: ${registration.error}` };
   }
 
@@ -189,12 +189,12 @@ export async function enableProject(name: string, options: ProjectLibOptions = {
   if (exists.stdout.trim() !== "yes") return { ok: false, error: "Project not found", status: 404 };
 
   const unmarked = await mergeDisabledProject(command, disabledPath, name, "enable");
-  if (!unmarked.ok) {
+  if ("error" in unmarked) {
     return { ok: false, error: `Could not enable project: ${unmarked.error}` };
   }
 
   const registration = await registerWithOpenChamber(command, settingsPath, workspaceRoot, name);
-  if (!registration.ok) {
+  if ("error" in registration) {
     // The project is enabled but unregistered; the next reconcile pass
     // re-adds it automatically, so no rollback is needed.
     return { ok: false, error: `Project enabled, but OpenChamber registration failed: ${registration.error}`, partial: true };
@@ -210,7 +210,7 @@ export async function disableProject(name: string, options: ProjectLibOptions = 
   if (exists.stdout.trim() !== "yes") return { ok: false, error: "Project not found", status: 404 };
 
   const marked = await mergeDisabledProject(command, disabledPath, name, "disable");
-  if (!marked.ok) {
+  if ("error" in marked) {
     return { ok: false, error: `Could not disable project: ${marked.error}` };
   }
 
@@ -220,7 +220,7 @@ export async function disableProject(name: string, options: ProjectLibOptions = 
     id: projectId(fullPath),
     path: fullPath,
   });
-  if (!removed.ok) {
+  if ("error" in removed) {
     // Roll the disabled mark back so the state file stays consistent with
     // OpenChamber: the project remains visible and a retry is safe.
     await mergeDisabledProject(command, disabledPath, name, "enable");
@@ -259,7 +259,7 @@ export async function deleteProject(
     id: projectId(fullPath),
     path: fullPath,
   });
-  if (!removed.ok) {
+  if ("error" in removed) {
     return { ok: false, error: `Could not unregister project from OpenChamber: ${removed.error}` };
   }
 
@@ -364,8 +364,8 @@ export async function syncProjects(
       path: fullPath,
       now: Date.now(),
     });
-    if (merged.ok) messages.push(`Added ${name} to OpenChamber`);
-    else failures.push(`Failed to add ${name}: ${merged.error}`);
+    if ("error" in merged) failures.push(`Failed to add ${name}: ${merged.error}`);
+    else messages.push(`Added ${name} to OpenChamber`);
   }
   for (const name of remove) {
     const fullPath = `${workspaceRoot}/${name}`;
@@ -374,8 +374,8 @@ export async function syncProjects(
       id: projectId(fullPath),
       path: fullPath,
     });
-    if (merged.ok) messages.push(`Removed ${name} from OpenChamber`);
-    else failures.push(`Failed to remove ${name}: ${merged.error}`);
+    if ("error" in merged) failures.push(`Failed to remove ${name}: ${merged.error}`);
+    else messages.push(`Removed ${name} from OpenChamber`);
   }
 
   // Tool status (codegraph index, leanCTX facts) can change with the project
