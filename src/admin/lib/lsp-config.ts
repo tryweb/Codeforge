@@ -32,7 +32,7 @@ function parseOverride(value: unknown): LspServerOverride | null {
   const version = value["version"];
   if (typeof enabled !== "boolean") return null;
   if (version !== null && version !== undefined && typeof version !== "string") return null;
-  return { enabled, version: version === null || version === undefined ? null : version };
+  return { enabled, version: typeof version === "string" ? version : null };
 }
 
 /**

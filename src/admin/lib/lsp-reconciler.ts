@@ -149,14 +149,22 @@ export function deriveBunPackages(
   return [...kept, ...managedTokens].join(" ").trim();
 }
 
-export interface LspApplyResult {
-  readonly ok: boolean;
-  readonly changed: number;
-  readonly applied: number;
-  readonly failed: number;
-  readonly error: string | null;
-  readonly servers: readonly LspReconciledServer[];
-}
+export type LspApplyResult =
+  | {
+      readonly ok: true;
+      readonly changed: number;
+      readonly applied: number;
+      readonly failed: 0;
+      readonly servers: readonly LspReconciledServer[];
+    }
+  | {
+      readonly ok: false;
+      readonly changed: number;
+      readonly applied: 0;
+      readonly failed: number;
+      readonly error: string;
+      readonly servers: readonly LspReconciledServer[];
+    };
 
 export function createLspReconciler(deps: LspReconcilerDeps) {
   const observedLspKeys = async (): Promise<ReadonlySet<string>> => {
@@ -278,7 +286,7 @@ export function createLspReconciler(deps: LspReconcilerDeps) {
 
     const changed = installTargets.size + (lspChanged || bunChanged ? 1 : 0);
     const refreshed = await reconcile();
-    return { ok: true, changed, applied: changed, failed: 0, error: null, servers: refreshed.servers };
+    return { ok: true, changed, applied: changed, failed: 0, servers: refreshed.servers };
   }
 
   return { readObserved, reconcile, apply };

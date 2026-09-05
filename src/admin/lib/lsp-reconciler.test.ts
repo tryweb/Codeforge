@@ -16,15 +16,15 @@ const EMPTY_OBSERVED = new Map<string, ObservedLspServer>();
 function makeDeps(overrides: {
   exec?: (cmd: string, timeoutMs?: number) => Promise<ExecResult>;
   readEnv?: () => EnvVars;
-  upsertEnvVar?: (key: string, value: string) => void;
-  deleteEnvVar?: (key: string, value: string) => void;
+    upsertEnvVar?: (key: string, value: string) => void;
+    deleteEnvVar?: (key: string) => void;
   lspBlockFile?: string;
   lspVarsFile?: string;
 }): LspReconcilerDeps {
   return {
     exec: overrides.exec ?? (async () => ({ stdout: "", stderr: "", exitCode: 0 })),
     readEnv: overrides.readEnv ?? (() => ({})),
-    upsertEnvVar: overrides.upsertEnvVar ?? (() => {}),
+    upsertEnvVar: overrides.upsertEnvVar ?? ((_key, _value) => {}),
     deleteEnvVar: overrides.deleteEnvVar ?? (() => {}),
     lspBlockFile: overrides.lspBlockFile ?? "/opt/dev-config/opencode.json",
     lspVarsFile: overrides.lspVarsFile ?? "/opt/dev-config/lsp-managed.env",
@@ -358,6 +358,7 @@ describe("createLspReconciler.apply", () => {
     const reconciler = createLspReconciler(deps);
     const result = await reconciler.apply();
     expect(result.ok).toBe(false);
+    if (!("error" in result)) throw new Error("expected vars push failure");
     expect(result.error).toContain("disk full");
   });
 
@@ -376,6 +377,7 @@ describe("createLspReconciler.apply", () => {
     const reconciler = createLspReconciler(deps);
     const result = await reconciler.apply();
     expect(result.ok).toBe(false);
+    if (!("error" in result)) throw new Error("expected install failure");
     expect(result.failed).toBe(3);
     expect(result.error).toContain("ETARGET");
     expect(upserts.length).toBe(0);
