@@ -54,7 +54,7 @@ const USERCODE_BODY = {
 };
 
 function oauthFetchStub(): typeof fetch {
-  return async (input) => {
+  const stub = async (input: string | URL | Request) => {
     const url = String(input);
     if (url.includes("/api/accounts/deviceauth/usercode")) {
       return new Response(JSON.stringify(USERCODE_BODY), { status: 200 });
@@ -75,6 +75,7 @@ function oauthFetchStub(): typeof fetch {
     }
     return new Response(JSON.stringify({}), { status: 500 });
   };
+  return Object.assign(stub, { preconnect: fetch.preconnect });
 }
 
 async function startFlow(): Promise<string> {
@@ -121,7 +122,7 @@ describe("providers OAuth routes", () => {
     const originalFetch = globalThis.fetch;
     Bun.env.PATH = `${f.binPath}:${previousPath ?? ""}`;
     let pollCount = 0;
-    globalThis.fetch = async (input) => {
+    const pollFetchStub = async (input: string | URL | Request) => {
       const url = String(input);
       if (url.includes("/api/accounts/deviceauth/usercode")) {
         return new Response(JSON.stringify(USERCODE_BODY), { status: 200 });
@@ -133,6 +134,7 @@ describe("providers OAuth routes", () => {
       }
       return new Response(JSON.stringify({}), { status: 500 });
     };
+    globalThis.fetch = Object.assign(pollFetchStub, { preconnect: originalFetch.preconnect });
     try {
       const flowId = await startFlow();
       const pending = await providersOAuth.request("http://localhost/poll", {

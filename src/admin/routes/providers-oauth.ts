@@ -153,7 +153,7 @@ providersOAuth.post("/apply", async (c) => {
   }
 
   const restart = await restartAiDev();
-  if (!restart.ok) {
+  if ("error" in restart) {
     const failures = await rollbackOAuthApply(previousRaw);
     clearPendingFlow(flowId);
     return c.json(
@@ -176,7 +176,7 @@ providersOAuth.post("/disconnect", async (c) => {
     return c.json({ error: `Disconnect failed: ${message}` }, 500);
   }
   const restart = await restartAiDev();
-  if (!restart.ok) {
+  if ("error" in restart) {
     return c.json(
       { error: `ChatGPT disconnected but ai-dev restart failed: ${restart.error ?? "unknown error"}` },
       500,
