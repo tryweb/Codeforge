@@ -3,7 +3,7 @@ import { createAgentModelLiveClient } from "./agent-model-live";
 
 describe("buildRequestVerificationScript agent routing", () => {
   test("message POST body carries the agent so verification runs as the specified agent", async () => {
-    const exec = async (command: string, _timeoutMs: number) => {
+    const exec = async (command: string, _timeoutMs?: number) => {
       expect(command).toContain('jq -nc --arg agent "$AGENT"');
       expect(command).toContain('{agent:$agent,parts:[{type:"text",text:"Reply with exactly OK."}]}');
       expect(command).toContain("SESSION");

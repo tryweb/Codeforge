@@ -274,12 +274,12 @@ export function createAgentModelsLib(deps: AgentModelsDeps = REAL_DEPS) {
         for (const change of changes) if (!results.has(change.agent)) results.set(change.agent, timeoutError);
         return results;
       }
-      if (!restart.ok) {
+      if ("error" in restart) {
         const rollback = await restoreAgentModelsConfig(snapshot);
         for (const change of changes) {
           results.set(change.agent, rollback.ok
-            ? { ok: false, status: "restart_failed", error: restart.error ?? "restart failed" }
-            : { ok: false, status: "rollback_failed", error: `${restart.error ?? "restart failed"}; ${rollback.error ?? "rollback failed"}` });
+            ? { ok: false, status: "restart_failed", error: restart.error }
+            : { ok: false, status: "rollback_failed", error: `${restart.error}; ${rollback.error ?? "rollback failed"}` });
         }
         return results;
       }
@@ -326,15 +326,15 @@ export function createAgentModelsLib(deps: AgentModelsDeps = REAL_DEPS) {
           for (const change of changes) if (!results.has(change.agent)) results.set(change.agent, timeoutError);
           return results;
         }
-        const probeFailureError = probeFailure[1].ok ? "model probe failed" : probeFailure[1].error;
+        const probeFailureError = "error" in probeFailure[1] ? probeFailure[1].error : "model probe failed";
         const rollback = await restoreAgentModelsConfig(snapshot);
         const recovery = rollback.ok ? await deps.restart() : { ok: false, error: "recovery restart skipped" };
-        if (!rollback.ok || !recovery.ok) {
+        if (!rollback.ok || "error" in recovery) {
           for (const change of changes) {
             results.set(change.agent, {
               ok: false,
               status: "rollback_failed",
-              error: `${probeFailureError}; ${rollback.error ?? recovery.error ?? "rollback failed"}`,
+              error: `${probeFailureError}; ${rollback.error ?? ("error" in recovery ? recovery.error : "rollback failed")}`,
             });
           }
         } else {

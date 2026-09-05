@@ -612,7 +612,7 @@ describe("applyAndVerify", () => {
     }
     const mockClearTimeout = (id: ReturnType<typeof originalSetTimeout>): void => {
       clearCalled = true;
-      return originalClearTimeout(id);
+      originalClearTimeout(id);
     }
     Object.defineProperty(globalThis, "setTimeout", { value: mockSetTimeout, writable: true, configurable: true });
     Object.defineProperty(globalThis, "clearTimeout", { value: mockClearTimeout, writable: true, configurable: true });
@@ -637,7 +637,7 @@ describe("applyAndVerify", () => {
       const result = await lib.applyAndVerify("explore", [{ model: "openai/gpt-5.6-luna-fast" }], "readiness");
       expect(timeoutFired).toBe(true);
       expect(result.status).toBe("unverified");
-      if (result.ok) throw new Error("expected timeout result");
+      if (!("error" in result)) throw new Error("expected timeout result");
       expect(result.error).toContain("timed out");
       expect(clearCalled).toBe(true);
       expect(callsRef.some((c) => c.includes("title:\"model availability probe\""))).toBe(false);

@@ -65,7 +65,7 @@ export type ApplyResult =
 
 export interface AgentModelsDeps {
   readonly exec: (command: string, timeoutMs?: number) => Promise<ExecResult>;
-  readonly restart: () => Promise<{ readonly ok: boolean; readonly error?: string }>;
+  readonly restart: () => Promise<{ readonly ok: true } | { readonly ok: false; readonly error: string }>;
   readonly readEnv: () => Record<string, string>;
 }
 
