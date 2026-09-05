@@ -1,6 +1,54 @@
 ## [Unreleased]
 
 
+## [1.18.3] - 2026-09-05
+
+### Fixed
+- Align admin view type contracts
+- Narrow secret and SSH route results
+- Narrow projects route results
+- Preserve project sync result typing
+- Align LSP route payloads
+- Type provider OAuth routes
+- Narrow core route result handling
+- Preserve upgrade rollback semantics
+- Type restart result unions
+- Narrow provider metadata results
+- Narrow project library results
+- Type model metadata results
+- Align LSP config and reconciler contracts
+- Harden Docker command execution
+- Narrow agent model reconciliation results
+- Normalize agent model contracts
+- Inject real restart command dependencies
+
+### Documentation
+- Document compose test isolation
+- Update contribution workflow
+- Add English-only language policy, translate bg-notification entry
+
+### Changed
+- Update OpenCode and Playwright pins
+- Add compose isolation regression guard
+- Update dependency pin expectations
+- Scope memory E2E to dev containers
+- Harden leanctx evaluator fixtures
+- Scope admin integration scripts to dev compose
+- Scope core integration scripts to dev compose
+- Update admin P1/P2 coverage
+- Update upgrade route contracts
+- Update status dependency fixtures
+- Update agent contract fixtures
+- Add typecheck toolchain
+- Update dependency workflow guidance
+- Tighten root TypeScript configuration
+- Isolate dev compose and installer flows
+- Gate admin checks and compose isolation
+
+### Changed
+- Upgrade OpenCode from 1.18.28 to 1.18.29.
+- Upgrade Playwright from 1.62.1 to 1.63.0.
+
 ## [1.18.2] - 2026-09-05
 
 ### Added
@@ -1853,7 +1901,7 @@
 
 ## Format
 
-[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.18.2...HEAD
+[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.18.3...HEAD
 [0.3.0]: https://github.com/tryweb/ai-engkit/releases/tag/v0.3.0
 [0.3.3]: https://github.com/tryweb/ai-engkit/compare/v0.3.0...v0.3.3
 [0.5.0]: https://github.com/tryweb/ai-engkit/compare/v0.3.3...v0.5.0
@@ -2018,3 +2066,4 @@
 [1.18.0]: https://github.com/tryweb/ai-engkit/compare/v1.17.0...v1.18.0
 [1.18.1]: https://github.com/tryweb/ai-engkit/compare/v1.18.0...v1.18.1
 [1.18.2]: https://github.com/tryweb/ai-engkit/compare/v1.18.1...v1.18.2
+[1.18.3]: https://github.com/tryweb/ai-engkit/compare/v1.18.2...v1.18.3
