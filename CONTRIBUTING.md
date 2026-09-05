@@ -87,6 +87,11 @@ docker compose -p dev -f docker-compose.dev.yml build --no-cache
 docker compose -p dev -f docker-compose.dev.yml up -d
 ```
 
+The development Compose file declares project name `dev`, but keep the explicit
+`-p dev -f docker-compose.dev.yml` flags for every build, start, stop, restart,
+exec, and inspection command. Never run an unscoped `docker compose` command
+from this checkout: in DooD mode it can resolve to the production project.
+
 ### Verify the environment
 
 ```bash
