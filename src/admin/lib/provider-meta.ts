@@ -54,7 +54,7 @@ export async function collectProvidersMeta(deps: ProvidersMetaDeps = REAL_META_D
   const envVars = readEnvFile();
   const parsed = parseProviders(envVars[PROVIDER_ENV_KEY] ?? "");
   const keys = readProviderKeys();
-  if (!parsed.ok) {
+  if ("error" in parsed) {
     return { invalid: true, error: parsed.error, providers: [] };
   }
 
