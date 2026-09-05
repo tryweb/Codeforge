@@ -6,7 +6,7 @@ import type { LspDriftReason } from "../lib/lsp-reconciler";
 export interface LspRow {
   readonly serverKey: string;
   readonly npmPackage: string;
-  readonly command: string;
+  readonly command: readonly string[];
   readonly extensions: readonly string[];
   readonly defaultEnabled: boolean;
   readonly builtinBacked: boolean;
@@ -71,7 +71,7 @@ const LspContent: FC<{ rows: readonly LspRow[] }> = ({ rows }) => (
               <td data-label="Server">
                 <strong>{row.serverKey}</strong>
                 <br />
-                <span class="text-xs text-muted"><code>{row.npmPackage}</code> · <code>{row.command}</code></span>
+                <span class="text-xs text-muted"><code>{row.npmPackage}</code> · <code>{row.command.join(" ")}</code></span>
               </td>
               <td data-label="Extensions" class="text-sm">{row.extensions.map((e) => <code style="margin-right:4px;">{e}</code>)}</td>
               <td data-label="Version">

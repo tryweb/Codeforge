@@ -178,7 +178,7 @@ export function SecretsPage(envVars: Record<string, string>) {
         ADMIN_PASSWORD: "Admin dashboard login password",
         OPENCHAMBER_UI_PASSWORD: "OpenChamber Web UI login password",
         OPENCODE_SERVER_PASSWORD: "OpenCode API authentication",
-      }[key],
+      }[key] ?? "",
       hasValue: !!entry && entry.length > 0,
       activationStatus: key === "ADMIN_PASSWORD" ? ("immediate" as const) : ("restart_required" as const),
       category: key === "ADMIN_PASSWORD" ? "admin" : "service",

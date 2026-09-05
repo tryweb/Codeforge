@@ -30,7 +30,7 @@ const SshKeysContent: FC<{ keys: SshKey[] }> = ({ keys }) => (
             <td><button class="btn-outline" style="padding:3px 6px;font-size:0.7rem;color:var(--danger);border-color:var(--danger);" onclick={`deleteKey('${k.name}')`}>✕</button></td>
           </tr>
         ))}
-        {keys.length === 0 && <tr><td colspan="6" class="text-muted">No SSH keys found</td></tr>}
+        {keys.length === 0 && <tr><td colspan={6} class="text-muted">No SSH keys found</td></tr>}
       </table>
     </div>
     <div id="generate-modal" class="modal-overlay" style="display:none;">
