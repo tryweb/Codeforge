@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, jest, test } from "bun:test";
 import type { StatusResponse } from "../lib/status";
 import type { UpgradeEvent } from "../lib/upgrade";
+import { createRealCommandDeps } from "./commands";
 import { createAgentRuntime, type AgentRuntime, type AgentRuntimeDeps } from "./client";
 import {
   buildHelloAck,
@@ -11,11 +12,7 @@ import {
 } from "./protocol";
 
 interface SocketOptions {
-  tls?: {
-    ca: string;
-    cert: string;
-    key: string;
-  };
+  tls?: { ca?: string; cert?: string; key?: string };
 }
 
 class FakeWebSocket {
@@ -132,32 +129,11 @@ function makeRuntime(
       latest: "",
       update_available: false,
       status: "up-to-date",
+      configured: null,
       message: "Up to date",
     }),
     getUpgradeState: () => "idle",
-    createRealDeps: () => ({
-      isUpgradeRunning: () => false,
-      runUpgrade: async () => ({ success: true }),
-      restartAiDev: async () => ({ success: true }),
-      restartContainer: async () => ({ success: true }),
-      upsertEnvVar: () => undefined,
-      now: () => "2026-08-10T00:00:00.000Z",
-      readStatus: async () => ({
-        container_status: STATUS.container_status,
-        uptime_seconds: STATUS.uptime_seconds,
-        versions: VERSIONS,
-        gh_auth: STATUS.gh_auth,
-        glab_auth: STATUS.glab_auth,
-        admin_version: STATUS.admin_version,
-        admin_version_mismatch: STATUS.admin_version_mismatch,
-        upgrade_state: "idle",
-        upgrade_available: false,
-        latest_version: "",
-      }),
-      readEnv: () => ({}),
-      readProjects: async () => ({}),
-      readProviders: async () => ({}),
-    }),
+    createRealDeps: createRealCommandDeps,
     createDispatcher: () => ({
       handle: (env) => handled.push(env),
       defer: () => undefined,

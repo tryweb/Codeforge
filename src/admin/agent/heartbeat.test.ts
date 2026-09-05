@@ -43,6 +43,7 @@ describe("heartbeat status report", () => {
         latest: "latest",
         update_available: true,
         status: "update-available",
+        configured: null,
         message: "New image available",
       }),
     };

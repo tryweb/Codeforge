@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import type { CommandType } from "./protocol";
 import {
   ERROR_CODES,
   MESSAGE_TYPES,
@@ -232,7 +233,7 @@ describe("agent protocol", () => {
   });
 
   it("parses action and query command types", () => {
-    const commandTypes = [
+    const commandTypes: CommandType[] = [
       "upgrade",
       "reconfigure",
       "restart",
