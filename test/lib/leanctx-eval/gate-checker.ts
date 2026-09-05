@@ -80,17 +80,26 @@ export function parseCapturedDriftInput(value: unknown, path = "captured"): Capt
 function parseLayer(value: unknown, path: string): CapturedLayer {
   if (!isRecord(value)) throw new BoundaryParseError(path, "expected layer object");
   hasOnlyKeys(value, ["present", "compressionLevel", "raw", "readError", "malformed"], path);
-  if (typeof value["present"] !== "boolean") throw new BoundaryParseError(path, "present must be boolean");
-  if (value["compressionLevel"] !== undefined && value["compressionLevel"] !== null && typeof value["compressionLevel"] !== "string") throw new BoundaryParseError(path, "compressionLevel must be string or null");
-  if (value["raw"] !== undefined && typeof value["raw"] !== "string") throw new BoundaryParseError(path, "raw must be string");
-  if (value["readError"] !== undefined && typeof value["readError"] !== "string") throw new BoundaryParseError(path, "readError must be string");
-  if (value["malformed"] !== undefined && typeof value["malformed"] !== "boolean") throw new BoundaryParseError(path, "malformed must be boolean");
+  const present = value["present"];
+  const compressionLevel = value["compressionLevel"];
+  const raw = value["raw"];
+  const readError = value["readError"];
+  const malformed = value["malformed"];
+  if (typeof present !== "boolean") throw new BoundaryParseError(path, "present must be boolean");
+  if (compressionLevel !== undefined && compressionLevel !== null && typeof compressionLevel !== "string") throw new BoundaryParseError(path, "compressionLevel must be string or null");
+  if (raw !== undefined && typeof raw !== "string") throw new BoundaryParseError(path, "raw must be string");
+  if (readError !== undefined && typeof readError !== "string") throw new BoundaryParseError(path, "readError must be string");
+  if (malformed !== undefined && typeof malformed !== "boolean") throw new BoundaryParseError(path, "malformed must be boolean");
+  const normalizedCompressionLevel = compressionLevel === null ? null : typeof compressionLevel === "string" ? compressionLevel : undefined;
+  const normalizedRaw = typeof raw === "string" ? raw : undefined;
+  const normalizedReadError = typeof readError === "string" ? readError : undefined;
+  const normalizedMalformed = typeof malformed === "boolean" ? malformed : undefined;
   return {
-    present: value["present"],
-    ...(value["compressionLevel"] !== undefined ? { compressionLevel: value["compressionLevel"] } : {}),
-    ...(value["raw"] !== undefined ? { raw: value["raw"] } : {}),
-    ...(value["readError"] !== undefined ? { readError: value["readError"] } : {}),
-    ...(value["malformed"] !== undefined ? { malformed: value["malformed"] } : {}),
+    present,
+    ...(normalizedCompressionLevel !== undefined ? { compressionLevel: normalizedCompressionLevel } : {}),
+    ...(normalizedRaw !== undefined ? { raw: normalizedRaw } : {}),
+    ...(normalizedReadError !== undefined ? { readError: normalizedReadError } : {}),
+    ...(normalizedMalformed !== undefined ? { malformed: normalizedMalformed } : {}),
   };
 }
 
@@ -101,11 +110,21 @@ function parseSentinel(value: unknown, path: string): CapturedSentinel {
   const timedOut = requiredBoolean(value["timedOut"], `${path}.timedOut`);
   const expectedBytes = nonNegativeInteger(value["expectedBytes"], `${path}.expectedBytes`);
   const expectedSha256 = sha256Value(value["expectedSha256"], `${path}.expectedSha256`);
-  if (value["stdout"] !== undefined && typeof value["stdout"] !== "string") throw new BoundaryParseError(path, "stdout must be string");
-  if (value["stderr"] !== undefined && typeof value["stderr"] !== "string") throw new BoundaryParseError(path, "stderr must be string");
-  if (value["execError"] !== undefined && typeof value["execError"] !== "string") throw new BoundaryParseError(path, "execError must be string");
-  if (value["markerDetected"] !== undefined && typeof value["markerDetected"] !== "boolean") throw new BoundaryParseError(path, "markerDetected must be boolean");
-  if (value["appendedContentDetected"] !== undefined && typeof value["appendedContentDetected"] !== "boolean") throw new BoundaryParseError(path, "appendedContentDetected must be boolean");
+  const stdout = value["stdout"];
+  const stderr = value["stderr"];
+  const execError = value["execError"];
+  const markerDetected = value["markerDetected"];
+  const appendedContentDetected = value["appendedContentDetected"];
+  if (stdout !== undefined && typeof stdout !== "string") throw new BoundaryParseError(path, "stdout must be string");
+  if (stderr !== undefined && typeof stderr !== "string") throw new BoundaryParseError(path, "stderr must be string");
+  if (execError !== undefined && typeof execError !== "string") throw new BoundaryParseError(path, "execError must be string");
+  if (markerDetected !== undefined && typeof markerDetected !== "boolean") throw new BoundaryParseError(path, "markerDetected must be boolean");
+  if (appendedContentDetected !== undefined && typeof appendedContentDetected !== "boolean") throw new BoundaryParseError(path, "appendedContentDetected must be boolean");
+  const normalizedStdout = typeof stdout === "string" ? stdout : undefined;
+  const normalizedStderr = typeof stderr === "string" ? stderr : undefined;
+  const normalizedExecError = typeof execError === "string" ? execError : undefined;
+  const normalizedMarkerDetected = typeof markerDetected === "boolean" ? markerDetected : undefined;
+  const normalizedAppendedContentDetected = typeof appendedContentDetected === "boolean" ? appendedContentDetected : undefined;
   const observedBytes = value["observedBytes"] === undefined ? undefined : nonNegativeInteger(value["observedBytes"], `${path}.observedBytes`);
   const observedSha256 = value["observedSha256"] === undefined ? undefined : sha256Value(value["observedSha256"], `${path}.observedSha256`);
   return {
@@ -113,11 +132,11 @@ function parseSentinel(value: unknown, path: string): CapturedSentinel {
     timedOut,
     expectedBytes,
     expectedSha256,
-    ...(value["stdout"] !== undefined ? { stdout: value["stdout"] } : {}),
-    ...(value["stderr"] !== undefined ? { stderr: value["stderr"] } : {}),
-    ...(value["execError"] !== undefined ? { execError: value["execError"] } : {}),
-    ...(value["markerDetected"] !== undefined ? { markerDetected: value["markerDetected"] } : {}),
-    ...(value["appendedContentDetected"] !== undefined ? { appendedContentDetected: value["appendedContentDetected"] } : {}),
+    ...(normalizedStdout !== undefined ? { stdout: normalizedStdout } : {}),
+    ...(normalizedStderr !== undefined ? { stderr: normalizedStderr } : {}),
+    ...(normalizedExecError !== undefined ? { execError: normalizedExecError } : {}),
+    ...(normalizedMarkerDetected !== undefined ? { markerDetected: normalizedMarkerDetected } : {}),
+    ...(normalizedAppendedContentDetected !== undefined ? { appendedContentDetected: normalizedAppendedContentDetected } : {}),
     ...(observedBytes !== undefined ? { observedBytes } : {}),
     ...(observedSha256 !== undefined ? { observedSha256 } : {}),
   };

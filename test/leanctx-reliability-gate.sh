@@ -114,7 +114,7 @@ track_container_volumes() {
 
 resolve_image() {
   local running
-  running=$(docker ps --filter 'label=com.docker.compose.service=ai-dev' --filter status=running --format '{{.Names}}' | awk 'NR==1{print}')
+  running=$(docker ps --filter 'label=com.docker.compose.project=dev' --filter 'label=com.docker.compose.service=ai-dev' --filter status=running --format '{{.Names}}' | awk 'NR==1{print}')
   if [[ -n "$running" ]]; then
     CONTAINER="$running"
     IMAGE=$(docker inspect --format '{{.Config.Image}}' "$running")
