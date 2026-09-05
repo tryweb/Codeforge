@@ -44,7 +44,7 @@ test("session cookie is matched by exact name, not substring (oc_ui_session shad
   const cookie = createSessionCookie();
   const token = cookie.split(";")[0].split("=")[1];
 
-  const response = await app.request("http://localhost/api/openchamber/settings", {
+  const response = await app.request("http://localhost/api/openapi.json", {
     headers: { Cookie: `oc_ui_session=stale.junk; session=${token}` },
   });
 
