@@ -111,7 +111,7 @@ export function createProjectRoutes(options: ProjectRoutesOptions = {}) {
       { gitInit: !!body.git_init, gitRemote: typeof body.git_remote === "string" ? body.git_remote : undefined },
       { command, settingsPath, disabledPath, workspaceRoot },
     );
-    if (!result.ok) return c.json({ error: result.error }, 500);
+    if ("error" in result) return c.json({ error: result.error }, 500);
     return c.json({ ok: true });
   });
 
@@ -124,7 +124,7 @@ export function createProjectRoutes(options: ProjectRoutesOptions = {}) {
     }
 
     const result = await enableProjectFeature(name, feature, { command, workspaceRoot });
-    if (!result.ok) return c.json({ error: result.error }, 500);
+    if ("error" in result) return c.json({ error: result.error }, 500);
     return c.json({ ok: true, output: result.output ?? "" });
   });
 
@@ -137,7 +137,7 @@ export function createProjectRoutes(options: ProjectRoutesOptions = {}) {
     }
 
     const result = await disableProjectFeature(name, feature, { command, workspaceRoot });
-    if (!result.ok) return c.json({ error: result.error }, 500);
+    if ("error" in result) return c.json({ error: result.error }, 500);
     return c.json({ ok: true, output: result.output ?? "" });
   });
 
@@ -156,7 +156,7 @@ export function createProjectRoutes(options: ProjectRoutesOptions = {}) {
     const url = typeof body.remote === "string" ? body.remote : "";
 
     const result = await setProjectRemote(name, url, { command, settingsPath, disabledPath, workspaceRoot });
-    if (!result.ok) {
+    if ("error" in result) {
       return c.json({ error: result.error, ...(result.partial ? { partial: true } : {}) }, 500);
     }
     return c.json({ ok: true });
@@ -176,8 +176,8 @@ export function createProjectRoutes(options: ProjectRoutesOptions = {}) {
     if (!isValidProjectName(name)) return c.json({ error: "Invalid project name" }, 400);
 
     const result = await disableProject(name, { command, settingsPath, disabledPath, workspaceRoot });
-    if (!result.ok) {
-      return c.json({ error: result.error, ...(result.partial ? { partial: true } : {}) }, result.status ?? 500);
+    if ("error" in result) {
+      return c.json({ error: result.error, ...(result.partial ? { partial: true } : {}) }, result.status === 404 ? 404 : 500);
     }
     return c.json({ ok: true });
   });
@@ -187,8 +187,8 @@ export function createProjectRoutes(options: ProjectRoutesOptions = {}) {
     if (!isValidProjectName(name)) return c.json({ error: "Invalid project name" }, 400);
 
     const result = await enableProject(name, { command, settingsPath, disabledPath, workspaceRoot });
-    if (!result.ok) {
-      return c.json({ error: result.error, ...(result.partial ? { partial: true } : {}) }, result.status ?? 500);
+    if ("error" in result) {
+      return c.json({ error: result.error, ...(result.partial ? { partial: true } : {}) }, result.status === 404 ? 404 : 500);
     }
     return c.json({ ok: true });
   });
@@ -208,8 +208,11 @@ export function createProjectRoutes(options: ProjectRoutesOptions = {}) {
       workspaceRoot,
       onSyncDone: () => toolStatus.invalidate(),
     });
-    if (!result.ok) {
-      return c.json({ error: result.error, ...(result.partial ? { partial: true } : {}) }, result.status ?? 500);
+    if ("error" in result) {
+      return c.json(
+        { error: result.error, ...(result.partial ? { partial: true } : {}) },
+        result.status === 400 ? 400 : result.status === 404 ? 404 : 500,
+      );
     }
     return c.json({ ok: true });
   });

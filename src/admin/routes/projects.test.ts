@@ -332,6 +332,9 @@ describe("GET /api/projects/overview tool status", () => {
       }),
       probeSite: async () => null,
       probeGain: async () => null,
+      probeValueReport: async () => null,
+      probeProveReport: async () => null,
+      probeSavingsReport: async () => null,
       invalidate: () => {},
     };
     try {
@@ -363,6 +366,9 @@ describe("GET /api/projects/overview tool status", () => {
       probe: async () => ({ codegraph: null }),
       probeSite: async () => null,
       probeGain: async () => null,
+      probeValueReport: async () => null,
+      probeProveReport: async () => null,
+      probeSavingsReport: async () => null,
       invalidate: () => {},
     };
     const command: ProjectCommand = async (source) => {
@@ -432,6 +438,9 @@ describe("GET /api/projects/overview tool status", () => {
       probe: async () => ({ codegraph: null }),
       probeSite: async () => null,
       probeGain: async () => null,
+      probeValueReport: async () => null,
+      probeProveReport: async () => null,
+      probeSavingsReport: async () => null,
       invalidate: () => { invalidations += 1; },
     };
     try {
