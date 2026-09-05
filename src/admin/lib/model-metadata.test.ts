@@ -291,7 +291,8 @@ describe("fetchModelMetadata cache behavior", () => {
     let now = 1_000_000;
     const successFetch = makeFetch(() => jsonResponse(completeFixture()));
     const first = await fetchModelMetadata({ fetchImpl: successFetch, now: () => now });
-    first.models.clear();
+    const callerCopy = new Map(first.models);
+    callerCopy.clear();
 
     now += 1_000;
     const cached = await fetchModelMetadata({

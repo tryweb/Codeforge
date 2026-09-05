@@ -254,7 +254,7 @@ export async function fetchModelMetadata(options: MetadataClientOptions = {}): P
     }
   } else if (res && !res.ok) err = new Error(`http ${res.status}`);
   const cached = fromCache(now);
-  if (err !== null) console.error("[agent-models] model metadata fetch failed:", err.message);
+  if (err instanceof Error) console.error("[agent-models] model metadata fetch failed:", err.message);
   if (cached) return cached;
   return unavailable();
 }
