@@ -34,8 +34,8 @@ function makeDeps(overrides: DepOverrides = {}): StatusDeps {
       if (command.startsWith("cat /opt/ai-engkit/VERSION")) return ok("1.2.3");
       return ok("");
     },
-    probeLeanCtxSite: overrides.leanctx === undefined ? undefined : async () => overrides.leanctx,
-    probeGain: overrides.gain === undefined ? undefined : async () => overrides.gain,
+    probeLeanCtxSite: overrides.leanctx === undefined ? undefined : async () => overrides.leanctx ?? null,
+    probeGain: overrides.gain === undefined ? undefined : async () => overrides.gain ?? null,
   };
 }
 
