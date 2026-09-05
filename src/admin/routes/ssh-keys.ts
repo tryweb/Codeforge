@@ -16,7 +16,7 @@ sshKeys.post("/api/ssh/keys", async (c) => {
   const passphrase = body.passphrase || "";
 
   const result = await addKey(name, type, passphrase);
-  if (!result.ok) {
+  if ("error" in result) {
     const status = result.error.startsWith("Invalid key name") ? 400 : 500;
     return c.json({ error: result.error }, status);
   }
@@ -26,7 +26,7 @@ sshKeys.post("/api/ssh/keys", async (c) => {
 sshKeys.delete("/api/ssh/keys/:name", async (c) => {
   const name = c.req.param("name");
   const result = await deleteKey(name);
-  if (!result.ok) {
+  if ("error" in result) {
     return c.json({ error: result.error }, 500);
   }
   return c.json({ ok: true });

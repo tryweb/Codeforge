@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { readEnvFile } from "../lib/env";
-import { getSecretActivationStatus, isSecretKey, SECRETS_SCHEMA, setSecretValue } from "../lib/secrets";
+import { getSecretActivationStatus, isSecretKey, SECRETS_SCHEMA, setSecretValue, type ActivationStatus } from "../lib/secrets";
 import { SecretsPage } from "../views/secrets";
 
 const secrets = new Hono();
