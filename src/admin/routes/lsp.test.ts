@@ -36,7 +36,6 @@ function depsWith(overrides: Partial<LspRoutesDeps> = {}) {
       changed: 0,
       applied: 0,
       failed: 0,
-      error: null,
       servers: summary({}).servers,
     }),
     discoverVersions: async (pkg) => ({
@@ -155,7 +154,7 @@ describe("PUT /api/lsp", () => {
 describe("POST /api/lsp/apply", () => {
   test("returns the apply result", async () => {
     const { deps } = depsWith({
-      apply: async () => ({ ok: true, changed: 2, applied: 2, failed: 0, error: null, servers: summary({}).servers }),
+      apply: async () => ({ ok: true, changed: 2, applied: 2, failed: 0, servers: summary({}).servers }),
     });
     const response = await createLspRoutes(deps).request("http://localhost/api/lsp/apply", { method: "POST" });
     expect(response.status).toBe(200);

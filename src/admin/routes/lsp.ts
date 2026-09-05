@@ -36,7 +36,11 @@ const REAL_DEPS: LspRoutesDeps = (() => {
     reconcile: () => reconciler.reconcile(),
     apply: () => reconciler.apply(),
     discoverVersions: (pkg) => discoverNpmVersions(pkg),
-    readOverrides: () => parseLspServers(readEnvFile()["LSP_SERVERS"] ?? null),
+    readOverrides: () => {
+      const env = readEnvFile();
+      const raw = env["LSP_SERVERS"];
+      return parseLspServers(typeof raw === "string" ? raw : null);
+    },
     saveOverrides: (overrides) => {
       upsertEnvVar("LSP_SERVERS", serializeLspServers(overrides));
       return { ok: true };
@@ -52,7 +56,7 @@ function parseOverride(raw: unknown): { enabled: boolean; version: string | null
   const version = record["version"];
   if (typeof enabled !== "boolean") return null;
   if (version !== null && version !== undefined && typeof version !== "string") return null;
-  return { enabled, version: version === null || version === undefined ? null : version };
+  return { enabled, version: typeof version === "string" ? version : null };
 }
 
 export function createLspRoutes(options: Partial<LspRoutesDeps> = {}): Hono {
@@ -120,7 +124,7 @@ export function createLspRoutes(options: Partial<LspRoutesDeps> = {}): Hono {
       return c.json({ error: "overrides must be an object" }, 400);
     }
 
-    const overrides: LspServersOverrides = {};
+    const overrides: Record<string, { enabled: boolean; version: string | null }> = {};
     for (const [key, value] of Object.entries(rawOverrides as Record<string, unknown>)) {
       if (!LSP_CATALOG_BY_KEY.has(key)) {
         return c.json({ error: `Unknown server: ${key}` }, 400);
@@ -133,7 +137,7 @@ export function createLspRoutes(options: Partial<LspRoutesDeps> = {}): Hono {
     }
 
     const result = deps.saveOverrides(overrides);
-    if (!result.ok) {
+    if ("error" in result) {
       return c.json({ error: result.error ?? "Failed to save overrides" }, 500);
     }
     return c.json({ ok: true });
@@ -141,7 +145,7 @@ export function createLspRoutes(options: Partial<LspRoutesDeps> = {}): Hono {
 
   lsp.post("/api/lsp/apply", async (c) => {
     const result = await deps.apply();
-    if (!result.ok) {
+    if ("error" in result) {
       return c.json(
         { ok: false, error: result.error, changed: result.changed, applied: result.applied, failed: result.failed, servers: result.servers },
         500,
