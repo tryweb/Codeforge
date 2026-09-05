@@ -1,3 +1,5 @@
+name: dev
+
 services:
   ai-dev:
     image: ai-engkit-ai-dev

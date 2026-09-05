@@ -266,6 +266,8 @@ setup_env() {
 }
 
 ensure_provider_state() {
+    local TIMESTAMP
+    TIMESTAMP=$(date +%Y%m%d_%H%M%S)
     local state_dir="admin-data"
     local state_file="${state_dir}/provider-keys.json"
     local legacy_dir="provider-state"
