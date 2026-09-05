@@ -6,7 +6,7 @@ set -uo pipefail
 # overrides (CI renames the container to "ci-test").
 CONTAINER="${1:-ai-engkit-dev}"
 if [ "$CONTAINER" = "ai-engkit-dev" ] && ! docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "$CONTAINER"; then
-  CONTAINER="$(docker ps --filter 'label=com.docker.compose.service=ai-dev' --filter 'status=running' --format '{{.Names}}' 2>/dev/null | head -n 1)"
+  CONTAINER="$(docker ps --filter 'label=com.docker.compose.project=dev' --filter 'label=com.docker.compose.service=ai-dev' --filter 'status=running' --format '{{.Names}}' 2>/dev/null | head -n 1)"
 fi
 CONTAINER="${CONTAINER:-ai-engkit-dev}"
 
