@@ -74,7 +74,7 @@ export function createProjectSyncRoutes(options: ProjectSyncRoutesOptions) {
       // sync invalidates it so the next overview re-probes tool status.
       onSyncDone: invalidateToolStatus,
     });
-    if (!result.ok) {
+    if ("error" in result) {
       return c.json({ error: result.error, messages: result.messages ?? [] }, 500);
     }
     return c.json({ ok: true, messages: result.messages ?? [] });

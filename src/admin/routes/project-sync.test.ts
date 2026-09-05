@@ -215,6 +215,11 @@ describe("POST /api/projects/sync", () => {
       workspaceRoot: f.workspaceRoot,
       toolStatus: {
         probe: async () => ({ codegraph: null, leanctx: null }),
+        probeSite: async () => null,
+        probeGain: async () => null,
+        probeValueReport: async () => null,
+        probeProveReport: async () => null,
+        probeSavingsReport: async () => null,
         invalidate: () => { invalidated += 1; },
       },
     });
@@ -237,6 +242,11 @@ describe("POST /api/projects/sync", () => {
       workspaceRoot: f.workspaceRoot,
       toolStatus: {
         probe: async () => ({ codegraph: null, leanctx: null }),
+        probeSite: async () => null,
+        probeGain: async () => null,
+        probeValueReport: async () => null,
+        probeProveReport: async () => null,
+        probeSavingsReport: async () => null,
         invalidate: () => { invalidated += 1; },
       },
     });
