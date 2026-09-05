@@ -61,7 +61,7 @@ async function getOwnContainerName(): Promise<string> {
  * Derive the dev container name from this admin container's name.
  * Convention: ai-engkit-admin → ai-engkit, ai-engkit-admin-dev → ai-engkit-dev
  */
-async function getSiblingDevContainerName(): Promise<string> {
+export async function getSiblingDevContainerName(): Promise<string> {
   const self = await getOwnContainerName();
   // Strip "-admin-dev" or "-admin" suffix to get the dev container name
   // ai-engkit-admin-dev → ai-engkit-dev,  ai-engkit-admin → ai-engkit
@@ -78,6 +78,17 @@ export interface ExecResult {
 
 export interface ExecOptions {
   readonly preserveOutput?: boolean;
+  readonly env?: Readonly<Record<string, string | undefined>>;
+  readonly dockerBinary?: string;
+}
+
+function dockerArgs(args: string[], options: ExecOptions): string[] {
+  if (args[0] !== "docker" || options.dockerBinary === undefined) return args;
+  return [options.dockerBinary, ...args.slice(1)];
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
 /**
@@ -129,41 +140,197 @@ export async function execInAiDev(
 }
 
 /**
- * Detect the docker compose project name from this admin container's own
- * label. Falls back to "ai-engkit" if detection fails.
+ * Valid Docker Compose project names: lowercase letters, digits, dashes, and
+ * underscores, starting with a letter or digit. Anything else (whitespace,
+ * quotes, shell metacharacters, empty) is rejected so a project value can
+ * never inject extra shell commands when interpolated by legacy callers.
  */
-export async function getComposeProject(): Promise<string> {
+const COMPOSE_PROJECT_NAME = /^[a-z0-9][a-z0-9_-]*$/;
+
+export function isValidComposeProjectName(name: string): boolean {
+  return COMPOSE_PROJECT_NAME.test(name);
+}
+
+function assertComposeProjectName(project: string): void {
+  if (!isValidComposeProjectName(project)) {
+    throw new Error(
+      `Invalid compose project name ${JSON.stringify(project)}: must match ${String(COMPOSE_PROJECT_NAME)}`,
+    );
+  }
+}
+
+/**
+ * Split a docker/compose subcommand into argv tokens, honoring single and
+ * double quotes (quotes are stripped; unbalanced quotes throw instead of
+ * silently corrupting the command). Also reports whether the subcommand uses
+ * shell operators (pipes, redirects, ||, &&, $, backticks, ...) outside of
+ * quotes, so callers that still rely on them keep working via an explicit
+ * shell fallback instead of being misparsed as literal docker arguments.
+ */
+function parseSubcommand(subcommand: string): { readonly args: string[]; readonly usesShell: boolean } {
+  const args: string[] = [];
+  let current = "";
+  let hasToken = false;
+  let usesShell = false;
+  let quote: "'" | '"' | null = null;
+  const push = (): void => {
+    if (hasToken) {
+      args.push(current);
+      current = "";
+      hasToken = false;
+    }
+  };
+  let i = 0;
+  while (i < subcommand.length) {
+    const ch = subcommand[i];
+    if (quote === "'") {
+      // Single-quoted spans are literal (no expansion), matching sh semantics.
+      if (ch === "'") {
+        quote = null;
+      } else {
+        current += ch;
+      }
+      i++;
+      continue;
+    }
+    if (quote === '"') {
+      if (ch === '"') {
+        quote = null;
+        i++;
+        continue;
+      }
+      if (ch === "\\" && i + 1 < subcommand.length) {
+        current += subcommand[i + 1];
+        i += 2;
+        continue;
+      }
+      // A $ or backtick inside double quotes would expand under a shell, so a
+      // subcommand containing one must keep shell semantics to stay compatible.
+      if (ch === "$" || ch === "`") usesShell = true;
+      current += ch;
+      i++;
+      continue;
+    }
+    if (ch === "'" || ch === '"') {
+      quote = ch;
+      hasToken = true;
+      i++;
+      continue;
+    }
+    if (ch === "\\" && i + 1 < subcommand.length) {
+      current += subcommand[i + 1];
+      hasToken = true;
+      i += 2;
+      continue;
+    }
+    if (ch === " " || ch === "\t" || ch === "\n" || ch === "\r") {
+      push();
+      i++;
+      continue;
+    }
+    if (ch === "|" || ch === "&" || ch === ";" || ch === "<" || ch === ">" || ch === "`" || ch === "$" || ch === "(" || ch === ")") {
+      usesShell = true;
+    }
+    current += ch;
+    hasToken = true;
+    i++;
+  }
+  if (quote !== null) {
+    throw new Error(`Unbalanced quote in docker subcommand: ${JSON.stringify(subcommand)}`);
+  }
+  push();
+  return { args, usesShell };
+}
+
+/** Fail before execution when a `-p` project value is missing or invalid. */
+function assertProjectFlag(args: string[], subcommand: string): void {
+  const flagIndex = args.indexOf("-p");
+  if (flagIndex === -1) return;
+  const project = args[flagIndex + 1];
+  if (project === undefined) {
+    throw new Error(`Refusing to run docker command with a missing -p project value: ${JSON.stringify(subcommand)}`);
+  }
+  assertComposeProjectName(project);
+}
+
+/**
+ * Detect the docker compose project name from this admin container's own
+ * label. Fails closed: an inspect failure, a blank label, or a label that is
+ * not a valid project name throws instead of silently targeting production
+ * ("ai-engkit") during a socket/inspect outage.
+ */
+export async function getComposeProject(options: ExecOptions = {}): Promise<string> {
   const selfRef = await getSelfContainerRef();
   const result = await runCommand(
-    ["docker", "inspect", "--format={{index .Config.Labels \"com.docker.compose.project\"}}", selfRef],
+    dockerArgs(["docker", "inspect", "--format={{index .Config.Labels \"com.docker.compose.project\"}}", selfRef], options),
     5_000,
+    false,
+    options.env,
   );
-  if (result.exitCode === 0 && result.stdout.trim()) {
-    return result.stdout.trim();
+  if (result.exitCode !== 0) {
+    const detail = result.stderr || result.stdout || `exit code ${result.exitCode}`;
+    throw new Error(`Failed to detect compose project: docker inspect of ${JSON.stringify(selfRef)} failed (${detail})`);
   }
-  return "ai-engkit";
+  const project = result.stdout.trim();
+  if (!project) {
+    throw new Error(
+      "Failed to detect compose project: com.docker.compose.project label is blank; refusing to guess a fallback",
+    );
+  }
+  assertComposeProjectName(project);
+  return project;
 }
 
 /**
  * Run a raw docker compose command against the compose file.
+ * The subcommand is tokenized quote-aware (never via a shell); a trailing
+ * `2>&1` is dropped as a no-op because runCommand already captures stderr
+ * separately. Any other shell operator or an invalid `-p` project value
+ * throws before anything executes.
  */
 export async function composeCommand(
   subcommand: string,
   timeoutMs: number = 120_000,
+  options: ExecOptions = {},
 ): Promise<ExecResult> {
-  const args = ["docker", "compose", ...subcommand.split(/\s+/)];
-  return runCommand(args, timeoutMs);
+  const { args, usesShell } = parseSubcommand(subcommand);
+  if (args.length === 0) {
+    throw new Error("Refusing to run an empty compose subcommand");
+  }
+  const filtered = args.length > 0 && args[args.length - 1] === "2>&1" ? args.slice(0, -1) : args;
+  if (usesShell && filtered.length === args.length) {
+    throw new Error(
+      `Refusing to run compose subcommand with shell operators (pipe/redirect/||/&& are not supported): ${JSON.stringify(subcommand)}`,
+    );
+  }
+  assertProjectFlag(filtered, subcommand);
+  return runCommand(dockerArgs(["docker", "compose", ...filtered], options), timeoutMs, false, options.env);
 }
 
 /**
- * Run a raw docker command.
+ * Run a raw docker command. Subcommands without shell operators execute
+ * directly as argv (no shell), so project-derived and container-ref values
+ * are passed literally and cannot inject extra commands. Subcommands that
+ * genuinely pipe (jq/cut) or use `||` fallbacks keep explicit `sh -c`
+ * semantics; project values interpolated there are allowlisted by
+ * isValidComposeProjectName (enforced at getComposeProject and via the -p
+ * check below), so they cannot inject either.
  */
 export async function dockerCommand(
   subcommand: string,
   timeoutMs: number = 120_000,
+  options: ExecOptions = {},
 ): Promise<ExecResult> {
-  const args = ["sh", "-c", `docker ${subcommand}`];
-  return runCommand(args, timeoutMs);
+  const { args, usesShell } = parseSubcommand(subcommand);
+  if (args.length === 0) {
+    throw new Error("Refusing to run an empty docker subcommand");
+  }
+  assertProjectFlag(args, subcommand);
+  const dockerBinary = options.dockerBinary ?? "docker";
+  if (usesShell) {
+    return runCommand(["sh", "-c", `${shellQuote(dockerBinary)} ${subcommand}`], timeoutMs, false, options.env);
+  }
+  return runCommand(dockerArgs(["docker", ...args], options), timeoutMs, false, options.env);
 }
 
 /**
@@ -200,6 +367,7 @@ async function runCommand(
   args: string[],
   timeoutMs: number,
   preserveOutput = false,
+  envOverrides: Readonly<Record<string, string | undefined>> = {},
 ): Promise<ExecResult> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -207,7 +375,7 @@ async function runCommand(
   try {
     const process = Bun.spawn(args, {
       signal: controller.signal,
-      env: { ...Bun.env, DOCKER_HOST: "unix://" + DOCKER_SOCKET },
+      env: { ...Bun.env, ...envOverrides, DOCKER_HOST: "unix://" + DOCKER_SOCKET },
     });
 
     const stdout = await new Response(process.stdout).text();
