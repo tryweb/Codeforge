@@ -22,7 +22,7 @@ It is for people who want a ready-to-run AI coding workspace without assembling 
 
 Before installing, have:
 
-- Docker Engine with Compose support
+- Docker Engine with Docker Compose V2
 - At least 2 CPU cores, 4 GB RAM, and 30 GB free disk space (8 GB RAM and 100 GB disk recommended)
 - An AVX2-capable CPU, required by the OpenCode runtime
 
@@ -36,14 +36,14 @@ Install the current production channel from `main`:
 curl -fsSL https://raw.githubusercontent.com/tryweb/ai-engkit/refs/heads/main/install.sh | bash
 ```
 
-The installer checks system requirements, asks for the OpenChamber and Admin passwords, creates the persistent volumes, and starts the services.
+The installer checks system requirements, asks for the OpenChamber and Admin passwords when they are not already set, creates the persistent volumes, and starts the services.
 
 After installation:
 
 - OpenChamber: [http://localhost:8000](http://localhost:8000)
 - Admin Dashboard: [http://localhost:8080](http://localhost:8080)
 
-The installer-generated `.env` is the source of truth for your ports and credentials. Do not use the example passwords in a network-accessible deployment; `OPENCODE_SERVER_PASSWORD` is `devonly` in the example configuration and should also be replaced.
+The installer-generated `.env` is the source of truth for your ports and credentials. Do not use the example passwords in a network-accessible deployment; `OPENCHAMBER_UI_PASSWORD` is `chamber` and `OPENCODE_SERVER_PASSWORD` is `devonly` in the example configuration, and both should be replaced. `ADMIN_PASSWORD` must also be set to a deployment-specific value.
 
 ## What is included?
 
@@ -84,7 +84,7 @@ curl -fsSL https://raw.githubusercontent.com/tryweb/ai-engkit/refs/heads/main/up
 
 The upgrade script backs up the compose file and `.env`, downloads the latest compose configuration, merges newly introduced variables without overwriting custom values, pulls the image, recreates the service, waits for the container to be running, and removes dangling images. Re-running `install.sh` on an existing installation delegates to this upgrade flow.
 
-To restore a backup:
+To restore the backed-up Compose and environment settings:
 
 ```bash
 docker compose down
@@ -92,6 +92,8 @@ cp backup_<timestamp>/docker-compose.yml docker-compose.yml
 cp backup_<timestamp>/.env .env
 docker compose up -d
 ```
+
+This restores configuration files only; it does not restore Docker images or persistent volume data. To deploy a previous image as well, set `AI_ENGKIT_VERSION` to the desired release tag before starting the services.
 
 ## Configuration
 
@@ -101,6 +103,7 @@ Copy `.env.example` to `.env` when configuring a checkout manually. The installe
 |----------|--------------------|---------|
 | `CHAMBER_PORT` | `8000` | Host port for OpenChamber |
 | `ADMIN_PORT` | `8080` | Host port for the Admin Dashboard |
+| `AI_ENGKIT_VERSION` | unset (`latest`) | Optional image/release tag to pin |
 | `OPENCODE_SERVER_PASSWORD` | `devonly` in example | OpenCode API password; replace it |
 | `OPENCHAMBER_UI_PASSWORD` | `chamber` in example | OpenChamber password; installer prompts for it |
 | `ADMIN_PASSWORD` | **required** | Admin Dashboard password; installer prompts for it |
@@ -141,21 +144,22 @@ For HTTPS, SSH, multiple accounts, and credential isolation, see [Git authentica
 
 ### Providers
 
-The Admin Dashboard **Providers** page (`/providers`) edits `OPENCODE_PROVIDER` through structured cards with a raw-JSON fallback per provider, and manages API keys for key-managed providers (currently Opencode Go).
+The Admin Dashboard **Providers** page (`/providers`) edits `OPENCODE_PROVIDER` through structured cards with a raw-JSON fallback per provider, and manages API keys for key-managed providers: Opencode Go, OpenAI API, Nvidia API, and OpenRouter. OpenAI also supports the ChatGPT Pro/Plus headless OAuth connection.
 
 - Provider definitions still live in `OPENCODE_PROVIDER` in `.env` and are injected into `opencode.json` on startup.
 - Provider API keys are stored in `admin-data/provider-keys.json` (directory-mounted into the admin container as `/opt/ai-engkit/admin-data`, with the file set to `0600`), deliberately not in `.env` so keys never leak through `docker inspect`.
 - The active key for a key-managed provider is written to the opencode auth store (`~/.local/share/opencode/auth.json`) and applied by restarting the ai-dev container; the page shows a restart-required state and offers the same restart flow as Secrets.
-- When a key-managed provider has an existing key in the auth store, the page offers a one-click import before any key is added.
+- When a key-managed provider has an existing key in the auth store, the dashboard supports importing it into the provider-key registry; provider metadata also mirrors an auth-store-only API key into the registry.
 
 ## Ports
 
 | Container port | Default host mapping | Purpose |
 |----------------|----------------------|---------|
 | `3000` | `${CHAMBER_PORT:-8000}` | OpenChamber Web UI |
+| `3000` | `${CHAMBER_DEV_PORT:-8001}` | OpenChamber Web UI in development |
 | `4095` | internal | OpenCode service |
 | `8080` | `${ADMIN_PORT:-8080}` | Admin Dashboard |
-| `8081` | development only | Admin Dashboard watch mode |
+| `8080` | `${ADMIN_DEV_PORT:-8081}` | Admin Dashboard in development |
 
 ## Documentation
 
@@ -184,6 +188,8 @@ Run the available checks:
 ./test/test-admin.sh         # Admin Dashboard integration tests
 ./test/test-full.sh          # full build, test, and cleanup cycle
 ```
+
+`run-tests.sh` and `test-admin.sh` target the development Compose project and require its services to be running. `test-full.sh` is for disposable development environments: before rebuilding, it removes the dev project's containers and named volumes with `down -v`, including persisted development workspace and configuration data.
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md) before submitting changes.
 
