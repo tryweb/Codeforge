@@ -1,5 +1,11 @@
 ## [Unreleased]
 
+
+## [1.18.5] - 2026-09-06
+
+### Added
+- Upgrade lean-ctx from 3.10.0 to 3.10.1.
+
 ## [1.18.4] - 2026-09-06
 
 ### Added
@@ -1916,7 +1922,7 @@
 
 ## Format
 
-[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.18.3...HEAD
+[Unreleased]: https://github.com/tryweb/ai-engkit/compare/v1.18.5...HEAD
 [0.3.0]: https://github.com/tryweb/ai-engkit/releases/tag/v0.3.0
 [0.3.3]: https://github.com/tryweb/ai-engkit/compare/v0.3.0...v0.3.3
 [0.5.0]: https://github.com/tryweb/ai-engkit/compare/v0.3.3...v0.5.0
@@ -2082,3 +2088,5 @@
 [1.18.1]: https://github.com/tryweb/ai-engkit/compare/v1.18.0...v1.18.1
 [1.18.2]: https://github.com/tryweb/ai-engkit/compare/v1.18.1...v1.18.2
 [1.18.3]: https://github.com/tryweb/ai-engkit/compare/v1.18.2...v1.18.3
+[1.18.4]: https://github.com/tryweb/ai-engkit/compare/v1.18.3...v1.18.4
+[1.18.5]: https://github.com/tryweb/ai-engkit/compare/v1.18.4...v1.18.5
