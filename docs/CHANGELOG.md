@@ -1,5 +1,20 @@
 ## [Unreleased]
 
+## [1.18.4] - 2026-09-06
+
+### Added
+- Upgrade OpenChamber from 1.22.1 to 1.22.2.
+
+### Documentation
+- Document the OpenChamber self-update boundary.
+- Update the README and Admin Dashboard screenshot.
+
+### Changed
+- Install ripgrep for the Compose isolation guard.
+
+### Tests
+- Avoid Docker-dependent exact cookie tests.
+
 
 ## [1.18.3] - 2026-09-05
 
